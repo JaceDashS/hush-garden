@@ -5,7 +5,9 @@ import Svg, { Ellipse } from "react-native-svg";
 import { gainAt, type Speaker } from "../domain/sound";
 import { TILE_HEIGHT, TILE_WIDTH, distance, joystickToInput, toGarden, toScreen, type Point } from "../domain/world";
 import { T, colors } from "../ui";
-import { CHARACTER_SIZE, Character, GROUND_OFFSET_X, Ground, SPEAKER_SIZE, SpeakerArt, TREES, TREE_SIZE, Tree } from "./sprites";
+import type { CharacterKind } from "../domain/characters";
+import { CHARACTER_SIZE, Character } from "./characters";
+import { GROUND_OFFSET_X, Ground, SPEAKER_SIZE, SpeakerArt, TREES, TREE_SIZE, Tree } from "./sprites";
 
 export interface Actor {
   id: string;
@@ -14,7 +16,8 @@ export interface Actor {
   /** Shown above the head: the place the player connected from. */
   label: string;
   bubble?: string;
-  body?: string;
+  /** Which of the ten characters to draw. */
+  kind: CharacterKind;
   facing?: 1 | -1;
   walking?: boolean;
 }
@@ -56,12 +59,12 @@ function ActorView({ actor }: { actor: Actor }) {
       <View style={{ height: 20, marginBottom: 2, backgroundColor: "rgba(255,250,242,0.88)", borderRadius: 10, paddingHorizontal: 8, justifyContent: "center" }}>
         <T size={11} weight="700" lines={1}>{actor.label}</T>
       </View>
-      <Character body={actor.body} facing={actor.facing} walking={actor.walking} />
+      <Character kind={actor.kind} facing={actor.facing} walking={actor.walking} />
     </View>
   );
 }
 
-const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking);
+const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking && a.actor.kind === b.actor.kind);
 
 /**
  * `onInput` receives the joystick direction while a finger or the mouse is held, and zero on release.

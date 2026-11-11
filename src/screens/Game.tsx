@@ -29,10 +29,8 @@ type Link = "consent" | "entering" | "online" | "lost";
 const SELECT_TILES = 1.1;
 const SAVE_DELAY_MS = 400;
 const RETRY_MS = 3000;
-const BODIES = ["#cfe8ff", "#fff0b3", "#d9f5c5", "#e6d4ff", "#ffd9b8"];
 
 const newId = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-const bodyFor = (id: string) => BODIES[[...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % BODIES.length];
 
 const ENTER_ERRORS: Record<string, string> = {
   RATE_LIMITED: "잠시 후 다시 시도해 주세요.",
@@ -60,6 +58,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [entry, setEntry] = useState<Entry | null>(null);
   const [publicSpeakers, setPublicSpeakers] = useState<Speaker[]>([]);
   const [others, setOthers] = useState<Record<string, RemotePlayer>>({});
+  /** Which way each other player faces and whether it is walking, derived from its reported movement. */
+  const [motion, setMotion] = useState<Record<string, { facing: 1 | -1; walking: boolean }>>({});
   const [bubbles, setBubbles] = useState<Record<string, { text: string; until: number }>>({});
   const [draft, setDraft] = useState("");
 
@@ -174,6 +174,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         setOthers((current) => {
           let changed = false;
           const next = { ...current };
+          const arrived: string[] = [];
+          const walkers: Record<string, 1 | -1 | 0> = {};
           for (const id of Object.keys(moves)) {
             const player = next[id];
             const target = moves[id];
@@ -184,11 +186,35 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             const gap = distance(player, target);
             if (gap < 0.02) {
               delete moves[id];
+              arrived.push(id);
               continue;
             }
+            // Right on screen is +x and -y in the garden.
+            const side = target.x - player.x - (target.y - player.y);
+            walkers[id] = side > 0.02 ? 1 : side < -0.02 ? -1 : 0;
             const ratio = Math.min(1, seconds * 10);
             next[id] = { ...player, x: player.x + (target.x - player.x) * ratio, y: player.y + (target.y - player.y) * ratio };
             changed = true;
+          }
+          if (arrived.length || Object.keys(walkers).length) {
+            setMotion((before) => {
+              let moved = false;
+              const after = { ...before };
+              for (const id of arrived) {
+                if (after[id]?.walking) {
+                  after[id] = { ...after[id], walking: false };
+                  moved = true;
+                }
+              }
+              for (const id of Object.keys(walkers)) {
+                const facing = walkers[id] || after[id]?.facing || 1;
+                if (!after[id]?.walking || after[id].facing !== facing) {
+                  after[id] = { facing, walking: true };
+                  moved = true;
+                }
+              }
+              return moved ? after : before;
+            });
           }
           return changed ? next : current;
         });
@@ -257,7 +283,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     setEnterError("");
     try {
       const coordinates = await requestCoordinates();
-      const result = await client.enter(coordinates);
+      const result = await client.enter(coordinates, settingsRef.current.character);
       if (!alive.current) return;
       setEntry(result);
       const next = new GardenSocket(socketUrl(API_ORIGIN, result.ticket), receive, () => {
@@ -377,10 +403,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   };
 
   const actors: Actor[] = useMemo(() => {
-    const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.place, bubble: bubbles[player.id]?.text, body: bodyFor(player.id) }));
-    list.push({ id: "me", x: me.x, y: me.y, label: place || "…", bubble: bubbles.me?.text, facing, walking });
+    const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.place, bubble: bubbles[player.id]?.text, kind: player.character, facing: motion[player.id]?.facing, walking: motion[player.id]?.walking }));
+    list.push({ id: "me", x: me.x, y: me.y, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, facing, walking });
     return list;
-  }, [others, bubbles, me, place, facing, walking]);
+  }, [others, motion, bubbles, me, place, facing, walking, settings.character]);
 
   const heard = audibleCount(me, speakers);
   const showEditor = editing && !!selected;
@@ -489,10 +515,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       {panel === "settings" && (
         <Modal onClose={() => setPanel(null)}>
           <SettingsCard settings={settings} user={entry?.user ?? null} online={online} onChange={onSettings} onLogin={() => setPanel("login")} onLogout={() => void logout()}
-            onWithdraw={() => {
-              onSettings({ ...settings, consent: false });
-              onExit();
-            }}
             onClose={() => setPanel(null)}
           />
         </Modal>

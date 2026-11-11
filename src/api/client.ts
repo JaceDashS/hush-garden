@@ -1,3 +1,4 @@
+import type { CharacterKind } from "../domain/characters";
 import { normalizeSpeakers } from "../domain/garden";
 import type { Speaker } from "../domain/sound";
 import { ApiError, type Entry, type Transport, type User } from "./types";
@@ -85,9 +86,10 @@ export class HushClient {
   /**
    * Enters the public garden. `consent` must be true. Coordinates are optional and already rounded by the
    * caller; without them the server uses the IP region. The server keeps only the place name.
+   * `character` is the picture other players see.
    */
-  enter(coordinates: { latitude: number; longitude: number } | null): Promise<Entry> {
-    return this.serialize(() => this.call<Entry>("/hush-garden/enter", { consent: true, ...(coordinates ?? {}) }));
+  enter(coordinates: { latitude: number; longitude: number } | null, character: CharacterKind): Promise<Entry> {
+    return this.serialize(() => this.call<Entry>("/hush-garden/enter", { consent: true, character, ...(coordinates ?? {}) }));
   }
 
   /** Creates or replaces a public speaker. Needs the edit permission. Returns the new layout. */

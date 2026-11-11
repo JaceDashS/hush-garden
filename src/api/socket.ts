@@ -1,3 +1,4 @@
+import { normalizeCharacter } from "../domain/characters";
 import { normalizeSpeakers } from "../domain/garden";
 import type { Point } from "../domain/world";
 import type { ServerMessage } from "./types";
@@ -42,7 +43,7 @@ export function parseServerMessage(text: string): ServerMessage | null {
 
 function toPlayer(value: unknown) {
   const v = value as Record<string, unknown>;
-  return { id: v.id as string, name: typeof v.name === "string" ? v.name : "", place: typeof v.place === "string" ? v.place : "", x: v.x as number, y: v.y as number };
+  return { id: v.id as string, name: typeof v.name === "string" ? v.name : "", place: typeof v.place === "string" ? v.place : "", character: normalizeCharacter(v.character), x: v.x as number, y: v.y as number };
 }
 
 /** Connection to the shared garden. Reconnecting needs a new ticket, so the owner calls enter() again on close. */

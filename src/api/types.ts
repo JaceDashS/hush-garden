@@ -1,3 +1,4 @@
+import type { CharacterKind } from "../domain/characters";
 import type { Speaker } from "../domain/sound";
 
 export interface User {
@@ -41,6 +42,7 @@ export interface RemotePlayer {
   id: string;
   name: string;
   place: string;
+  character: CharacterKind;
   x: number;
   y: number;
 }

@@ -62,34 +62,6 @@ export const Ground = React.memo(function Ground() {
   );
 });
 
-export const CHARACTER_SIZE = { width: 56, height: 64 };
-
-/** A round little garden sprite. `hue` tints other players so they can be told apart. */
-export const Character = React.memo(function Character({ body = "#ffd1dc", facing = 1, walking = false }: { body?: string; facing?: 1 | -1; walking?: boolean }) {
-  return (
-    <Svg width={CHARACTER_SIZE.width} height={CHARACTER_SIZE.height} viewBox="0 0 56 64" pointerEvents="none">
-      <Ellipse cx={28} cy={58} rx={17} ry={5} fill="rgba(74,64,56,0.18)" />
-      <G transform={facing === -1 ? "translate(56 0) scale(-1 1)" : undefined}>
-        <Ellipse cx={15} cy={12} rx={6} ry={9} fill={body} stroke="#4a4038" strokeWidth={2} transform="rotate(-18 15 12)" />
-        <Ellipse cx={41} cy={12} rx={6} ry={9} fill={body} stroke="#4a4038" strokeWidth={2} transform="rotate(18 41 12)" />
-        <Ellipse cx={15} cy={13} rx={2.5} ry={5} fill="#ffffff" transform="rotate(-18 15 13)" />
-        <Ellipse cx={41} cy={13} rx={2.5} ry={5} fill="#ffffff" transform="rotate(18 41 13)" />
-        <Ellipse cx={22} cy={55} rx={6} ry={4} fill={body} stroke="#4a4038" strokeWidth={2} transform={walking ? "translate(-2 -2)" : undefined} />
-        <Ellipse cx={35} cy={55} rx={6} ry={4} fill={body} stroke="#4a4038" strokeWidth={2} transform={walking ? "translate(2 0)" : undefined} />
-        <Ellipse cx={28} cy={36} rx={20} ry={19} fill={body} stroke="#4a4038" strokeWidth={2.5} />
-        <Ellipse cx={30} cy={43} rx={11} ry={8} fill="#ffffff" opacity={0.75} />
-        <Circle cx={24} cy={32} r={2.6} fill="#4a4038" />
-        <Circle cx={37} cy={32} r={2.6} fill="#4a4038" />
-        <Circle cx={24.8} cy={31.2} r={0.9} fill="#ffffff" />
-        <Circle cx={37.8} cy={31.2} r={0.9} fill="#ffffff" />
-        <Ellipse cx={19} cy={38} rx={3.4} ry={2.2} fill="#ff9eb5" opacity={0.8} />
-        <Ellipse cx={42} cy={38} rx={3.4} ry={2.2} fill="#ff9eb5" opacity={0.8} />
-        <Path d="M28 36 q2.5 3 5 0" stroke="#4a4038" strokeWidth={1.8} fill="none" strokeLinecap="round" />
-      </G>
-    </Svg>
-  );
-});
-
 export const SPEAKER_SIZE = { width: 60, height: 76 };
 
 const SPEAKER_TINT = { brown: "#d9a877", pink: "#ffb3c6", white: "#f4f1ea" } as const;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { CHARACTER_KINDS, CHARACTER_NAMES, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor } from "../src/domain/characters.ts";
 import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { MAX_SPEAKERS, defaultSound, gainAt, mixFor, normalizeSound, type Speaker } from "../src/domain/sound.ts";
@@ -122,4 +123,27 @@ test("chat messages are trimmed, limited and never empty", () => {
   assert.equal(cleanMessage("   "), null);
   assert.equal(cleanMessage(5), null);
   assert.equal(cleanMessage("x".repeat(500))!.length, 200);
+});
+
+test("there are ten characters, each with a name, and unknown ones fall back to the first", () => {
+  assert.equal(CHARACTER_KINDS.length, 10);
+  assert.equal(new Set(CHARACTER_KINDS).size, 10);
+  assert.ok(CHARACTER_KINDS.every((kind) => CHARACTER_NAMES[kind]));
+  assert.equal(normalizeCharacter("panda"), "panda");
+  assert.equal(normalizeCharacter("dragon"), "bunny");
+  assert.equal(normalizeCharacter(undefined), "bunny");
+});
+
+test("a walking character cycles through different pictures and a standing one keeps still", () => {
+  const poses = Array.from({ length: WALK_FRAMES }, (_, frame) => poseFor(true, frame));
+  assert.equal(new Set(poses.map((pose) => JSON.stringify(pose))).size, WALK_FRAMES);
+  // The feet take turns: the left foot lifts on the first step and the right foot on the second.
+  assert.ok(poses[0].leftFoot.y < 0 && poses[0].rightFoot.y === 0);
+  assert.ok(poses[2].rightFoot.y < 0 && poses[2].leftFoot.y === 0);
+  assert.ok(poses[0].bob < 0 && poses[1].bob === 0);
+  assert.deepEqual(poseFor(true, WALK_FRAMES), poses[0]);
+  assert.deepEqual(poseFor(false, 2), STANDING);
+  let frame = 0;
+  for (let i = 0; i < WALK_FRAMES; i++) frame = nextWalkFrame(frame);
+  assert.equal(frame, 0);
 });

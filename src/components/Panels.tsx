@@ -130,8 +130,7 @@ const CUES: { value: CueMode; label: string }[] = [
   { value: "off", label: "끄기" },
 ];
 
-/** `onWithdraw` takes back the location consent and leaves the public garden. */
-export function SettingsCard({ settings, user, online, onChange, onLogin, onLogout, onWithdraw, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; onChange: (settings: Settings) => void; onLogin: () => void; onLogout: () => void; onWithdraw: () => void; onClose: () => void }) {
+export function SettingsCard({ settings, user, online, onChange, onLogin, onLogout, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; onChange: (settings: Settings) => void; onLogin: () => void; onLogout: () => void; onClose: () => void }) {
   return (
     <Card title="설정">
       <Slider label="전체 음량" value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
@@ -153,7 +152,6 @@ export function SettingsCard({ settings, user, online, onChange, onLogin, onLogo
           )}
         </View>
       )}
-      {online && <Btn small variant="danger" title="위치 동의 철회하고 나가기" onPress={onWithdraw} testID="withdraw-consent" />}
       <Btn title="닫기" onPress={onClose} />
     </Card>
   );
