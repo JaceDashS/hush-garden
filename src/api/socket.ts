@@ -27,6 +27,8 @@ export function parseServerMessage(text: string): ServerMessage | null {
       return isPlayer(m.player) ? { t: "join", player: toPlayer(m.player) } : null;
     case "leave":
       return typeof m.id === "string" ? { t: "leave", id: m.id } : null;
+    case "rename":
+      return typeof m.id === "string" && typeof m.name === "string" ? { t: "rename", id: m.id, name: m.name } : null;
     case "moves":
       return Array.isArray(m.moves) ? { t: "moves", moves: m.moves.filter(isPlayer).map((v) => ({ id: v.id as string, x: v.x as number, y: v.y as number })) } : null;
     case "chat":
@@ -98,6 +100,11 @@ export class GardenSocket {
 
   chat(text: string): void {
     this.sendJson({ t: "chat", text });
+  }
+
+  /** Asks the server to change the character name. An empty name returns to the account name. */
+  rename(name: string): void {
+    this.sendJson({ t: "rename", name });
   }
 
   private sendJson(payload: object): void {

@@ -5,6 +5,7 @@ import type { HushClient } from "../api/client";
 import { ApiError, type User } from "../api/types";
 import type { CueMode } from "../domain/chat";
 import { BUILT_IN_PRESETS, MAX_PRESETS, type MyGarden } from "../domain/garden";
+import { NAME_MAX_LENGTH, NAME_PROBLEM_TEXT, checkName } from "../domain/names";
 import type { Settings } from "../settings";
 import { Btn, Card, Chips, Input, Slider, T, colors } from "../ui";
 import { GoogleButton } from "./GoogleButton";
@@ -130,9 +131,36 @@ const CUES: { value: CueMode; label: string }[] = [
   { value: "off", label: "끄기" },
 ];
 
-export function SettingsCard({ settings, user, online, onChange, onLogin, onLogout, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; onChange: (settings: Settings) => void; onLogin: () => void; onLogout: () => void; onClose: () => void }) {
+/**
+ * `shownName` is the name currently above the character. `onName` receives a checked name, or "" to go back to
+ * the account name; `nameError` is the server's refusal, if any.
+ */
+export function SettingsCard({ settings, user, online, shownName, nameError, onChange, onName, onLogin, onLogout, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; onChange: (settings: Settings) => void; onName: (name: string) => void; onLogin: () => void; onLogout: () => void; onClose: () => void }) {
+  const [name, setName] = useState(settings.name);
+  const [problem, setProblem] = useState("");
+  const saveName = () => {
+    if (!name.trim()) {
+      setProblem("");
+      return onName("");
+    }
+    const check = checkName(name);
+    if (!check.ok) return setProblem(NAME_PROBLEM_TEXT[check.problem]);
+    setProblem("");
+    setName(check.name);
+    onName(check.name);
+  };
   return (
     <Card title="설정">
+      <View style={{ gap: 6 }}>
+        <T size={12.5} tone="muted" weight="700">{"캐릭터 이름 (지금: " + shownName + ")"}</T>
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <View style={{ flex: 1 }}>
+            <Input label="캐릭터 이름" placeholder="비우면 계정 이름" value={name} maxLength={NAME_MAX_LENGTH} onChangeText={setName} onSubmit={saveName} testID="settings-name" />
+          </View>
+          <Btn variant="mint" title="바꾸기" onPress={saveName} testID="settings-name-save" />
+        </View>
+        {!!(problem || nameError) && <T size={12.5} tone="danger">{problem || nameError}</T>}
+      </View>
       <Slider label="전체 음량" value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
       <View style={{ gap: 6 }}>
         <T size={12.5} tone="muted" weight="700">주변 채팅 알림</T>

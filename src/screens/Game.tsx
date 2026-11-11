@@ -14,10 +14,11 @@ import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session"
 import { ConsentCard, LoginCard, PresetCard, SettingsCard } from "../components/Panels";
 import { SpeakerEditor } from "../components/SpeakerEditor";
 import { API_ORIGIN } from "../config";
+import { PICK_UP_TILES } from "../domain/characters";
 import { BUBBLE_MS, CHAT_MAX_LENGTH, cleanMessage, cueFor } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
 import { MAX_SPEAKERS, type Speaker } from "../domain/sound";
-import { GARDEN_SIZE, distance, keysToInput, step, type Point } from "../domain/world";
+import { GARDEN_SIZE, clampToGarden, distance, keysToInput, step, toGarden, toScreen, type Point } from "../domain/world";
 import { Scene, type Actor } from "../game/Scene";
 import { requestCoordinates } from "../location";
 import type { Settings } from "../settings";
@@ -50,7 +51,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [panel, setPanel] = useState<Panel>(null);
   const [editing, setEditing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [moving, setMoving] = useState(false);
+  /** The speaker the character holds, and the one it is walking toward to pick up. */
+  const [carryId, setCarryId] = useState<string | null>(null);
+  const [approachId, setApproachId] = useState<string | null>(null);
+  const [nameError, setNameError] = useState("");
   const [notice, setNotice] = useState("");
 
   const [link, setLink] = useState<Link>(online ? (settings.consent ? "entering" : "consent") : "online");
@@ -63,7 +67,13 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [bubbles, setBubbles] = useState<Record<string, { text: string; until: number }>>({});
   const [draft, setDraft] = useState("");
 
-  const speakers = online ? publicSpeakers : garden.speakers;
+  const placed = online ? publicSpeakers : garden.speakers;
+  /** A carried speaker is wherever the character is, so its sound travels along. */
+  const speakers = useMemo(() => (carryId ? placed.map((speaker) => (speaker.id === carryId ? { ...speaker, x: me.x, y: me.y } : speaker)) : placed), [placed, carryId, me]);
+  const placedRef = useRef(placed);
+  placedRef.current = placed;
+  const approachRef = useRef(approachId);
+  approachRef.current = approachId;
   const canEdit = online ? !!entry?.canEdit : true;
   const myId = useRef("me");
   const meRef = useRef(me);
@@ -152,7 +162,24 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       const seconds = (now - last) / 1000;
       last = now;
       const stick = joystick.current;
-      const input = stick.x || stick.y ? stick : keysToInput(keys.current);
+      let input = stick.x || stick.y ? stick : keysToInput(keys.current);
+      const target = approachRef.current ? placedRef.current.find((speaker) => speaker.id === approachRef.current) : undefined;
+      if (approachRef.current && (!target || Math.hypot(input.x, input.y) > 0.05)) {
+        // Walking by hand, or a speaker that is gone, cancels the walk to the speaker.
+        approachRef.current = null;
+        setApproachId(null);
+      } else if (target) {
+        if (distance(meRef.current, target) <= PICK_UP_TILES) {
+          approachRef.current = null;
+          setApproachId(null);
+          setCarryId(target.id);
+        } else {
+          const from = toScreen(meRef.current);
+          const to = toScreen(target);
+          const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+          input = { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
+        }
+      }
       const active = Math.hypot(input.x, input.y) > 0.05;
       if (active !== wasWalking) {
         wasWalking = active;
@@ -250,6 +277,12 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             return next;
           });
           break;
+        case "rename":
+          if (message.id === myId.current) {
+            setEntry((current) => (current ? { ...current, name: message.name } : current));
+            setNameError("");
+          } else setOthers((current) => (current[message.id] ? { ...current, [message.id]: { ...current[message.id], name: message.name } } : current));
+          break;
         case "moves":
           for (const move of message.moves) if (move.id !== myId.current) targets.current[move.id] = { x: move.x, y: move.y };
           break;
@@ -269,6 +302,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
         }
         case "error":
+          if (message.error === "NAME_NOT_ALLOWED" || message.error === "NAME_RATE_LIMITED") {
+            setNameError(message.error === "NAME_NOT_ALLOWED" ? "쓸 수 없는 이름입니다." : "이름은 잠시 뒤에 다시 바꿀 수 있습니다.");
+            break;
+          }
           flash(message.error === "CHAT_RATE_LIMITED" ? "조금 천천히 말해 주세요." : message.error === "LOGIN_REQUIRED" ? "채팅은 로그인이 필요합니다." : "요청을 처리하지 못했습니다.");
           break;
       }
@@ -283,7 +320,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     setEnterError("");
     try {
       const coordinates = await requestCoordinates();
-      const result = await client.enter(coordinates, settingsRef.current.character);
+      const result = await client.enter(coordinates, settingsRef.current.character, settingsRef.current.name);
       if (!alive.current) return;
       setEntry(result);
       const next = new GardenSocket(socketUrl(API_ORIGIN, result.ticket), receive, () => {
@@ -346,25 +383,38 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     [online, onGarden, garden, pushPublic],
   );
 
-  const selected = speakers.find((speaker) => speaker.id === selectedId) ?? null;
+  const selected = placed.find((speaker) => speaker.id === selectedId) ?? null;
+
+  /** Puts the carried speaker down one step in front of the character. */
+  const putDown = useCallback(() => {
+    if (!carryId) return;
+    const ahead = toGarden({ x: facing * 40, y: 14 });
+    const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
+    setCarryId(null);
+    changeSpeakers(moveSpeaker(placedRef.current, carryId, spot), carryId);
+  }, [carryId, facing, changeSpeakers]);
+
+  /** The carry button: put down when holding, cancel when walking over, otherwise walk to the speaker and lift it. */
+  const carrySelected = () => {
+    if (carryId) return putDown();
+    if (approachId) return setApproachId(null);
+    if (selected) setApproachId(selected.id);
+  };
 
   const onTap = useCallback(
     (point: Point, speakerId: string | null) => {
-      if (!editing || !canEdit) return;
-      if (moving && selectedId) {
-        setMoving(false);
-        return changeSpeakers(moveSpeaker(speakers, selectedId, point), selectedId);
-      }
-      const near = speakers.map((speaker) => ({ speaker, gap: distance(speaker, point) })).filter((item) => item.gap < SELECT_TILES).sort((a, b) => a.gap - b.gap)[0];
+      if (!editing || !canEdit || carryId) return;
+      const near = placed.map((speaker) => ({ speaker, gap: distance(speaker, point) })).filter((item) => item.gap < SELECT_TILES).sort((a, b) => a.gap - b.gap)[0];
+      setApproachId(null);
       setSelectedId(speakerId ?? near?.speaker.id ?? null);
     },
-    [editing, canEdit, moving, selectedId, speakers, changeSpeakers],
+    [editing, canEdit, carryId, placed],
   );
 
   const addHere = () => {
-    if (speakers.length >= MAX_SPEAKERS) return flash("스피커는 " + MAX_SPEAKERS + "개까지 놓을 수 있습니다.");
+    if (placed.length >= MAX_SPEAKERS) return flash("스피커는 " + MAX_SPEAKERS + "개까지 놓을 수 있습니다.");
     const id = newId();
-    changeSpeakers(addSpeaker(speakers, { x: me.x + 1, y: me.y }, id), id);
+    changeSpeakers(addSpeaker(placed, { x: me.x + 1, y: me.y }, id), id);
     setSelectedId(id);
   };
 
@@ -372,9 +422,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (!selected) return;
     const id = selected.id;
     setSelectedId(null);
-    setMoving(false);
-    if (!online) return onGarden({ ...garden, speakers: removeSpeaker(speakers, id) });
-    setPublicSpeakers(removeSpeaker(speakers, id));
+    setCarryId(null);
+    setApproachId(null);
+    if (!online) return onGarden({ ...garden, speakers: removeSpeaker(placed, id) });
+    setPublicSpeakers(removeSpeaker(placed, id));
     clearTimeout(saveTimers.current[id]);
     client.deleteSpeaker(id).catch(() => flash("스피커를 지우지 못했습니다."));
   };
@@ -385,6 +436,14 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (!text) return;
     socket.current?.chat(text);
     setDraft("");
+  };
+
+  /** Saves the character name. Online, the server decides and answers with a rename or an error. */
+  const changeName = (name: string) => {
+    setNameError("");
+    onSettings({ ...settings, name });
+    settingsRef.current = { ...settings, name };
+    if (online) socket.current?.rename(name);
   };
 
   const afterLogin = async (_user: User) => {
@@ -402,11 +461,13 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     }
   };
 
+  const myName = online ? entry?.name ?? "…" : settings.name || "나";
+  const carried = carryId ? placed.find((speaker) => speaker.id === carryId) : undefined;
   const actors: Actor[] = useMemo(() => {
-    const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.place, bubble: bubbles[player.id]?.text, kind: player.character, facing: motion[player.id]?.facing, walking: motion[player.id]?.walking }));
-    list.push({ id: "me", x: me.x, y: me.y, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, facing, walking });
+    const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, name: player.name, label: player.place, bubble: bubbles[player.id]?.text, kind: player.character, facing: motion[player.id]?.facing, walking: motion[player.id]?.walking }));
+    list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, facing, walking, carrying: carried?.sound.noise.color });
     return list;
-  }, [others, motion, bubbles, me, place, facing, walking, settings.character]);
+  }, [others, motion, bubbles, me, myName, place, facing, walking, settings.character, carried]);
 
   const heard = audibleCount(me, speakers);
   const showEditor = editing && !!selected;
@@ -414,7 +475,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: wide ? "row" : "column" }}>
       <View style={{ flex: 1 }}>
-        <Scene me={me} actors={actors} speakers={speakers} selectedId={editing ? selectedId : null} showRanges={editing} onInput={(input) => (joystick.current = input)} onTap={onTap} />
+        <Scene me={me} actors={actors} speakers={speakers} selectedId={editing ? selectedId : null} carriedId={carryId} showRanges={editing} onInput={(input) => (joystick.current = input)} onTap={onTap} />
 
         <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, top: insets.top + 8, paddingHorizontal: 10, gap: 6 }}>
           <View pointerEvents="box-none" style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
@@ -426,9 +487,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
                 variant={editing ? "mint" : "plain"}
                 title={editing ? "편집 끝내기" : "스피커 편집"}
                 onPress={() => {
+                  putDown();
+                  setApproachId(null);
                   setEditing(!editing);
                   setSelectedId(null);
-                  setMoving(false);
                 }}
                 testID="toggle-edit"
               />
@@ -479,14 +541,16 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         <View style={wide ? { width: 340, backgroundColor: colors.panel, borderLeftWidth: 2, borderLeftColor: colors.panelEdge, paddingTop: insets.top } : { height: "46%", backgroundColor: colors.panel, borderTopWidth: 2, borderTopColor: colors.panelEdge, paddingBottom: insets.bottom }}>
           <SpeakerEditor
             speaker={selected}
-            moving={moving}
-            onChange={(speaker) => changeSpeakers(updateSpeaker(speakers, speaker.id, { name: speaker.name, sound: speaker.sound }), speaker.id)}
-            onMove={() => setMoving(!moving)}
+            carry={carryId ? "carrying" : approachId ? "approaching" : "idle"}
+            onChange={(speaker) => changeSpeakers(updateSpeaker(placedRef.current, speaker.id, { name: speaker.name, sound: speaker.sound }), speaker.id)}
+            onCarry={carrySelected}
             onDelete={removeSelected}
             onClose={() => {
+              putDown();
+              setApproachId(null);
               setSelectedId(null);
-              setMoving(false);
             }}
+            readSpectrum={() => audio.spectrum(selected.id)}
           />
         </View>
       )}
@@ -514,7 +578,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       )}
       {panel === "settings" && (
         <Modal onClose={() => setPanel(null)}>
-          <SettingsCard settings={settings} user={entry?.user ?? null} online={online} onChange={onSettings} onLogin={() => setPanel("login")} onLogout={() => void logout()}
+          <SettingsCard settings={settings} user={entry?.user ?? null} online={online} shownName={myName} nameError={nameError} onChange={onSettings} onName={changeName} onLogin={() => setPanel("login")} onLogout={() => void logout()}
             onClose={() => setPanel(null)}
           />
         </Modal>

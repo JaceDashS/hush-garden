@@ -48,6 +48,8 @@ export interface Pose {
   arm: number;
   /** Ear or head-top sway in degrees. */
   sway: number;
+  /** Both arms are raised to hold something overhead. */
+  armsUp?: boolean;
 }
 
 export const STANDING: Pose = { bob: 0, leftFoot: { x: 0, y: 0 }, rightFoot: { x: 0, y: 0 }, arm: 0, sway: 0 };
@@ -59,7 +61,23 @@ const WALK_POSES: readonly Pose[] = [
   { bob: 0, leftFoot: { x: -1, y: 0 }, rightFoot: { x: 1, y: 0 }, arm: 0, sway: 0 },
 ];
 
-/** Pose for a character: a walking picture while it moves, the standing pose otherwise. */
-export function poseFor(walking: boolean, frame: number): Pose {
-  return walking ? WALK_POSES[((frame % WALK_FRAMES) + WALK_FRAMES) % WALK_FRAMES] : STANDING;
+/**
+ * Pose for a character: a walking picture while it moves, the standing pose otherwise. While carrying, the arms
+ * stay raised and the feet keep stepping.
+ */
+export function poseFor(walking: boolean, frame: number, carrying = false): Pose {
+  const pose = walking ? WALK_POSES[((frame % WALK_FRAMES) + WALK_FRAMES) % WALK_FRAMES] : STANDING;
+  return carrying ? { ...pose, arm: 0, armsUp: true } : pose;
 }
+
+/** Number of pictures in the lift when a character picks something up, and the time each is shown. */
+export const LIFT_FRAMES = 4;
+export const LIFT_FRAME_MS = 70;
+
+/** How far (0 on the ground to 1 overhead) the carried thing is raised at a lift picture. */
+export function liftProgress(frame: number): number {
+  return Math.max(0, Math.min(1, frame / (LIFT_FRAMES - 1)));
+}
+
+/** A character can pick up a speaker from this many tiles away. */
+export const PICK_UP_TILES = 1.3;

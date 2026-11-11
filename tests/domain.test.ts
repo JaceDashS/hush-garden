@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CHARACTER_KINDS, CHARACTER_NAMES, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor } from "../src/domain/characters.ts";
+import { CHARACTER_KINDS, CHARACTER_NAMES, LIFT_FRAMES, STANDING, WALK_FRAMES, liftProgress, nextWalkFrame, normalizeCharacter, poseFor } from "../src/domain/characters.ts";
+import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
+import { BAND_IDS, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, peakBoost, xToHz, yToDb } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { MAX_SPEAKERS, defaultSound, gainAt, mixFor, normalizeSound, type Speaker } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
@@ -62,12 +64,12 @@ test("a speaker to the right on screen pans right", () => {
 });
 
 test("sound values are clamped and broken input falls back to defaults", () => {
-  const sound = normalizeSound({ volume: 9, radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], filter: { highpass: 1500, lowpass: 300 } });
+  const sound = normalizeSound({ volume: 9, radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], eq: { highpass: 1500, lowpass: 300 } });
   assert.equal(sound.volume, 1);
   assert.equal(sound.radius, 2);
   assert.equal(sound.noise.color, "brown");
   assert.equal(sound.oscillators.length, 3);
-  assert.ok(sound.filter.lowpass >= sound.filter.highpass);
+  assert.ok(sound.eq.lowpass >= sound.eq.highpass);
   assert.deepEqual(normalizeSound(null), defaultSound());
 });
 
@@ -146,4 +148,89 @@ test("a walking character cycles through different pictures and a standing one k
   let frame = 0;
   for (let i = 0; i < WALK_FRAMES; i++) frame = nextWalkFrame(frame);
   assert.equal(frame, 0);
+});
+
+const near = (actual: number, expected: number, tolerance: number) => assert.ok(Math.abs(actual - expected) <= tolerance, actual + " is not within " + tolerance + " of " + expected);
+
+test("a flat equalizer changes nothing in the middle and cuts the far ends", () => {
+  const [low, mid, high] = equalizerResponse(flatEqualizer(), [5, 1000, 23000]);
+  near(mid, 0, 0.1);
+  assert.ok(low < -12 && high < -3);
+});
+
+test("each band shapes its own part of the curve", () => {
+  const eq = { ...flatEqualizer(), lowShelf: { frequency: 200, gain: 9 }, bell: { frequency: 1000, gain: -12, q: 2 }, highShelf: { frequency: 4000, gain: 6 } };
+  const [bass, shelfCorner, middle, treble] = equalizerResponse(eq, [40, 200, 1000, 12000]);
+  near(bass, 9, 1);
+  near(shelfCorner, 4.5, 1);
+  near(middle, -12, 1);
+  near(treble, 6, 1);
+  const cut = equalizerResponse({ ...flatEqualizer(), highpass: 500, lowpass: 2000 }, [500, 1000, 2000, 8000]);
+  near(cut[0], -3, 0.5);
+  near(cut[2], -3, 0.5);
+  assert.ok(cut[1] > -1 && cut[3] < -20);
+});
+
+test("graph positions convert both ways and stay on the graph", () => {
+  near(xToHz(hzToX(440)), 440, 0.01);
+  near(yToDb(dbToY(-6)), -6, 0.001);
+  assert.equal(hzToX(1), 0);
+  assert.equal(hzToX(99999), 1);
+  const points = graphFrequencies(64);
+  assert.equal(points.length, 64);
+  near(points[0], 20, 0.001);
+  near(points[63], 20000, 0.01);
+});
+
+test("dragging a band keeps every value in range and the cuts in order", () => {
+  let eq = flatEqualizer();
+  eq = moveBand(eq, "bell", 99999, 99);
+  assert.deepEqual([eq.bell.frequency, eq.bell.gain], [8000, 12]);
+  eq = moveBand(eq, "lowShelf", 1, -99);
+  assert.deepEqual([eq.lowShelf.frequency, eq.lowShelf.gain], [40, -24]);
+  eq = moveBand(eq, "lowpass", 300, 5);
+  eq = moveBand(eq, "highpass", 1500, 5);
+  assert.ok(eq.highpass <= eq.lowpass);
+  assert.deepEqual(handleOf(eq, "lowpass"), { hz: eq.lowpass, db: 0 });
+  assert.equal(BAND_IDS.length, 5);
+  assert.equal(peakBoost(eq), 12);
+  assert.equal(peakBoost(flatEqualizer()), 0);
+});
+
+test("the first sound format with separate filters is still read", () => {
+  const eq = normalizeEqualizer({ low: 3, mid: { frequency: 2500, gain: -4, q: 1 }, high: -3 }, { highpass: 80, lowpass: 7000 });
+  assert.deepEqual(eq, { highpass: 80, lowShelf: { frequency: 200, gain: 3 }, bell: { frequency: 2500, gain: -4, q: 1 }, highShelf: { frequency: 4000, gain: -3 }, lowpass: 7000 });
+  assert.equal(normalizeSound({ filter: { highpass: 100, lowpass: 5000 } }).eq.lowpass, 5000);
+  assert.deepEqual(normalizeEqualizer(null), flatEqualizer());
+});
+
+test("a carrying character keeps its arms up while its feet keep stepping", () => {
+  const standing = poseFor(false, 0, true);
+  assert.equal(standing.armsUp, true);
+  assert.deepEqual(standing.leftFoot, STANDING.leftFoot);
+  const step = poseFor(true, 0, true);
+  assert.equal(step.armsUp, true);
+  assert.ok(step.leftFoot.y < 0);
+  assert.equal(poseFor(true, 0).armsUp, undefined);
+});
+
+test("a picked up speaker rises from the ground to overhead", () => {
+  assert.equal(liftProgress(0), 0);
+  assert.ok(liftProgress(1) > 0 && liftProgress(1) < 1);
+  assert.equal(liftProgress(LIFT_FRAMES - 1), 1);
+  assert.equal(liftProgress(99), 1);
+});
+
+test("character names are cleaned and limited", () => {
+  assert.deepEqual(checkName("  Mina   Kim "), { ok: true, name: "Mina Kim" });
+  assert.deepEqual(checkName("   "), { ok: false, problem: "empty" });
+  assert.deepEqual(checkName(7), { ok: false, problem: "empty" });
+  assert.deepEqual(checkName("x".repeat(17)), { ok: false, problem: "too_long" });
+  assert.deepEqual(checkName("정원사".repeat(5) + "가"), { ok: true, name: "정원사".repeat(5) + "가" });
+});
+
+test("names that look like staff or the service are refused, ordinary words are not", () => {
+  for (const name of ["Admin", "ADM1N", "a d m i n", "the_moderator", "관리자", "운 영 자", "GM", "jace-s", "Hush Garden", "@dmin", "0wner"]) assert.equal(isReservedName(name), true, name);
+  for (const name of ["Gmail fan", "Modest", "Devon", "정원사", "ねこ", "Robot", "Guest"]) assert.equal(isReservedName(name), false, name);
+  assert.deepEqual(checkName("Official Mina"), { ok: false, problem: "reserved" });
 });

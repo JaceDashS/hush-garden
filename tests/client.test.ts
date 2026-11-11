@@ -23,14 +23,17 @@ test("server messages are validated and unknown ones are dropped", () => {
   assert.ok(joined && joined.t === "join" && joined.player.character === "bunny");
   assert.equal(hello.speakers.length, 1);
   assert.equal(hello.speakers[0].sound.noise.color, "brown");
+  assert.deepEqual(parseServerMessage(JSON.stringify({ t: "rename", id: "p", name: "Momo" })), { t: "rename", id: "p", name: "Momo" });
+  assert.equal(parseServerMessage(JSON.stringify({ t: "rename", id: "p" })), null);
   const moves = parseServerMessage(JSON.stringify({ t: "moves", moves: [{ id: "p", x: 1, y: 1 }, { id: "q", x: "a", y: 1 }] }));
   assert.ok(moves && moves.t === "moves" && moves.moves.length === 1);
 });
 
 test("settings fall back to defaults and keep valid values", () => {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
-  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon" }), { volume: 1, cue: "tone", consent: false, character: "bunny" });
-  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda" }), { volume: 0.25, cue: "dip", consent: true, character: "panda" });
+  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon" }), { volume: 1, cue: "tone", consent: false, character: "bunny", name: "" });
+  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda", name: " Momo " }), { volume: 0.25, cue: "dip", consent: true, character: "panda", name: "Momo" });
+  assert.equal(normalizeSettings({ name: "admin" }).name, "");
 });
 
 test("coordinates are rounded to about one kilometre before leaving the device", () => {

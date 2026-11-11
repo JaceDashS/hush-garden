@@ -5,8 +5,9 @@
  *
  * The same code runs in the browser (Web Audio) and in the native app (react-native-audio-api).
  */
-import { AudioContext, type AudioBuffer, type AudioBufferSourceNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
+import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
+import { peakBoost } from "../domain/equalizer";
 import { dbToGain, gainAt, mixFor, type NoiseColor, type Speaker } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { fillNoise } from "./noise";
@@ -31,13 +32,15 @@ interface Voice {
   tones: { oscillator: OscillatorNode; gain: GainNode }[];
   filters: { highpass: BiquadFilterNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; lowpass: BiquadFilterNode };
   trim: GainNode;
+  /** Created on first use by spectrum(): shows this speaker alone, after its equalizer. */
+  analyser?: AnalyserNode;
   level: GainNode;
   pan: StereoPannerNode;
 }
 
 const shapeOf = (sound: Speaker["sound"]) => sound.noise.color + "|" + sound.oscillators.map((o) => o.wave).join(",");
 /** Boosted EQ bands are compensated so a speaker cannot get louder than its volume allows. */
-const trimFor = (sound: Speaker["sound"]) => 1 / Math.max(1, dbToGain(Math.max(sound.eq.low, sound.eq.mid.gain, sound.eq.high)));
+const trimFor = (sound: Speaker["sound"]) => 1 / dbToGain(peakBoost(sound.eq));
 
 export class GardenAudio {
   private context: AudioContext | null = null;
@@ -51,6 +54,8 @@ export class GardenAudio {
   private wetPan!: StereoPannerNode;
   private master!: GainNode;
   private volume = 0.8;
+  private mixAnalyser: AnalyserNode | null = null;
+  private spectrumData: Float32Array | null = null;
 
   /** True once start() has run. Sound can only start from a user gesture in browsers. */
   get running(): boolean {
@@ -95,6 +100,7 @@ export class GardenAudio {
     const context = this.context;
     this.context = null;
     this.buffers.clear();
+    this.mixAnalyser = null;
     await context?.close();
   }
 
@@ -140,6 +146,42 @@ export class GardenAudio {
       param.setValueAtTime(to, now + fade + hold);
       param.linearRampToValueAtTime(from, end);
     }
+  }
+
+  /**
+   * Current spectrum for the analyser display: dB values per frequency bin, with the frequency of the last bin.
+   * With a speaker id whose voice is playing it shows that speaker alone after its equalizer; otherwise the
+   * whole mix. Returns null while no sound is running.
+   */
+  spectrum(speakerId?: string | null): { db: Float32Array; maxHz: number } | null {
+    const context = this.context;
+    if (!context || context.state !== "running") return null;
+    const voice = speakerId ? this.voices.get(speakerId) : undefined;
+    let analyser: AnalyserNode;
+    if (voice) {
+      if (!voice.analyser) {
+        voice.analyser = this.makeAnalyser(context);
+        voice.trim.connect(voice.analyser);
+        voice.nodes.push(voice.analyser);
+      }
+      analyser = voice.analyser;
+    } else {
+      if (!this.mixAnalyser) {
+        this.mixAnalyser = this.makeAnalyser(context);
+        this.bus.connect(this.mixAnalyser);
+      }
+      analyser = this.mixAnalyser;
+    }
+    if (!this.spectrumData || this.spectrumData.length !== analyser.frequencyBinCount) this.spectrumData = new Float32Array(analyser.frequencyBinCount);
+    analyser.getFloatFrequencyData(this.spectrumData);
+    return { db: this.spectrumData, maxHz: context.sampleRate / 2 };
+  }
+
+  private makeAnalyser(context: AudioContext): AnalyserNode {
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.8;
+    return analyser;
   }
 
   private refresh(): void {
@@ -214,8 +256,6 @@ export class GardenAudio {
       return node;
     };
     const filters = { highpass: filter("highpass"), low: filter("lowshelf"), mid: filter("peaking"), high: filter("highshelf"), lowpass: filter("lowpass") };
-    filters.low.frequency.value = 200;
-    filters.high.frequency.value = 4000;
     const trim = context.createGain();
     const level = context.createGain();
     // A new voice starts silent and glides in.
@@ -247,13 +287,15 @@ export class GardenAudio {
       set(tone.oscillator.frequency, sound.oscillators[index].frequency);
       set(tone.gain.gain, sound.oscillators[index].level * 0.3);
     });
-    set(voice.filters.highpass.frequency, sound.filter.highpass);
-    set(voice.filters.low.gain, sound.eq.low);
-    set(voice.filters.mid.frequency, sound.eq.mid.frequency);
-    set(voice.filters.mid.gain, sound.eq.mid.gain);
-    set(voice.filters.mid.Q, sound.eq.mid.q);
-    set(voice.filters.high.gain, sound.eq.high);
-    set(voice.filters.lowpass.frequency, sound.filter.lowpass);
+    set(voice.filters.highpass.frequency, sound.eq.highpass);
+    set(voice.filters.low.frequency, sound.eq.lowShelf.frequency);
+    set(voice.filters.low.gain, sound.eq.lowShelf.gain);
+    set(voice.filters.mid.frequency, sound.eq.bell.frequency);
+    set(voice.filters.mid.gain, sound.eq.bell.gain);
+    set(voice.filters.mid.Q, sound.eq.bell.q);
+    set(voice.filters.high.frequency, sound.eq.highShelf.frequency);
+    set(voice.filters.high.gain, sound.eq.highShelf.gain);
+    set(voice.filters.lowpass.frequency, sound.eq.lowpass);
     set(voice.trim.gain, trimFor(sound));
   }
 

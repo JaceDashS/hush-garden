@@ -1,11 +1,11 @@
 /** The quarter-view garden: ground, trees, speakers and characters, with the camera following the player. */
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, View } from "react-native";
 import Svg, { Ellipse } from "react-native-svg";
-import { gainAt, type Speaker } from "../domain/sound";
+import { gainAt, type NoiseColor, type Speaker } from "../domain/sound";
 import { TILE_HEIGHT, TILE_WIDTH, distance, joystickToInput, toGarden, toScreen, type Point } from "../domain/world";
 import { T, colors } from "../ui";
-import type { CharacterKind } from "../domain/characters";
+import { LIFT_FRAMES, LIFT_FRAME_MS, liftProgress, type CharacterKind } from "../domain/characters";
 import { CHARACTER_SIZE, Character } from "./characters";
 import { GROUND_OFFSET_X, Ground, SPEAKER_SIZE, SpeakerArt, TREES, TREE_SIZE, Tree } from "./sprites";
 
@@ -13,8 +13,12 @@ export interface Actor {
   id: string;
   x: number;
   y: number;
-  /** Shown above the head: the place the player connected from. */
+  /** Character name shown above the head. */
+  name: string;
+  /** Shown under the name: the place the player connected from. */
   label: string;
+  /** Noise colour of the speaker the character holds overhead, if it carries one. */
+  carrying?: NoiseColor;
   bubble?: string;
   /** Which of the ten characters to draw. */
   kind: CharacterKind;
@@ -45,10 +49,32 @@ function Range({ speaker, strong }: { speaker: Speaker; strong: boolean }) {
   );
 }
 
+/** Height the carried speaker adds above the character. */
+const CARRY_HEIGHT = 50;
+const LABEL_HEIGHT = 34;
+
+/** The speaker a character holds. It rises from the ground to overhead when picked up. */
+function CarriedSpeaker({ color }: { color: NoiseColor }) {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setFrame((current) => (current >= LIFT_FRAMES - 1 ? current : current + 1)), LIFT_FRAME_MS);
+    return () => clearInterval(timer);
+  }, []);
+  const drop = (1 - liftProgress(frame)) * (CARRY_HEIGHT + 20);
+  return (
+    <View style={{ height: CARRY_HEIGHT, justifyContent: "flex-end", zIndex: 1 }}>
+      <View style={{ transform: [{ translateY: drop + 22 }, { scale: 0.72 }] }}>
+        <SpeakerArt color={color} />
+      </View>
+    </View>
+  );
+}
+
 function ActorView({ actor }: { actor: Actor }) {
   const at = place(actor);
+  const extra = actor.carrying ? CARRY_HEIGHT : 0;
   return (
-    <View pointerEvents="none" style={{ position: "absolute", left: at.left - 90, top: at.top - CHARACTER_SIZE.height - 62, width: 180, alignItems: "center", zIndex: depth(actor) }}>
+    <View pointerEvents="none" style={{ position: "absolute", left: at.left - 90, top: at.top - CHARACTER_SIZE.height - 44 - LABEL_HEIGHT - extra, width: 180, alignItems: "center", zIndex: depth(actor) }}>
       <View style={{ height: 40, justifyContent: "flex-end", alignItems: "center" }}>
         {!!actor.bubble && (
           <View style={{ maxWidth: 180, backgroundColor: colors.white, borderRadius: 12, borderWidth: 2, borderColor: colors.ink, paddingHorizontal: 8, paddingVertical: 2 }}>
@@ -56,21 +82,24 @@ function ActorView({ actor }: { actor: Actor }) {
           </View>
         )}
       </View>
-      <View style={{ height: 20, marginBottom: 2, backgroundColor: "rgba(255,250,242,0.88)", borderRadius: 10, paddingHorizontal: 8, justifyContent: "center" }}>
-        <T size={11} weight="700" lines={1}>{actor.label}</T>
+      <View style={{ height: LABEL_HEIGHT, marginBottom: 2, backgroundColor: "rgba(255,250,242,0.88)", borderRadius: 10, paddingHorizontal: 8, justifyContent: "center", alignItems: "center" }}>
+        <T size={11.5} weight="800" lines={1}>{actor.name}</T>
+        <T size={9.5} weight="600" tone="muted" lines={1}>{actor.label}</T>
       </View>
-      <Character kind={actor.kind} facing={actor.facing} walking={actor.walking} />
+      {!!actor.carrying && <CarriedSpeaker color={actor.carrying} />}
+      <Character kind={actor.kind} facing={actor.facing} walking={actor.walking} carrying={!!actor.carrying} />
     </View>
   );
 }
 
-const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking && a.actor.kind === b.actor.kind);
+const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking && a.actor.kind === b.actor.kind && a.actor.name === b.actor.name && a.actor.carrying === b.actor.carrying);
 
 /**
  * `onInput` receives the joystick direction while a finger or the mouse is held, and zero on release.
  * `onTap` receives the garden position of a short touch that did not move, and the speaker under it if any.
+ * `carriedId` is the speaker a character holds: it is drawn in that character's hands, not on the ground.
  */
-export function Scene({ me, actors, speakers, selectedId, showRanges, onInput, onTap }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; selectedId?: string | null; showRanges?: boolean; onInput: (input: Point) => void; onTap?: (point: Point, speakerId: string | null) => void }) {
+export function Scene({ me, actors, speakers, selectedId, carriedId, showRanges, onInput, onTap }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; selectedId?: string | null; carriedId?: string | null; showRanges?: boolean; onInput: (input: Point) => void; onTap?: (point: Point, speakerId: string | null) => void }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [stick, setStick] = useState<{ x: number; y: number; dx: number; dy: number } | null>(null);
   const root = useRef<React.ComponentRef<typeof View>>(null);
@@ -153,6 +182,7 @@ export function Scene({ me, actors, speakers, selectedId, showRanges, onInput, o
           );
         })}
         {speakers.map((speaker) => {
+          if (speaker.id === carriedId) return null;
           const at = place(speaker);
           const playing = gainAt(distance(me, speaker), speaker.sound.radius) * speaker.sound.volume > 0.01;
           return (

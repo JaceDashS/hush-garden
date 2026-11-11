@@ -86,10 +86,11 @@ export class HushClient {
   /**
    * Enters the public garden. `consent` must be true. Coordinates are optional and already rounded by the
    * caller; without them the server uses the IP region. The server keeps only the place name.
-   * `character` is the picture other players see.
+   * `character` is the picture other players see and `name` the character name; an empty or refused name
+   * becomes the account name or "Guest", and the accepted one comes back in the result.
    */
-  enter(coordinates: { latitude: number; longitude: number } | null, character: CharacterKind): Promise<Entry> {
-    return this.serialize(() => this.call<Entry>("/hush-garden/enter", { consent: true, character, ...(coordinates ?? {}) }));
+  enter(coordinates: { latitude: number; longitude: number } | null, character: CharacterKind, name: string): Promise<Entry> {
+    return this.serialize(() => this.call<Entry>("/hush-garden/enter", { consent: true, character, name, ...(coordinates ?? {}) }));
   }
 
   /** Creates or replaces a public speaker. Needs the edit permission. Returns the new layout. */

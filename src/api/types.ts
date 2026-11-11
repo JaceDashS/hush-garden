@@ -33,6 +33,8 @@ export interface Entry {
   ticket: string;
   /** City-level place shown above the character. */
   place: string;
+  /** The character name the server accepted for this visit. */
+  name: string;
   user: { id: string; name: string } | null;
   canChat: boolean;
   canEdit: boolean;
@@ -52,6 +54,7 @@ export type ServerMessage =
   | { t: "hello"; id: string; x: number; y: number; canChat: boolean; players: RemotePlayer[]; speakers: Speaker[] }
   | { t: "join"; player: RemotePlayer }
   | { t: "leave"; id: string }
+  | { t: "rename"; id: string; name: string }
   | { t: "moves"; moves: { id: string; x: number; y: number }[] }
   | { t: "chat"; id: string; name: string; text: string; x: number; y: number }
   | { t: "speakers"; speakers: Speaker[] }

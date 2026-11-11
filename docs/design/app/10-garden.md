@@ -26,7 +26,7 @@
 - Input: any stored or received value.
 - Output: a valid `SpeakerSound`.
 - Code: `src/domain/sound.ts` → `normalizeSound()`, `defaultSound()`, `LIMITS`.
-- Missing fields get defaults; numbers are clamped; at most three oscillators; the low-pass cutoff is never below the high-pass cutoff. The server enforces the same limits.
+- Missing fields get defaults; numbers are clamped; at most three oscillators. The equalizer part is described in [Equalizer](#equalizer). The server enforces the same limits.
 - Scenario: `{volume: 9, noise: {color: "purple"}}` → volume 1, brown noise.
 
 ## Audio Engine
@@ -40,8 +40,10 @@ flowchart LR
     N["Noise loop"] --> S["Sum"]
     B["Bass sine"] --> S
     O["Oscillators 0..3"] --> S
-    S --> HP["High-pass"] --> LS["Low shelf 200 Hz"] --> MID["Mid band"] --> HS["High shelf 4 kHz"] --> LP["Low-pass"]
+    S --> HP["Low cut"] --> LS["Low shelf"] --> MID["Bell"] --> HS["High shelf"] --> LP["High cut"]
     LP --> T["Trim"] --> G["Distance gain"] --> P["Pan"] --> BUS["Bus"]
+    T -.-> AN["Analyser of this speaker"]
+    BUS -.-> MA["Analyser of the mix"]
     BUS --> DRY["Dry gain"] --> M["Master"]
     BUS --> DARK["Low-pass 420 Hz"] --> WET["Wet gain"] --> WP["Cue pan"] --> M
     M --> OUT["Output"]
@@ -67,7 +69,7 @@ flowchart LR
 
 - Input: player position, other characters, speakers, edit state.
 - Output: the drawn garden and input callbacks.
-- Code: `src/game/Scene.tsx` → `Scene`; `src/game/sprites.tsx` → `Ground`, `Character`, `SpeakerArt`, `Tree`.
+- Code: `src/game/Scene.tsx` → `Scene`; `src/game/sprites.tsx` → `Ground`, `SpeakerArt`, `Tree`; characters in [Characters](#characters).
 - The ground is one SVG drawn once. Sprites are positioned views sorted by `x + y`. The camera moves one container.
 - A tap inside a speaker picture selects that speaker even though its ground point is at its feet.
 - All art is drawn in code with react-native-svg; `scripts/make-icon.mjs` draws the app icon.
@@ -76,6 +78,7 @@ flowchart LR
 
 - Input: edit actions.
 - Output: the new garden, saved on the device.
+- Moving a speaker goes through [Carrying](#carrying).
 - Code: `src/domain/garden.ts` → `addSpeaker()`, `moveSpeaker()`, `updateSpeaker()`, `removeSpeaker()`, `savePreset()`, `applyPreset()`, `deletePreset()`, `resetGarden()`, `normalizeMyGarden()`, `BUILT_IN_PRESETS`; `src/storage.ts`; `src/settings.ts`.
 - AsyncStorage keys `hush-garden.my-garden.v1` and `hush-garden.settings.v1`. Broken stored data falls back to the initial garden or default settings.
 - Scenario: Save "Night", apply "White Rain", apply "Night" → the saved layout returns.
@@ -91,6 +94,7 @@ flowchart LR
 - An editor's speaker change is shown at once and sent 400 ms after the last change.
 - Every socket message is validated; unknown shapes are dropped.
 - Server contract: the Hush Garden API documents in the jace-s platform repository (`docs/api/apps/hush-garden/`).
+- The entry request also carries the chosen character and the typed name; the result has the name the server accepted. A name change while connected is a `rename` socket message; the server answers with `rename` to everyone or with an error.
 - Scenario: A guest agrees, the device refuses location → the server names the place from the internet address and the guest enters.
 
 ## Account Transport
@@ -108,3 +112,45 @@ flowchart LR
 
 - Code: `src-tauri/` (Tauri 2, NSIS installer), `isDesktopApp()` in `src/api/transport.web.ts`.
 - The window loads the bundled web export, so the private garden works offline. HTTP is limited to the API origin in `src-tauri/capabilities/default.json`.
+
+## Equalizer
+
+- Input: a stored or edited equalizer; drag positions on the graph; analyser data.
+- Output: a valid `Equalizer`, the response curve, and the drawn graph.
+- Code: `src/domain/equalizer.ts` → `normalizeEqualizer()`, `equalizerResponse()`, `moveBand()`, `handleOf()`, `hzToX()`, `xToHz()`, `dbToY()`, `yToDb()`, `graphFrequencies()`, `peakBoost()`, `EQ_LIMITS`; `src/components/EqGraph.tsx` → `EqGraph`; `src/audio/engine.ts` → `GardenAudio.spectrum()`, `tune()`.
+- The model is `{highpass, lowShelf: {frequency, gain}, bell: {frequency, gain, q}, highShelf: {frequency, gain}, lowpass}`. The first format (`eq.low`, `eq.mid`, `eq.high` plus a separate `filter`) is still read and converted.
+- The curve is the sum in dB of five second-order filters computed with the Audio EQ Cookbook formulas, the same ones the audio nodes use, at 96 frequencies spread by octave. The cuts use Q 0.707 and the shelves slope 1.
+- The graph maps 20 Hz to 20 kHz across its width by logarithm and +18 dB to -30 dB down its height. A press picks the nearest handle within 30 px; dragging calls `moveBand()`, which clamps every value and keeps the high cut at or above the low cut.
+- The analyser is read every 80 ms. `spectrum(speakerId)` attaches an analyser after that speaker's trim gain on first use; when the speaker has no voice (out of range) it uses an analyser on the bus. Levels from -100 dB to -10 dB fill the graph height.
+- The trim gain divides by the largest boost (`peakBoost()`), so boosting a band reshapes the sound without raising its peak level.
+- Scenario: Low shelf +9 dB at 200 Hz, bell -12 dB at 1 kHz with Q 2, high shelf +6 dB at 4 kHz → the curve reads about +9 dB at 40 Hz, +4.5 dB at 200 Hz, -12 dB at 1 kHz and +6 dB at 12 kHz.
+
+## Characters
+
+- Input: the chosen character, whether it walks, the walking frame, whether it carries.
+- Output: one drawn character in a pose.
+- Code: `src/domain/characters.ts` → `CHARACTER_KINDS`, `normalizeCharacter()`, `poseFor()`, `nextWalkFrame()`, `WALK_FRAMES`, `WALK_FRAME_MS`, `STANDING`; `src/game/characters.tsx` → `Character`, `CharacterArt`; picker in `src/App.tsx`.
+- All ten characters are built from the same parts (feet, arms, body, belly, ears, face), each with its own colours, ear shape and face. One pose therefore animates every character.
+- The walking cycle has four pictures shown 130 ms each: left step (left foot lifted, body up, arms and ears swung), passing pose, right step, passing pose. `Character` runs its own timer while `walking` is true, so characters step out of sync.
+- The player's own `walking` and `facing` come from the input; other players' come from their reported movement in `src/screens/Game.tsx` (walking while gliding to a new position, facing by the on-screen x direction).
+- Scenario: A player holds Right for one second → about eight pictures are shown, alternating left and right steps; on release the standing pose returns.
+
+## Carrying
+
+- Input: the carry button, the character and speaker positions.
+- Output: the speaker held overhead, then placed in front of the character.
+- Code: `src/screens/Game.tsx` → `carrySelected()`, `putDown()`, the approach branch of the movement loop; `src/domain/characters.ts` → `PICK_UP_TILES`, `LIFT_FRAMES`, `liftProgress()`, `poseFor(…, carrying)`; `src/game/Scene.tsx` → `CarriedSpeaker`, `carriedId`.
+- Steps: the button sets the speaker as the approach target → each frame the loop steers the character toward it on screen → within 1.3 tiles the speaker becomes carried → the scene stops drawing it on the ground and draws it above the character, rising over four pictures of 70 ms → the speaker list handed to the audio engine and the range ring uses the character position for the carried speaker → the button puts it down at the character position plus one step toward the facing side, clamped to the garden.
+- Keyboard or joystick input during the approach cancels it. Closing the editor, leaving edit mode or pressing the button again while carrying puts the speaker down. Deleting a carried speaker just removes it.
+- In the public garden only the put-down position is sent to the server (`saveSpeaker`); others do not see the carrying itself.
+- Scenario: The character stands 5 tiles from a selected speaker and the player presses carry → it walks over, lifts the speaker, the player walks 4 tiles right and presses put down → the speaker stands next to the character there.
+
+## Names
+
+- Input: a typed name.
+- Output: a cleaned name or a reason for refusal.
+- Code: `src/domain/names.ts` → `checkName()`, `isReservedName()`, `simplifyName()`, `NAME_MAX_LENGTH`; settings card in `src/components/Panels.tsx`; `changeName()` in `src/screens/Game.tsx`; `src/settings.ts` (a stored name that no longer passes is dropped).
+- Steps: control characters removed, spaces collapsed, trimmed → empty or over 16 characters is refused → the name is simplified (NFKC, lower case, look-alike digits and symbols replaced, everything but letters and digits removed) → refused if the result contains a reserved part or equals a reserved whole word.
+- Reserved parts match anywhere ("admin", "moderator", "관리자", …). Short words ("gm", "mod", "dev", "bot", …) are refused only as the whole name, so "Modest" and "Devon" pass.
+- The server repeats the check and decides; its refusal is shown under the name field.
+- Scenario: "ADM1N" → simplified to "admin" → refused. "Gmail fan" → "gmailfan" → accepted.

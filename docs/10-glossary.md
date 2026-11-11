@@ -47,3 +47,32 @@
 ## Guest
 - Definition: A visitor in the public garden without a login. Can walk and listen but not chat.
 - Code: `Entry.user === null`
+
+## Character
+- Definition: The animal the player walks as. One of ten kinds, each with a walking animation.
+- Code: `CharacterKind`, `CHARACTER_KINDS`, `Character`
+
+## Character Name
+- Definition: The name shown above a character. Chosen by the player; staff-like names are refused.
+- Code: `Settings.name`, `Entry.name`, `checkName()`
+- Avoid: "nickname", "username" (the account name is a different thing).
+
+## Pose
+- Definition: Where a character's feet, arms, body and ears sit in one picture: standing, a walking frame, or arms up while carrying.
+- Code: `Pose`, `poseFor()`
+
+## Equalizer
+- Definition: The single five-band curve of a speaker: low cut, low shelf, bell, high shelf, high cut. It replaces the earlier separate EQ and filters.
+- Code: `Equalizer`, `equalizerResponse()`, `EqGraph`
+
+## Band
+- Definition: One of the five parts of the equalizer, shown as a numbered point on the graph.
+- Code: `BandId`, `moveBand()`
+
+## Spectrum Analyser
+- Definition: The live picture of how loud each frequency is, drawn behind the equalizer curve.
+- Code: `GardenAudio.spectrum()`
+
+## Carrying
+- Definition: Moving a speaker by having the character walk to it, lift it overhead, walk, and put it down.
+- Code: `carryId`, `putDown()`, `CarriedSpeaker`

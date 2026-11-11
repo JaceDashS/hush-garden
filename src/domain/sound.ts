@@ -1,4 +1,5 @@
 /** Speaker sound model and distance mixing. There is one kind of speaker; every speaker has all of these controls. */
+import { flatEqualizer, normalizeEqualizer, type Equalizer } from "./equalizer";
 import { TILE_WIDTH, distance, toScreen, type Point } from "./world";
 
 export type NoiseColor = "white" | "pink" | "brown";
@@ -22,10 +23,8 @@ export interface SpeakerSound {
   bass: { frequency: number; level: number };
   /** Up to MAX_OSCILLATORS synthesised tones. */
   oscillators: Oscillator[];
-  /** Shelf gains in dB and one movable mid band. */
-  eq: { low: number; mid: { frequency: number; gain: number; q: number }; high: number };
-  /** Cutoffs in Hz: sound below `highpass` and above `lowpass` is removed. */
-  filter: { highpass: number; lowpass: number };
+  /** One five-band curve: low cut, low shelf, bell, high shelf and high cut. */
+  eq: Equalizer;
 }
 
 export interface Speaker {
@@ -42,11 +41,6 @@ export const LIMITS = {
   radius: [2, 18],
   bassFrequency: [30, 140],
   oscillatorFrequency: [20, 8000],
-  eqGain: [-24, 12],
-  midFrequency: [150, 6000],
-  midQ: [0.3, 8],
-  highpass: [10, 2000],
-  lowpass: [200, 20000],
 } as const;
 
 const COLORS: NoiseColor[] = ["white", "pink", "brown"];
@@ -67,8 +61,7 @@ export function defaultSound(): SpeakerSound {
     noise: { color: "brown", level: 0.8 },
     bass: { frequency: 55, level: 0.35 },
     oscillators: [],
-    eq: { low: 0, mid: { frequency: 1000, gain: 0, q: 1 }, high: 0 },
-    filter: { highpass: 20, lowpass: 16000 },
+    eq: flatEqualizer(),
   };
 }
 
@@ -78,9 +71,6 @@ export function normalizeSound(value: unknown): SpeakerSound {
   const v = record(value);
   const noise = record(v.noise);
   const bass = record(v.bass);
-  const eq = record(v.eq);
-  const mid = record(eq.mid);
-  const filter = record(v.filter);
   const oscillators = (Array.isArray(v.oscillators) ? v.oscillators : []).slice(0, MAX_OSCILLATORS).map((item) => {
     const o = record(item);
     return {
@@ -89,20 +79,13 @@ export function normalizeSound(value: unknown): SpeakerSound {
       level: unit(o.level, 0.2),
     };
   });
-  const highpass = num(filter.highpass, LIMITS.highpass, base.filter.highpass);
   return {
     volume: unit(v.volume, base.volume),
     radius: num(v.radius, LIMITS.radius, base.radius),
     noise: { color: COLORS.includes(noise.color as NoiseColor) ? (noise.color as NoiseColor) : base.noise.color, level: unit(noise.level, base.noise.level) },
     bass: { frequency: num(bass.frequency, LIMITS.bassFrequency, base.bass.frequency), level: unit(bass.level, base.bass.level) },
     oscillators,
-    eq: {
-      low: num(eq.low, LIMITS.eqGain, 0),
-      mid: { frequency: num(mid.frequency, LIMITS.midFrequency, 1000), gain: num(mid.gain, LIMITS.eqGain, 0), q: num(mid.q, LIMITS.midQ, 1) },
-      high: num(eq.high, LIMITS.eqGain, 0),
-    },
-    // The low-pass cutoff never drops below the high-pass cutoff, which would silence the speaker.
-    filter: { highpass, lowpass: Math.max(highpass, num(filter.lowpass, LIMITS.lowpass, base.filter.lowpass)) },
+    eq: normalizeEqualizer(v.eq, v.filter),
   };
 }
 

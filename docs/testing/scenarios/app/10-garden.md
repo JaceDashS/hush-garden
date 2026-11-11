@@ -41,12 +41,12 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "a speaker to the right on screen pans right".
 
 ## Sound Values Are Clamped
-- Input: volume 9, radius -1, an unknown noise colour, five oscillators, low-pass below high-pass; and `null`.
-- Result: values inside their ranges, three oscillators, low-pass at least high-pass; `null` gives the default sound.
+- Input: volume 9, radius -1, an unknown noise colour, five oscillators, high cut below low cut; and `null`.
+- Result: values inside their ranges, three oscillators, high cut at least the low cut; `null` gives the default sound.
 - Test: "sound values are clamped and broken input falls back to defaults".
 
 ## Edit Speakers
-- Input: add at (3, 4), move to (99, -5), rename with spaces, change volume, remove; then add 27 speakers.
+- Input: add at (3, 4), put down at (99, -5), rename with spaces, change volume, remove; then add 27 speakers.
 - Result: the position is clamped, the name trimmed, the volume stored, the list empty after removal; never more than 24.
 - Test: "speakers can be added, moved, edited and removed", "a full garden refuses another speaker". Browser check: selecting a speaker opened its controls; volume, noise colour and an added oscillator changed at once.
 
@@ -100,7 +100,48 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: the speaker appears and is stored by the server.
 - Test: Browser check only.
 
+## Ten Characters
+- Input: the character list; the values "panda", "dragon" and nothing.
+- Result: ten different ids, each with a name; "panda" stays, the others become "bunny".
+- Test: `domain.test.ts` → "there are ten characters, each with a name, and unknown ones fall back to the first". Browser check 2026-11-12: the picker shows the characters and choosing the fox changed the title picture and the character in the garden.
+
+## Walking Animation
+- Input: the four walking frames, frame 4, and a standing character.
+- Result: four different pictures; the left foot lifts on the first step and the right on the second with the body raised; frame 4 equals frame 0; standing is the still pose.
+- Test: "a walking character cycles through different pictures and a standing one keeps still".
+
+## Equalizer Curve
+- Input: a flat equalizer; one with low shelf +9 dB, bell -12 dB (Q 2) and high shelf +6 dB; one with cuts at 500 Hz and 2 kHz.
+- Result: 0 dB in the middle of the flat one with the far ends cut; about +9, +4.5, -12 and +6 dB at 40 Hz, 200 Hz, 1 kHz and 12 kHz; -3 dB at each cut frequency.
+- Test: "a flat equalizer changes nothing in the middle and cuts the far ends", "each band shapes its own part of the curve".
+
+## Dragging Equalizer Bands
+- Input: the bell dragged far beyond the graph, the low shelf far below it, the high cut to 300 Hz and then the low cut to 1.5 kHz.
+- Result: every value stays inside its limits and the low cut never passes the high cut.
+- Test: "dragging a band keeps every value in range and the cuts in order", "graph positions convert both ways and stay on the graph". Browser check 2026-11-12: dragging the bell up and the high cut left redrew the curve and the readout showed 5.9 kHz.
+
+## Spectrum Analyser
+- Input: a selected speaker playing white noise with a bass drone and a 9 kHz high cut.
+- Result: the shadow behind the curve shows a bump at the bass frequency and falls off above the high cut; it changes when a band is dragged.
+- Test: Browser check 2026-11-12 only.
+
+## Old Sound Format
+- Input: `{low: 3, mid: {...}, high: -3}` with a separate filter `{highpass: 80, lowpass: 7000}`.
+- Result: the same values in the five-band model.
+- Test: "the first sound format with separate filters is still read".
+
+## Carry A Speaker
+- Input: a selected speaker a few tiles away; carry pressed; walk right; put down pressed.
+- Result: the character walks to the speaker, holds it overhead with its arms up while its feet keep stepping, and the speaker ends next to the character at the new place.
+- Test: "a carrying character keeps its arms up while its feet keep stepping", "a picked up speaker rises from the ground to overhead". Browser check 2026-11-12: the stored position changed from (14, 17) to about (17.8, 12.4) only after putting down.
+
+## Character Name Rules
+- Input: "  Mina   Kim ", spaces only, a number, 17 characters, 16 Korean characters; "Admin", "ADM1N", "a d m i n", "the_moderator", "관리자", "운 영 자", "GM", "jace-s", "Hush Garden", "@dmin", "0wner"; "Gmail fan", "Modest", "Devon", "정원사", "ねこ", "Robot", "Guest".
+- Result: "Mina Kim"; empty; empty; too long; accepted; every staff-like name refused; every ordinary name accepted.
+- Test: "character names are cleaned and limited", "names that look like staff or the service are refused, ordinary words are not". Browser check 2026-11-12: "Adm1n" showed the refusal text and was not stored; "Momo" was stored and shown.
+
 ## Not Yet Verified
+- Name change and other players' characters in the public garden were not checked in a browser after these features were added (the server rules are tested in the platform repository).
 - Sound and chat cue by ear on real earphones (the signal was measured in the browser: running context, non-zero level, strongest below 200 Hz).
 - Android: installation, background playback with the screen off, lock screen buttons, vibration, device location.
 - Windows desktop app: login through the HTTP plugin, location prompt, offline start.

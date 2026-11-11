@@ -2,6 +2,7 @@
 import React from "react";
 import { ScrollView, View } from "react-native";
 import { LIMITS, MAX_OSCILLATORS, type NoiseColor, type Speaker, type SpeakerSound, type Wave } from "../domain/sound";
+import { EqGraph, type Spectrum } from "./EqGraph";
 import { Btn, Chips, Input, Slider, T, colors } from "../ui";
 
 const NOISES: { value: NoiseColor; label: string }[] = [
@@ -18,7 +19,6 @@ const WAVES: { value: Wave; label: string }[] = [
 
 const percent = (value: number) => Math.round(value * 100) + "%";
 const hz = (value: number) => (value >= 1000 ? (value / 1000).toFixed(1) + " kHz" : Math.round(value) + " Hz");
-const db = (value: number) => (value > 0 ? "+" : "") + value.toFixed(1) + " dB";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -30,9 +30,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /**
- * `onChange` receives the whole edited speaker. `moving` is true while the next tap on the ground moves it.
+ * `onChange` receives the whole edited speaker. `carry` tells what the carry button does next: the character
+ * walks over ("approaching"), holds the speaker ("carrying"), or neither. `readSpectrum` feeds the analyser.
  */
-export function SpeakerEditor({ speaker, moving, onChange, onMove, onDelete, onClose }: { speaker: Speaker; moving: boolean; onChange: (speaker: Speaker) => void; onMove: () => void; onDelete: () => void; onClose: () => void }) {
+export function SpeakerEditor({ speaker, carry, onChange, onCarry, onDelete, onClose, readSpectrum }: { speaker: Speaker; carry: "idle" | "approaching" | "carrying"; onChange: (speaker: Speaker) => void; onCarry: () => void; onDelete: () => void; onClose: () => void; readSpectrum: () => Spectrum | null }) {
   const sound = speaker.sound;
   const set = (patch: Partial<SpeakerSound>) => onChange({ ...speaker, sound: { ...sound, ...patch } });
   const setOscillator = (index: number, patch: Partial<SpeakerSound["oscillators"][number]>) => set({ oscillators: sound.oscillators.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
@@ -45,7 +46,7 @@ export function SpeakerEditor({ speaker, moving, onChange, onMove, onDelete, onC
         <Btn small title="닫기" onPress={onClose} />
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Btn small variant={moving ? "mint" : "plain"} title={moving ? "옮길 곳을 누르세요" : "위치 옮기기"} onPress={onMove} testID="speaker-move" />
+        <Btn small variant={carry === "idle" ? "plain" : "mint"} title={carry === "carrying" ? "여기에 내려놓기" : carry === "approaching" ? "가지러 가는 중…" : "들고 옮기기"} onPress={onCarry} testID="speaker-carry" />
         <Btn small variant="danger" title="삭제" onPress={onDelete} testID="speaker-delete" />
       </View>
       <Slider label="음량" value={sound.volume} min={0} max={1} format={percent} onChange={(volume) => set({ volume })} testID="speaker-volume" />
@@ -78,17 +79,8 @@ export function SpeakerEditor({ speaker, moving, onChange, onMove, onDelete, onC
         )}
       </Section>
 
-      <Section title="EQ">
-        <Slider label="낮은 음 (200 Hz 아래)" value={sound.eq.low} min={LIMITS.eqGain[0]} max={LIMITS.eqGain[1]} format={db} onChange={(low) => set({ eq: { ...sound.eq, low } })} />
-        <Slider label="중간 음 위치" log value={sound.eq.mid.frequency} min={LIMITS.midFrequency[0]} max={LIMITS.midFrequency[1]} format={hz} onChange={(frequency) => set({ eq: { ...sound.eq, mid: { ...sound.eq.mid, frequency } } })} />
-        <Slider label="중간 음 세기" value={sound.eq.mid.gain} min={LIMITS.eqGain[0]} max={LIMITS.eqGain[1]} format={db} onChange={(gain) => set({ eq: { ...sound.eq, mid: { ...sound.eq.mid, gain } } })} />
-        <Slider label="중간 음 폭 (Q)" log value={sound.eq.mid.q} min={LIMITS.midQ[0]} max={LIMITS.midQ[1]} format={(v) => v.toFixed(2)} onChange={(q) => set({ eq: { ...sound.eq, mid: { ...sound.eq.mid, q } } })} />
-        <Slider label="높은 음 (4 kHz 위)" value={sound.eq.high} min={LIMITS.eqGain[0]} max={LIMITS.eqGain[1]} format={db} onChange={(high) => set({ eq: { ...sound.eq, high } })} />
-      </Section>
-
-      <Section title="필터">
-        <Slider label="이 아래 소리 자르기" log value={sound.filter.highpass} min={LIMITS.highpass[0]} max={LIMITS.highpass[1]} format={hz} onChange={(highpass) => set({ filter: { highpass, lowpass: Math.max(highpass, sound.filter.lowpass) } })} />
-        <Slider label="이 위 소리 자르기" log value={sound.filter.lowpass} min={LIMITS.lowpass[0]} max={LIMITS.lowpass[1]} format={hz} onChange={(lowpass) => set({ filter: { highpass: Math.min(sound.filter.highpass, lowpass), lowpass } })} />
+      <Section title="이퀄라이저">
+        <EqGraph eq={sound.eq} onChange={(eq) => set({ eq })} readSpectrum={readSpectrum} />
       </Section>
     </ScrollView>
   );

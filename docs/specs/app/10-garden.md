@@ -14,20 +14,50 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Keyboard: arrow keys or WASD. Touch or mouse: pressing anywhere on the garden shows a joystick at that point; dragging moves the character; releasing hides it.
 - The character cannot leave the garden. The camera follows the character.
 
+## Characters
+
+- The player chooses one of ten characters on the title screen: bunny, cat, bear, frog, chick, fox, penguin, pig, panda and mouse. The choice is kept on the device.
+- Every character has a walking animation: while it moves, its feet step in turn, its body bobs, its arms swing and its ears sway. It stands still when it stops. No character is a single fixed picture.
+- Other players are drawn with the character they chose, facing the way they move and walking while they move.
+
+## Character Name
+
+- A name is shown above every character, with the place under it in the public garden.
+- The player can change the name in settings at any time, also while in the public garden.
+- A name is 1 to 16 characters. An empty name means the account name, or "Guest" without a login.
+- Names that could pass for staff or for the service are refused, also when written with spaces, symbols or look-alike digits: for example admin, administrator, moderator, staff, official, system, support, owner, operator, developer, GM, 관리자, 운영자, 매니저, 공식, and the service names.
+- The server decides. A refused name at entry falls back to the account name instead of blocking the visit.
+
 ## Speakers And Sound
 
 - There is one kind of speaker. Every speaker has the same controls:
-  volume, hearing radius, noise (white, pink or brown) with its level, a bass drone (frequency and level), up to three oscillators (wave, frequency, level), a three-band EQ (low shelf, movable mid band, high shelf) and high-pass and low-pass filters.
+  volume, hearing radius, noise (white, pink or brown) with its level, a bass drone (frequency and level), up to three oscillators (wave, frequency, level) and one equalizer.
 - A speaker is loudest next to it and fades smoothly to silence at its radius.
 - Speakers in range are heard together. The mix is turned down as a whole only when it would be louder than one speaker at full volume.
 - A speaker to the left on screen sounds from the left, and likewise for the right.
 - A bass drone under the noise is part of the default sound, because low sound helps masking.
 - Sound never starts before the player presses a button.
 
+## Equalizer
+
+- The equalizer and the low and high filters are one control: a single curve with five bands, in the style of graphical parametric equalizers. From left to right: low cut, low shelf, bell, high shelf, high cut.
+- The curve is drawn on a graph of frequency (20 Hz to 20 kHz, by octave) against gain. Each band is a numbered point on the curve. Dragging a point sideways changes its frequency and dragging it up or down changes its gain. The two cut points only move sideways. The bell has a width (Q) control.
+- The high cut never goes below the low cut.
+- A spectrum analyser is drawn behind the curve: the live spectrum of the selected speaker after its equalizer, or of the whole mix when that speaker is out of hearing range.
+- The selected band's name, frequency and gain are shown under the graph.
+
+## Carrying A Speaker
+
+- A speaker is moved by carrying it, not by pointing at a spot. With a speaker selected in edit mode, "carry" makes the character walk to the speaker, lift it overhead and hold it with both arms up.
+- While carrying, the character walks as usual and the speaker's sound moves with it.
+- "Put down here" places the speaker one step in front of the character.
+- Walking by hand while the character is on its way cancels the pick-up. Closing the editor or leaving edit mode puts the speaker down.
+- In the public garden other players see the speaker at its new place when it is put down.
+
 ## Private Garden
 
 - Works with no network, no login and no location consent.
-- The player places, moves, tunes and removes speakers (at most 24).
+- The player places, carries, tunes and removes speakers (at most 24).
 - Built-in presets give ready layouts; the first one is the starting garden.
 - The player saves the current layout as an own preset (at most 20; the same name replaces), applies and deletes presets.
 - Reset returns the garden and the own presets to the first-run state after a confirmation.
@@ -41,7 +71,6 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - The city-level place is shown above every character.
 - Guests can walk and listen. Chat needs a jace-s account login.
 - Speakers can be placed and tuned only by an administrator or an account or role granted the edit permission. Others do not see the edit controls.
-- Consent can be withdrawn in settings, which leaves the public garden.
 
 ## Nearby Chat
 

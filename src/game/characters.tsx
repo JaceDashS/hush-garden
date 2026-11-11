@@ -187,11 +187,21 @@ export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facin
         <G transform={`translate(0 ${pose.bob})`}>
           <Ears look={look} sway={pose.sway} />
           {kind === "chick" && <Path d="M26 17 q2 -8 4 -1 q3 -6 3 2" stroke={INK} strokeWidth={2} fill={look.body} strokeLinecap="round" strokeLinejoin="round" />}
-          <Ellipse cx={11} cy={42} rx={4} ry={6.5} fill={limb} stroke={INK} strokeWidth={2} transform={`rotate(${20 + pose.arm} 12 37)`} />
-          <Ellipse cx={45} cy={42} rx={4} ry={6.5} fill={limb} stroke={INK} strokeWidth={2} transform={`rotate(${-20 + pose.arm} 44 37)`} />
+          {!pose.armsUp && (
+            <G>
+              <Ellipse cx={11} cy={42} rx={4} ry={6.5} fill={limb} stroke={INK} strokeWidth={2} transform={`rotate(${20 + pose.arm} 12 37)`} />
+              <Ellipse cx={45} cy={42} rx={4} ry={6.5} fill={limb} stroke={INK} strokeWidth={2} transform={`rotate(${-20 + pose.arm} 44 37)`} />
+            </G>
+          )}
           <Ellipse cx={28} cy={36} rx={20} ry={19} fill={look.body} stroke={INK} strokeWidth={2.5} />
           <Ellipse cx={29} cy={44} rx={kind === "penguin" ? 14 : 11} ry={kind === "penguin" ? 11 : 8} fill={look.belly} opacity={0.9} />
           <Face look={look} />
+          {pose.armsUp && (
+            <G>
+              <Ellipse cx={10} cy={21} rx={4} ry={9} fill={limb} stroke={INK} strokeWidth={2} transform="rotate(-14 10 28)" />
+              <Ellipse cx={46} cy={21} rx={4} ry={9} fill={limb} stroke={INK} strokeWidth={2} transform="rotate(14 46 28)" />
+            </G>
+          )}
         </G>
       </G>
     </Svg>
@@ -201,8 +211,9 @@ export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facin
 /**
  * A character that plays its walking cycle while `walking` is true and stands still otherwise.
  * Each character keeps its own timer, so characters step out of sync like a real crowd.
+ * `carrying` raises both arms to hold a speaker overhead.
  */
-export function Character({ kind, facing = 1, walking = false }: { kind: CharacterKind; facing?: 1 | -1; walking?: boolean }) {
+export function Character({ kind, facing = 1, walking = false, carrying = false }: { kind: CharacterKind; facing?: 1 | -1; walking?: boolean; carrying?: boolean }) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     if (!walking) return;
@@ -210,5 +221,5 @@ export function Character({ kind, facing = 1, walking = false }: { kind: Charact
     const timer = setInterval(() => setFrame(nextWalkFrame), WALK_FRAME_MS);
     return () => clearInterval(timer);
   }, [walking]);
-  return <CharacterArt kind={kind} pose={poseFor(walking, frame)} facing={facing} />;
+  return <CharacterArt kind={kind} pose={poseFor(walking, frame, carrying)} facing={facing} />;
 }
