@@ -44,14 +44,18 @@ export function CharacterPicker({ value, onChange, arrowKeys = false }: { value:
     return () => window.removeEventListener("keydown", down);
   }, [arrowKeys]);
 
-  // Whenever the choice changes, or the row has just been measured, bring the chosen character into view.
+  // Whenever the choice changes, or the row has just been measured, bring the chosen character into view. When
+  // the row first appears it is simply shown at that place; only a later change of choice scrolls smoothly.
+  const shownValue = useRef<CharacterKind | null>(null);
   useEffect(() => {
     const item = items.current[value];
-    if (!item) return;
+    if (!item || view.current.width <= 0) return;
+    const animated = shownValue.current !== null && shownValue.current !== value;
+    shownValue.current = value;
     const target = scrollToShow(item, view.current);
     if (target === null) return;
     view.current.offset = target;
-    scroll.current?.scrollTo({ x: target, animated: true });
+    scroll.current?.scrollTo({ x: target, animated });
   }, [value, laidOut]);
 
   return (

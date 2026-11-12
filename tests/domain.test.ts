@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CARRY, actionAt, actionDuration, actionFrames } from "../src/domain/actions.ts";
+import { CARRY, actionAt, actionDuration, actionFrames, liftTravel } from "../src/domain/actions.ts";
 import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor, scrollToShow, stepCharacter } from "../src/domain/characters.ts";
 import { LANGUAGES, TEXTS, languageForLocale, normalizeLanguage, translate, type TextKey } from "../src/domain/text.ts";
 import { checkName, isReservedName } from "../src/domain/names.ts";
@@ -409,4 +409,19 @@ test("a lift starts on the speaker where it stands and keeps it full size", () =
   const landed = actionAt("fox", "putDown", actionDuration("fox", "putDown"), ground);
   assert.deepEqual([landed.prop.x, landed.prop.y], [-30, -12]);
   assert.ok(settled(landed), "the character ends in its normal pose");
+});
+
+test("a lifted speaker's sound travels along the ground with it, not up", () => {
+  const length = actionDuration("cat", "lift");
+  assert.equal(liftTravel("cat", "lift", 0), 0);
+  assert.equal(liftTravel("cat", "lift", length), 1);
+  assert.equal(liftTravel("cat", "putDown", 0), 1);
+  assert.equal(liftTravel("cat", "putDown", length), 0);
+  let last = 0;
+  for (let ms = 0; ms <= length; ms += 10) {
+    const travel = liftTravel("cat", "lift", ms);
+    assert.ok(travel >= last - 1e-9);
+    last = travel;
+    near(travel, liftTravel("cat", "putDown", length - ms), 1e-9);
+  }
 });

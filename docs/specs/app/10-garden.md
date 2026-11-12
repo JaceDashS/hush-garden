@@ -69,6 +69,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - There is no edit mode and no edit button in the top bar. A speaker is handled with the character's hands.
 - Lift: when the character stands within 1.6 tiles of a speaker and its hands are free, a "lift" button appears beside that speaker. Pressing it lifts the speaker overhead.
 - While holding, the character walks as usual with both arms up, and the speaker's sound and shadow move with it. Two buttons appear beside the character: "put down" and "edit".
+- While a speaker is lifted or put down, its sound and its waves move along the ground with it, by how far it has moved sideways toward or away from the character; raising it overhead does not move them.
 - Lifting starts on the speaker exactly where it stands and putting down ends exactly where it will stand, so neither moment jumps. The speaker keeps its full size while held and while moving. Put down plays the lift animation backwards and places the speaker one step in front of the character.
 - Edit opens the sound controls. A speaker can be edited only while it is held; putting it down or discarding it closes the controls.
 - Make: the top left button "make a speaker" plays the character's making animation; when it ends, a new speaker with the default sound is in the character's hands.

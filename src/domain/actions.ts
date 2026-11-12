@@ -413,6 +413,17 @@ export function actionFrames(kind: CharacterKind, name: ActionName, ground?: Gro
   return name === "lift" || name === "putDown" ? liftFor(ground) : name === "create" ? CREATE[kind] : DISCARD[kind];
 }
 
+/**
+ * How far a lifted or put down speaker has travelled along the ground from where it stands (0) to the character
+ * (1), `ms` into the action. Only the sideways part of the motion counts; being raised overhead does not move the
+ * speaker's sound. The lift frames scale every sideways position with the ground spot, so the share is the same
+ * for any spot.
+ */
+export function liftTravel(kind: CharacterKind, name: "lift" | "putDown", ms: number): number {
+  const x = actionAt(kind, name, ms).prop.x;
+  return Math.max(0, Math.min(1, 1 - x / DEFAULT_GROUND.x));
+}
+
 /** Length of an action in milliseconds. */
 export function actionDuration(kind: CharacterKind, name: ActionName): number {
   const frames = actionFrames(kind, name);

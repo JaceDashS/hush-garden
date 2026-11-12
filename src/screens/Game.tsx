@@ -17,7 +17,7 @@ import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session"
 import { ConsentCard, LoginCard, PresetCard, SettingsCard } from "../components/Panels";
 import { SpeakerEditor } from "../components/SpeakerEditor";
 import { API_ORIGIN } from "../config";
-import { actionDuration, type ActionName, type GroundSpot } from "../domain/actions";
+import { actionDuration, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
 import { PICK_UP_TILES } from "../domain/characters";
 import { BUBBLE_MS, CHAT_MAX_LENGTH, cleanMessage, cueFor } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
@@ -65,7 +65,15 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   /** The speaker in the character's hands. */
   const [carryId, setCarryId] = useState<string | null>(null);
   /** The action being played. The character cannot walk or start another one until it ends. */
-  const [action, setAction] = useState<Actor["action"]>(undefined);
+  const [action, setAction] = useState<(Actor["action"] & { spot?: Point }) | undefined>(undefined);
+  /** Redrawn while a speaker is lifted or put down, so its sound and waves move with it. */
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (!action?.spot) return;
+    setClock(Date.now());
+    const timer = setInterval(() => setClock(Date.now()), 33);
+    return () => clearInterval(timer);
+  }, [action]);
   /** The editor of the held speaker is open. */
   const [editing, setEditing] = useState(false);
   const [nameError, setNameError] = useState<TextKey | "">("");
@@ -84,8 +92,16 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const desktopChat = Platform.OS === "web" && typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   const placed = online ? publicSpeakers : garden.speakers;
-  /** A carried speaker is wherever the character is, so its sound and its shadow travel along. */
-  const speakers = useMemo(() => (carryId ? placed.map((speaker) => (speaker.id === carryId ? { ...speaker, x: me.x, y: me.y } : speaker)) : placed), [placed, carryId, me]);
+  /**
+   * A carried speaker is wherever the character is, so its sound and its shadow travel along. While it is lifted
+   * or put down, it is where the animation has carried it along the ground between its spot and the character.
+   */
+  const carriedAt = useMemo((): Point => {
+    if (!action?.spot || (action.name !== "lift" && action.name !== "putDown")) return me;
+    const travel = liftTravel(settings.character, action.name, clock - action.startedAt);
+    return { x: action.spot.x + (me.x - action.spot.x) * travel, y: action.spot.y + (me.y - action.spot.y) * travel };
+  }, [action, clock, me, settings.character]);
+  const speakers = useMemo(() => (carryId ? placed.map((speaker) => (speaker.id === carryId ? { ...speaker, x: carriedAt.x, y: carriedAt.y } : speaker)) : placed), [placed, carryId, carriedAt]);
   const placedRef = useRef(placed);
   placedRef.current = placed;
   const gardenRef = useRef(garden);
@@ -410,9 +426,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   }, [carryId, carried]);
 
   /** Plays an action of the player's character and runs `after` when it ends. */
-  const play = useCallback((name: ActionName, color: NoiseColor, after: () => void, ground?: GroundSpot) => {
+  const play = useCallback((name: ActionName, color: NoiseColor, after: () => void, ground?: GroundSpot, spot?: Point) => {
     acting.current = true;
-    setAction({ name, startedAt: Date.now(), color, ground });
+    setAction({ name, startedAt: Date.now(), color, ground, spot });
     setTimeout(() => {
       if (!alive.current) return;
       acting.current = false;
@@ -426,7 +442,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (acting.current || carryId) return;
     setCarryId(speaker.id);
     // The speaker leaves the ground from where it stands, so the lift starts exactly on the drawn speaker.
-    play("lift", speaker.sound.noise.color, () => undefined, groundSpotFor(meRef.current, speaker, facing));
+    play("lift", speaker.sound.noise.color, () => undefined, groundSpotFor(meRef.current, speaker, facing), { x: speaker.x, y: speaker.y });
   };
 
   /** Puts the carried speaker down one step in front of the character. */
@@ -441,7 +457,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     play("putDown", carried.sound.noise.color, () => {
       setCarryId(null);
       if (placedRef.current.some((speaker) => speaker.id === id)) changeSpeakers(moveSpeaker(placedRef.current, id, spot), id);
-    }, groundSpotFor(meRef.current, spot, facing));
+    }, groundSpotFor(meRef.current, spot, facing), spot);
   };
 
   /** Makes a new speaker; when the character's animation ends, the speaker is in its hands. */
