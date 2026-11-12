@@ -4,7 +4,7 @@
  * another filter kind and its Q is turned with a knob.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { PanResponder, View } from "react-native";
+import { PanResponder, Platform, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { BAND_INDEXES, BAND_TYPES, EQ_LIMITS, dbToY, equalizerResponse, graphFrequencies, handleOf, hzToX, isCut, moveBand, setBandType, updateBand, xToHz, yToDb, type BandType, type Equalizer } from "../domain/equalizer";
 import type { TextKey } from "../domain/text";
@@ -13,7 +13,23 @@ import { Chips, Knob, NO_TOUCH_SCROLL, T, colors, useDragLock } from "../ui";
 
 const HEIGHT = 180;
 const POINTS = 96;
-const GRAB_PIXELS = 36;
+/** How far from a handle a press still grabs it: a fingertip needs more room than a mouse pointer. */
+const GRAB_PIXELS = Platform.OS === "web" ? 20 : 36;
+
+/** The handle within grabbing distance of a point on the graph, nearest first, or null. */
+function bandAt(eq: Equalizer, width: number, x: number, y: number): number | null {
+  let best: number | null = null;
+  let bestGap = GRAB_PIXELS;
+  for (const band of BAND_INDEXES) {
+    const handle = handleOf(eq, band);
+    const gap = Math.hypot(hzToX(handle.hz) * width - x, dbToY(handle.db) * HEIGHT - y);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = band;
+    }
+  }
+  return best;
+}
 const SPECTRUM_MS = 80;
 /** Spectrum levels between these dB values fill the graph from bottom to top. */
 const SPECTRUM_DB = [-100, -10] as const;
@@ -52,6 +68,9 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState(1);
   const [spectrum, setSpectrum] = useState("");
+  /** Mouse pointer state on the web: over a handle, or holding one. */
+  const [hovering, setHovering] = useState(false);
+  const [grabbing, setGrabbing] = useState(false);
   const frequencies = useMemo(() => graphFrequencies(POINTS), []);
   const root = useRef<React.ComponentRef<typeof View>>(null);
   const origin = useRef({ x: 0, y: 0 });
@@ -88,27 +107,21 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
           origin.current = { x, y };
           const state = latest.current;
           const at = local(pageX, pageY);
-          let best: number | null = null;
-          let bestGap = GRAB_PIXELS;
-          for (const band of BAND_INDEXES) {
-            const handle = handleOf(state.eq, band);
-            const gap = Math.hypot(hzToX(handle.hz) * state.width - at.x, dbToY(handle.db) * HEIGHT - at.y);
-            if (gap < bestGap) {
-              bestGap = gap;
-              best = band;
-            }
-          }
+          const best = bandAt(state.eq, state.width, at.x, at.y);
           dragging.current = best;
+          setGrabbing(best !== null);
           if (best !== null) setSelected(best);
         });
       },
       onPanResponderMove: (event) => drag(event.nativeEvent.pageX, event.nativeEvent.pageY),
       onPanResponderRelease: () => {
         dragging.current = null;
+        setGrabbing(false);
         latest.current.lock(false);
       },
       onPanResponderTerminate: () => {
         dragging.current = null;
+        setGrabbing(false);
         latest.current.lock(false);
       },
     });
@@ -131,7 +144,14 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
         testID="eq-graph"
         accessibilityLabel={t("eq.graph")}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-        style={[{ height: HEIGHT, borderRadius: 14, overflow: "hidden", backgroundColor: "#3d3632" }, NO_TOUCH_SCROLL]}
+        style={[{ height: HEIGHT, borderRadius: 14, overflow: "hidden", backgroundColor: "#3d3632" }, NO_TOUCH_SCROLL, Platform.OS === "web" ? ({ cursor: grabbing ? "grabbing" : hovering ? "grab" : "default" } as object) : null]}
+        {...(Platform.OS === "web"
+          ? {
+              // Only a handle shows the grab cursor; the rest of the graph keeps the normal pointer.
+              onMouseMove: (event: { nativeEvent: { offsetX: number; offsetY: number } }) => setHovering(bandAt(eq, width, event.nativeEvent.offsetX, event.nativeEvent.offsetY) !== null),
+              onMouseLeave: () => setHovering(false),
+            }
+          : {})}
         {...responder.panHandlers}
       >
         {width > 0 && (

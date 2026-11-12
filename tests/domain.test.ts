@@ -399,3 +399,14 @@ test("every language has every text", () => {
   for (const language of LANGUAGES) for (const key of Object.keys(TEXTS.ko) as TextKey[]) assert.ok(TEXTS[language][key], language + " " + key);
   assert.equal(languageForLocale("zh-CN"), "zh");
 });
+
+test("a lift starts on the speaker where it stands and keeps it full size", () => {
+  const ground = { x: -30, y: -12 };
+  const start = actionAt("fox", "lift", 0, ground);
+  assert.deepEqual([start.prop.x, start.prop.y, start.prop.scale], [-30, -12, 1]);
+  assert.ok(settled(start), "the character starts from its normal pose");
+  for (let ms = 0; ms <= actionDuration("fox", "lift"); ms += 20) assert.equal(actionAt("fox", "lift", ms, ground).prop.scale, 1);
+  const landed = actionAt("fox", "putDown", actionDuration("fox", "putDown"), ground);
+  assert.deepEqual([landed.prop.x, landed.prop.y], [-30, -12]);
+  assert.ok(settled(landed), "the character ends in its normal pose");
+});

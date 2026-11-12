@@ -1,7 +1,7 @@
 /** The quarter-view garden: ground, sound shadows, trees, speakers and characters, with the camera following the player. */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, View } from "react-native";
-import { CARRY, NEUTRAL, actionAt, type ActionName } from "../domain/actions";
+import { CARRY, NEUTRAL, actionAt, type ActionMoment, type ActionName, type GroundSpot } from "../domain/actions";
 import type { CharacterKind } from "../domain/characters";
 import { loudnessAt, type NoiseColor, type Speaker } from "../domain/sound";
 import { distance, joystickToInput, toScreen, type Point } from "../domain/world";
@@ -21,7 +21,7 @@ export interface Actor {
   /** Noise colour of the speaker the character holds overhead, if it carries one. */
   carrying?: NoiseColor;
   /** The action the character is playing: making, discarding or lifting a speaker of the given colour. */
-  action?: { name: ActionName; startedAt: number; color: NoiseColor };
+  action?: { name: ActionName; startedAt: number; color: NoiseColor; ground?: GroundSpot };
   bubble?: string;
   /** Which of the ten characters to draw. */
   kind: CharacterKind;
@@ -42,7 +42,22 @@ export interface Marker {
 
 const JOYSTICK_RADIUS = 52;
 /** Room above a character for the speaker it holds. */
-const CARRY_HEIGHT = 50;
+const CARRY_HEIGHT = 72;
+/**
+ * Screen gap between a character's feet and the foot point of a speaker standing at the same garden spot: the
+ * standing speaker art sits 5 px lower than the character's feet.
+ */
+const SPEAKER_BELOW_FEET = 5;
+
+/**
+ * Where a speaker standing at `spot` is for a character at `at` facing `facing`, in the prop coordinates of an
+ * action. A lift starting there, or a put down ending there, lines up with the speaker drawn on the ground.
+ */
+export function groundSpotFor(at: Point, spot: Point, facing: 1 | -1): GroundSpot {
+  const from = toScreen(at);
+  const to = toScreen(spot);
+  return { x: (to.x - from.x) * facing, y: -(to.y - from.y) - SPEAKER_BELOW_FEET };
+}
 const LABEL_HEIGHT = 34;
 /** Time between two pictures of an action. */
 const ACTION_FRAME_MS = 33;
@@ -54,18 +69,10 @@ const place = (point: Point) => {
 };
 const depth = (point: Point) => Math.round((point.x + point.y) * 10);
 
-/** The character with whatever it holds. While an action plays, a timer redraws it frame by frame. */
-function ActorBody({ actor }: { actor: Actor }) {
-  const [now, setNow] = useState(() => Date.now());
+/** The character with whatever it holds; `moment` is the frame of the action being played, if any. */
+function ActorBody({ actor, moment }: { actor: Actor; moment: ActionMoment | null }) {
   const action = actor.action;
-  useEffect(() => {
-    if (!action) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), ACTION_FRAME_MS);
-    return () => clearInterval(timer);
-  }, [action]);
   const facing = actor.facing ?? 1;
-  const moment = action ? actionAt(actor.kind, action.name, now - action.startedAt) : null;
   if (!moment) {
     return (
       <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
@@ -85,9 +92,21 @@ function ActorBody({ actor }: { actor: Actor }) {
   );
 }
 
+/** While an action plays, a timer redraws the character frame by frame. */
 function ActorView({ actor }: { actor: Actor }) {
+  const [now, setNow] = useState(() => Date.now());
+  const action = actor.action;
+  useEffect(() => {
+    if (!action) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), ACTION_FRAME_MS);
+    return () => clearInterval(timer);
+  }, [action]);
+  const moment = action ? actionAt(actor.kind, action.name, now - action.startedAt, action.ground) : null;
   const at = place(actor);
-  const headroom = actor.carrying || actor.action ? CARRY_HEIGHT : 0;
+  // While lifting or putting down, the name rises and sinks with the speaker instead of jumping.
+  const lifting = action && (action.name === "lift" || action.name === "putDown") && moment;
+  const headroom = lifting ? CARRY_HEIGHT * Math.max(0, Math.min(1, moment.prop.y / CARRY.y)) : actor.carrying || action ? CARRY_HEIGHT : 0;
   return (
     <View pointerEvents="none" style={{ position: "absolute", left: at.left - 90, top: at.top - CHARACTER_SIZE.height - 44 - LABEL_HEIGHT - headroom, width: 180, alignItems: "center", zIndex: depth(actor) }}>
       <View style={{ height: 40, justifyContent: "flex-end", alignItems: "center" }}>
@@ -101,7 +120,7 @@ function ActorView({ actor }: { actor: Actor }) {
         <T size={11.5} weight="800" lines={1}>{actor.name}</T>
         <T size={9.5} weight="600" tone="muted" lines={1}>{actor.label}</T>
       </View>
-      <ActorBody actor={actor} />
+      <ActorBody actor={actor} moment={moment} />
     </View>
   );
 }

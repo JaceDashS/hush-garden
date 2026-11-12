@@ -17,14 +17,14 @@ import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session"
 import { ConsentCard, LoginCard, PresetCard, SettingsCard } from "../components/Panels";
 import { SpeakerEditor } from "../components/SpeakerEditor";
 import { API_ORIGIN } from "../config";
-import { actionDuration, type ActionName } from "../domain/actions";
+import { actionDuration, type ActionName, type GroundSpot } from "../domain/actions";
 import { PICK_UP_TILES } from "../domain/characters";
 import { BUBBLE_MS, CHAT_MAX_LENGTH, cleanMessage, cueFor } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
 import { MAX_SPEAKERS, audibleCount, defaultSound, type NoiseColor, type Speaker } from "../domain/sound";
 import type { TextKey } from "../domain/text";
 import { GARDEN_SIZE, clampToGarden, distance, keysToInput, step, toGarden, type Point } from "../domain/world";
-import { Scene, type Actor, type Marker } from "../game/Scene";
+import { Scene, groundSpotFor, type Actor, type Marker } from "../game/Scene";
 import { useT } from "../i18n";
 import { requestCoordinates } from "../location";
 import type { Settings } from "../settings";
@@ -154,6 +154,12 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (Platform.OS !== "web") return;
     const typing = (event: KeyboardEvent) => ["INPUT", "TEXTAREA"].includes((event.target as HTMLElement | null)?.tagName ?? "");
     const down = (event: KeyboardEvent) => {
+      // Escape opens the settings, and closes them (or any other open panel) again.
+      if (event.key === "Escape" && !event.repeat) {
+        event.preventDefault();
+        setPanel((open) => (open ? null : typing(event) ? open : "settings"));
+        return;
+      }
       if (typing(event)) return;
       if (event.key.startsWith("Arrow")) event.preventDefault();
       keys.current.add(event.key);
@@ -404,9 +410,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   }, [carryId, carried]);
 
   /** Plays an action of the player's character and runs `after` when it ends. */
-  const play = useCallback((name: ActionName, color: NoiseColor, after: () => void) => {
+  const play = useCallback((name: ActionName, color: NoiseColor, after: () => void, ground?: GroundSpot) => {
     acting.current = true;
-    setAction({ name, startedAt: Date.now(), color });
+    setAction({ name, startedAt: Date.now(), color, ground });
     setTimeout(() => {
       if (!alive.current) return;
       acting.current = false;
@@ -419,7 +425,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const lift = (speaker: Speaker) => {
     if (acting.current || carryId) return;
     setCarryId(speaker.id);
-    play("lift", speaker.sound.noise.color, () => undefined);
+    // The speaker leaves the ground from where it stands, so the lift starts exactly on the drawn speaker.
+    play("lift", speaker.sound.noise.color, () => undefined, groundSpotFor(meRef.current, speaker, facing));
   };
 
   /** Puts the carried speaker down one step in front of the character. */
@@ -428,12 +435,13 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     const id = carryId;
     setEditing(false);
     // The lift played backwards; the speaker lands when it ends.
+    // The spot is fixed when the button is pressed, so the animation ends exactly where the speaker then stands.
+    const ahead = toGarden({ x: facing * 40, y: 14 });
+    const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
     play("putDown", carried.sound.noise.color, () => {
-      const ahead = toGarden({ x: facing * 40, y: 14 });
-      const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
       setCarryId(null);
       if (placedRef.current.some((speaker) => speaker.id === id)) changeSpeakers(moveSpeaker(placedRef.current, id, spot), id);
-    });
+    }, groundSpotFor(meRef.current, spot, facing));
   };
 
   /** Makes a new speaker; when the character's animation ends, the speaker is in its hands. */

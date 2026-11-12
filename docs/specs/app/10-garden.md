@@ -60,6 +60,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Every point can be switched to any of five filter kinds: bell, low cut, low boost (low shelf), high boost (high shelf) and high cut. Every kind has a Q.
 - The curve is drawn on a graph of frequency (20 Hz to 20 kHz, by octave) against gain. Each point is numbered on the curve. Dragging a point sideways changes its frequency and dragging it up or down changes its gain. A cut point only moves sideways.
 - Selecting a point shows its filter kind as choices and its Q on a knob.
+- With a mouse the grab cursor shows only over a point that can be grabbed.
 - A spectrum analyser is drawn behind the curve: the live spectrum of the held speaker after its equalizer, or of the whole mix when that speaker is out of hearing range.
 - The selected point's number, kind, frequency and gain are shown under the graph.
 
@@ -68,7 +69,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - There is no edit mode and no edit button in the top bar. A speaker is handled with the character's hands.
 - Lift: when the character stands within 1.6 tiles of a speaker and its hands are free, a "lift" button appears beside that speaker. Pressing it lifts the speaker overhead.
 - While holding, the character walks as usual with both arms up, and the speaker's sound and shadow move with it. Two buttons appear beside the character: "put down" and "edit".
-- Put down plays the lift animation backwards and then places the speaker one step in front of the character.
+- Lifting starts on the speaker exactly where it stands and putting down ends exactly where it will stand, so neither moment jumps. The speaker keeps its full size while held and while moving. Put down plays the lift animation backwards and places the speaker one step in front of the character.
 - Edit opens the sound controls. A speaker can be edited only while it is held; putting it down or discarding it closes the controls.
 - Make: the top left button "make a speaker" plays the character's making animation; when it ends, a new speaker with the default sound is in the character's hands.
 - Discard: while holding, the top left button becomes "discard speaker". It plays the character's discarding animation; when it ends, the speaker is gone.
@@ -87,6 +88,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Top left: the speaker button (make, or discard while holding), for players who may edit.
 - Top centre: the garden name, the number of visitors in the public garden, and the number of speakers heard.
 - Top right: a settings icon.
+- Escape opens the settings and closes them, or any other open panel, again (web and desktop).
 - Settings hold everything else: sound on and off, master volume, character, language, character name, nearby chat cue, presets (private garden), account (public garden) and leaving the garden.
 
 ## Languages
