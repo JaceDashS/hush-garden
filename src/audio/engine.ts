@@ -5,9 +5,9 @@
  *
  * The same code runs in the browser (Web Audio) and in the native app (react-native-audio-api).
  */
-import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
+import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type AudioNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
-import { peakBoost } from "../domain/equalizer";
+import { bandCoefficients, peakBoost, type EqBand } from "../domain/equalizer";
 import { dbToGain, mixFor, reachOf, type NoiseColor, type Speaker } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { fillNoise } from "./noise";
@@ -18,6 +18,24 @@ const GLIDE = 0.08;
 /** A voice is built slightly before its speaker becomes audible and kept slightly after. */
 const WAKE_MARGIN = 1.5;
 const CUE_CUTOFF = 420;
+/** An equalizer point fades from its old filter to its new one in this time constant, so dragging does not click. */
+const BAND_FADE = 0.006;
+/** Seconds between two filter swaps of one equalizer point; changes in between are applied together. */
+const BAND_SWAP = 0.03;
+
+/**
+ * One equalizer point. Its filter coefficients cannot glide, so a change builds a new filter beside the old one
+ * and crossfades between the two.
+ */
+interface BandSlot {
+  input: GainNode;
+  output: GainNode;
+  current: { filter: ReturnType<AudioContext["createIIRFilter"]>; gain: GainNode } | null;
+  key: string;
+  wanted: EqBand | null;
+  lastSwap: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
 
 interface Voice {
   /** Changes when nodes must be rebuilt: the noise colour or the oscillator waves. */
@@ -28,7 +46,7 @@ interface Voice {
   nodes: { disconnect(): void }[];
   noiseGain: GainNode;
   tones: { oscillator: OscillatorNode; gain: GainNode }[];
-  filters: { highpass: BiquadFilterNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; lowpass: BiquadFilterNode };
+  bands: BandSlot[];
   trim: GainNode;
   /** Created on first use by spectrum(): shows this speaker alone, after its equalizer. */
   analyser?: AnalyserNode;
@@ -245,30 +263,25 @@ export class GardenAudio {
       oscillator.type = item.wave;
       return { oscillator, gain: feed(oscillator) };
     });
-    const filter = (type: BiquadFilterNode["type"]) => {
-      const node = context.createBiquadFilter();
-      node.type = type;
-      return node;
-    };
-    const filters = { highpass: filter("highpass"), low: filter("lowshelf"), mid: filter("peaking"), high: filter("highshelf"), lowpass: filter("lowpass") };
+    const bands: BandSlot[] = sound.eq.bands.map(() => ({ input: context.createGain(), output: context.createGain(), current: null, key: "", wanted: null, lastSwap: -1, timer: null }));
     const trim = context.createGain();
     const level = context.createGain();
     // A new voice starts silent and glides in.
     level.gain.value = 0;
     const pan = context.createStereoPanner();
-    sum.connect(filters.highpass);
-    filters.highpass.connect(filters.low);
-    filters.low.connect(filters.mid);
-    filters.mid.connect(filters.high);
-    filters.high.connect(filters.lowpass);
-    filters.lowpass.connect(trim);
+    let tail: AudioNode = sum;
+    for (const band of bands) {
+      tail.connect(band.input);
+      tail = band.output;
+    }
+    tail.connect(trim);
     trim.connect(level);
     level.connect(pan);
     pan.connect(this.bus);
-    nodes.push(sum, ...Object.values(filters), trim, level, pan);
+    nodes.push(sum, ...bands.flatMap((band) => [band.input, band.output]), trim, level, pan);
     const at = context.currentTime;
     for (const source of sources) source.start(at);
-    return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, tones, filters, trim, level, pan };
+    return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, tones, bands, trim, level, pan };
   }
 
   /** Applies sound values to an existing voice. Values glide, so dragging a slider is heard without clicks. */
@@ -280,22 +293,61 @@ export class GardenAudio {
       set(tone.oscillator.frequency, sound.oscillators[index].frequency);
       set(tone.gain.gain, sound.oscillators[index].level * 0.3);
     });
-    set(voice.filters.highpass.frequency, sound.eq.highpass);
-    set(voice.filters.low.frequency, sound.eq.lowShelf.frequency);
-    set(voice.filters.low.gain, sound.eq.lowShelf.gain);
-    set(voice.filters.mid.frequency, sound.eq.bell.frequency);
-    set(voice.filters.mid.gain, sound.eq.bell.gain);
-    set(voice.filters.mid.Q, sound.eq.bell.q);
-    set(voice.filters.high.frequency, sound.eq.highShelf.frequency);
-    set(voice.filters.high.gain, sound.eq.highShelf.gain);
-    set(voice.filters.lowpass.frequency, sound.eq.lowpass);
+    voice.bands.forEach((slot, index) => this.tuneBand(context, slot, sound.eq.bands[index]));
     set(voice.trim.gain, trimFor(sound));
+  }
+
+  /** Puts a band's new filter in place, at most once every BAND_SWAP seconds. */
+  private tuneBand(context: AudioContext, slot: BandSlot, band: EqBand): void {
+    const key = JSON.stringify(band);
+    if (key === slot.key && !slot.timer) return;
+    slot.wanted = band;
+    if (slot.timer) return;
+    const wait = slot.lastSwap + BAND_SWAP - context.currentTime;
+    if (wait > 0) {
+      slot.timer = setTimeout(() => {
+        slot.timer = null;
+        if (this.context === context && slot.wanted) this.swapBand(context, slot, slot.wanted);
+      }, wait * 1000);
+      return;
+    }
+    this.swapBand(context, slot, band);
+  }
+
+  private swapBand(context: AudioContext, slot: BandSlot, band: EqBand): void {
+    const key = JSON.stringify(band);
+    if (key === slot.key) return;
+    slot.key = key;
+    slot.lastSwap = context.currentTime;
+    const { b, a } = bandCoefficients(band, context.sampleRate);
+    const filter = context.createIIRFilter(b, a);
+    const gain = context.createGain();
+    const now = context.currentTime;
+    const old = slot.current;
+    gain.gain.value = old ? 0 : 1;
+    slot.input.connect(filter);
+    filter.connect(gain);
+    gain.connect(slot.output);
+    slot.current = { filter, gain };
+    if (!old) return;
+    gain.gain.setTargetAtTime(1, now, BAND_FADE);
+    old.gain.gain.setTargetAtTime(0, now, BAND_FADE);
+    setTimeout(() => {
+      for (const node of [old.filter, old.gain]) {
+        try { node.disconnect(); } catch { /* already disconnected */ }
+      }
+    }, BAND_FADE * 10 * 1000);
   }
 
   private drop(id: string): void {
     const voice = this.voices.get(id);
     if (!voice) return;
     this.voices.delete(id);
+    for (const slot of voice.bands) {
+      if (slot.timer) clearTimeout(slot.timer);
+      slot.timer = null;
+      if (slot.current) voice.nodes.push(slot.current.filter, slot.current.gain);
+    }
     for (const source of voice.sources) {
       try { source.stop(); } catch { /* already stopped */ }
     }

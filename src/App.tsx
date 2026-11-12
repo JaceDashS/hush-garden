@@ -8,8 +8,8 @@ import { GardenAudio } from "./audio/engine";
 import { configureSession } from "./audio/session";
 import { API_ORIGIN } from "./config";
 import { initialGarden, type MyGarden } from "./domain/garden";
-import { CHARACTER_KINDS, type CharacterKind } from "./domain/characters";
-import type { TextKey } from "./domain/text";
+import type { CharacterKind } from "./domain/characters";
+import { CharacterPicker } from "./components/CharacterPicker";
 import { Character } from "./game/characters";
 import { SpeakerArt } from "./game/sprites";
 import { LanguageProvider, useT } from "./i18n";
@@ -35,18 +35,7 @@ function Home({ character, onCharacter, onPick }: { character: CharacterKind; on
           <T size={30} weight="800" style={{ textAlign: "center" }}>Hush Garden</T>
           <T size={14} tone="muted" style={{ textAlign: "center" }}>{t("home.tagline")}</T>
           <T size={12.5} tone="muted" weight="700">{t("home.pickCharacter")}</T>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
-            {CHARACTER_KINDS.map((kind) => {
-              const selected = kind === character;
-              const name = t(("character." + kind) as TextKey);
-              return (
-                <Pressable key={kind} accessibilityRole="radio" accessibilityLabel={name} accessibilityState={{ selected }} testID={"character-" + kind} onPress={() => onCharacter(kind)} style={{ alignItems: "center", paddingHorizontal: 4, paddingTop: 4, paddingBottom: 2, borderRadius: 16, borderWidth: 2, borderColor: selected ? colors.mintDeep : "transparent", backgroundColor: selected ? "#e6f6ee" : "transparent" }}>
-                  <Character kind={kind} />
-                  <T size={11} weight="700" tone={selected ? "ink" : "muted"}>{name}</T>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <CharacterPicker value={character} onChange={onCharacter} arrowKeys />
           <Btn variant="primary" title={t("home.mine")} onPress={() => onPick("mine")} testID="pick-mine" />
           <Btn variant="mint" title={t("home.public")} onPress={() => onPick("public")} testID="pick-public" />
           <T size={12} tone="muted" style={{ textAlign: "center" }}>{t("home.controls")}</T>

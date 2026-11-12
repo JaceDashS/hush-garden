@@ -60,3 +60,19 @@ export function poseFor(walking: boolean, frame: number, carrying = false): Pose
 
 /** A character can lift a speaker from this many tiles away; the lift button shows within this distance. */
 export const PICK_UP_TILES = 1.6;
+
+/** The character before or after `kind` in the picker, wrapping around at the ends. */
+export function stepCharacter(kind: CharacterKind, direction: 1 | -1): CharacterKind {
+  const index = Math.max(0, CHARACTER_KINDS.indexOf(kind));
+  return CHARACTER_KINDS[(index + direction + CHARACTER_KINDS.length) % CHARACTER_KINDS.length];
+}
+
+/** Room left beside the chosen character when the picker scrolls to it. */
+const PICKER_MARGIN = 12;
+/** Where a scrolling row must move to show an item fully, or null when it is already in view. */
+export function scrollToShow(item: { x: number; width: number }, view: { offset: number; width: number }): number | null {
+  if (view.width <= 0) return null;
+  if (item.x - PICKER_MARGIN < view.offset) return Math.max(0, item.x - PICKER_MARGIN);
+  if (item.x + item.width + PICKER_MARGIN > view.offset + view.width) return item.x + item.width + PICKER_MARGIN - view.width;
+  return null;
+}

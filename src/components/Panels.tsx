@@ -10,6 +10,7 @@ import { LANGUAGES, LANGUAGE_NAMES, type TextKey } from "../domain/text";
 import { useT } from "../i18n";
 import type { Settings } from "../settings";
 import { Btn, Card, Chips, DragLockContext, Input, Slider, T, colors } from "../ui";
+import { CharacterPicker } from "./CharacterPicker";
 import { GoogleButton } from "./GoogleButton";
 
 /** Explains what location is used for before the public garden opens. Nothing is requested until the user agrees. */
@@ -142,7 +143,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 }
 
 /**
- * Everything that is not handling a speaker lives here: sound on and off, volume, language, character name, chat
+ * Everything that is not handling a speaker lives here: sound on and off, volume, character, language, character name, chat
  * cue, presets, account and leaving the garden. `shownName` is the name currently above the character. `onName`
  * receives a checked name, or "" to go back to the account name; `nameError` is the server's refusal, if any.
  */
@@ -169,6 +170,9 @@ export function SettingsCard({ settings, user, online, playing, shownName, nameE
           <Group title={t("settings.sound")}>
             <Btn variant={playing ? "mint" : "primary"} title={t(playing ? "settings.soundOff" : "settings.soundOn")} onPress={onToggleSound} testID="toggle-sound" />
             <Slider label={t("settings.volume")} value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
+          </Group>
+          <Group title={t("settings.character")}>
+            <CharacterPicker value={settings.character} onChange={(character) => onChange({ ...settings, character })} />
           </Group>
           <Group title={t("settings.language")}>
             <Chips label={t("settings.language")} value={settings.language} options={LANGUAGES.map((language) => ({ value: language, label: LANGUAGE_NAMES[language] }))} onChange={(language) => onChange({ ...settings, language })} />

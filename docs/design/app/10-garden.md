@@ -78,9 +78,9 @@ flowchart LR
 ## Sound Shadows
 
 - Input: a speaker's sound.
-- Output: a round shadow on the ground under the trees, speakers and characters.
+- Output: concentric sound waves on the ground under the trees, speakers and characters.
 - Code: `src/game/sprites.tsx` → `SoundShadow`, `shadowSize()`, `shadowStrength()`, `SHADOW_TINT`; placed in `src/game/Scene.tsx`.
-- The shadow is a radial gradient in the noise colour (brown `#7a4a21`, pink `#ff4f98`, white `#ffffff`) stretched to the reach seen in quarter view: `reach × 72 × √2` wide and half that high.
+- Three rings in the noise colour (brown `#8a5326`, pink `#ff4f98`, white `#ffffff`) grow from the speaker to the reach seen in quarter view (`reach × 72 × √2` wide and half that high) in 2.7 s each, a third of a cycle apart, and fade out as they grow. A faint ellipse fills the reach. `shadowStrength()` sets the ring brightness from the volume. The rings are `Animated` views, so they run on the native driver in the apps.
 - The centre opacity is `0.14 + 0.5 × volume`, and zero for a silent speaker. Outward the opacity falls to 62%, 32%, 10% and 0% of the centre at each quarter of the reach.
 - Shadows are drawn with ordinary transparency, so overlapping shadows blend their colours.
 - The scene draws the shadow from the same list the audio engine gets, in which a held speaker sits at the character's position.
@@ -130,11 +130,12 @@ flowchart LR
 - Input: a stored or edited equalizer; drag positions on the graph; analyser data.
 - Output: a valid `Equalizer`, the response curve, and the drawn graph.
 - Code: `src/domain/equalizer.ts` → `normalizeEqualizer()`, `equalizerResponse()`, `moveBand()`, `handleOf()`, `hzToX()`, `xToHz()`, `dbToY()`, `yToDb()`, `graphFrequencies()`, `peakBoost()`, `EQ_LIMITS`; `src/components/EqGraph.tsx` → `EqGraph`; `src/audio/engine.ts` → `GardenAudio.spectrum()`, `tune()`.
-- The model is `{highpass, lowShelf: {frequency, gain}, bell: {frequency, gain, q}, highShelf: {frequency, gain}, lowpass}`. The first format (`eq.low`, `eq.mid`, `eq.high` plus a separate `filter`) is still read and converted.
-- The curve is the sum in dB of five second-order filters computed with the Audio EQ Cookbook formulas, the same ones the audio nodes use, at 96 frequencies spread by octave. The cuts use Q 0.707 and the shelves slope 1.
-- The graph maps 20 Hz to 20 kHz across its width by logarithm and +18 dB to -30 dB down its height. A press picks the nearest handle within 36 px; dragging calls `moveBand()`, which clamps every value and keeps the high cut at or above the low cut.
+- The model is `{bands: [{type, frequency, gain, q}] × 3}` with `type` one of `bell`, `lowcut`, `lowshelf`, `highshelf`, `highcut`; frequency 20 Hz to 20 kHz, gain -24 to +12 dB, Q 0.3 to 8. Older formats are still read: the five-band format becomes low shelf (or the low cut when it was set and the shelf was flat), bell, high shelf (or the high cut likewise); the first format (`eq.low`, `eq.mid`, `eq.high` plus a separate `filter`) the same way.
+- `bandCoefficients()` computes each point's second-order filter with the Audio EQ Cookbook formulas, using its Q for every kind. The curve is the sum in dB of the three at 96 frequencies spread by octave, and the audio engine plays the same coefficients through `IIRFilterNode`s, so the curve and the sound match. Web Audio shelves have no Q, which is why biquad nodes are not used.
+- An IIR filter cannot glide, so a changed point builds a new filter beside the old one and crossfades in about 20 ms; swaps of one point are at most every 30 ms while dragging.
+- The graph maps 20 Hz to 20 kHz across its width by logarithm and +18 dB to -30 dB down its height. A press picks the nearest handle within 36 px; dragging calls `moveBand()`, which clamps every value. The kind chips call `setBandType()` and the Q knob `updateBand()`.
 - The analyser is read every 80 ms. `spectrum(speakerId)` attaches an analyser after that speaker's trim gain on first use; when the speaker has no voice (out of range) it uses an analyser on the bus. Levels from -100 dB to -10 dB fill the graph height.
-- The trim gain divides by the largest boost (`peakBoost()`), so boosting a band reshapes the sound without raising its peak level.
+- The trim gain divides by the highest point of the curve (`peakBoost()`), so boosting a band, or the bump of a narrow shelf or resonant cut, reshapes the sound without raising its peak level.
 - Scenario: Low shelf +9 dB at 200 Hz, bell -12 dB at 1 kHz with Q 2, high shelf +6 dB at 4 kHz → the curve reads about +9 dB at 40 Hz, +4.5 dB at 200 Hz, -12 dB at 1 kHz and +6 dB at 12 kHz.
 
 ## Characters
@@ -173,7 +174,7 @@ stateDiagram-v2
 - `liftable` is the nearest stored speaker within 1.6 tiles while the hands are free and no action plays; its lift button is a marker beside it.
 - `play(name, colour, after)` sets the action, blocks walking through `acting`, and after `actionDuration()` clears it and runs `after`. Making adds the speaker at the character's position and holds it; discarding removes it (and calls `deleteSpeaker` in the public garden).
 - The held speaker stays in the stored list at its old position; the list given to the scene and the audio engine has it at the character's position. Edits always start from the stored list, so a temporary position is never saved.
-- Put down stores the character position plus one step toward the facing side, clamped to the garden.
+- Put down plays the `putDown` action, which is `lift` played backwards (`actionAt()` reads `lift` at `duration - t`), and when it ends stores the character position plus one step toward the facing side, clamped to the garden.
 - When the held speaker disappears from the stored list (another editor removed it), the hands become free.
 - Scenario: The character stands next to a speaker → lift → walk 4 tiles right → edit, raise the volume, close → put down → the speaker stands one step in front of the character with the new volume, and only now has its stored position changed.
 

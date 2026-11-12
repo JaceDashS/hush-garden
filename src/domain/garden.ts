@@ -1,5 +1,5 @@
 /** Speaker layout editing and presets. Used by the public garden editor and by the private offline garden. */
-import { flatEqualizer } from "./equalizer";
+import { NEUTRAL_Q, flatEqualizer, type EqBand } from "./equalizer";
 import { MAX_SPEAKERS, defaultSound, normalizeSound, type Speaker, type SpeakerSound } from "./sound";
 import { GARDEN_SIZE, clampToGarden, type Point } from "./world";
 
@@ -17,7 +17,12 @@ export interface MyGarden {
 }
 
 const sound = (patch: Partial<SpeakerSound>): SpeakerSound => normalizeSound({ ...defaultSound(), ...patch });
-const eq = (patch: Partial<SpeakerSound["eq"]>): SpeakerSound["eq"] => ({ ...flatEqualizer(), ...patch });
+/** An equalizer with some of its three points changed. */
+const eq = (...patches: (Partial<EqBand> | null)[]): SpeakerSound["eq"] => {
+  const flat = flatEqualizer();
+  return { bands: flat.bands.map((band, index) => ({ ...band, ...patches[index] })) as SpeakerSound["eq"]["bands"] };
+};
+const highCut = (frequency: number): Partial<EqBand> => ({ type: "highcut", frequency, q: NEUTRAL_Q });
 const mid = GARDEN_SIZE / 2;
 
 /** Presets shipped with the app. The first one is the garden a new user starts with. */
@@ -28,15 +33,15 @@ export const BUILT_IN_PRESETS: readonly Preset[] = [
     speakers: [
       { id: "meadow-1", name: "Brown", x: mid - 4, y: mid, sound: sound({ noise: { color: "brown", level: 0.85 }, oscillators: [{ wave: "sine", frequency: 55, level: 0.6 }] }) },
       { id: "meadow-2", name: "Pink", x: mid + 4, y: mid - 3, sound: sound({ noise: { color: "pink", level: 0.7 }, oscillators: [{ wave: "sine", frequency: 60, level: 0.4 }] }) },
-      { id: "meadow-3", name: "White", x: mid + 2, y: mid + 5, sound: sound({ noise: { color: "white", level: 0.55 }, oscillators: [{ wave: "sine", frequency: 50, level: 0.5 }], eq: eq({ lowpass: 9000 }) }) },
+      { id: "meadow-3", name: "White", x: mid + 2, y: mid + 5, sound: sound({ noise: { color: "white", level: 0.55 }, oscillators: [{ wave: "sine", frequency: 50, level: 0.5 }], eq: eq(null, null, highCut(9000)) }) },
     ],
   },
   {
     id: "builtin-rain",
     name: "White Rain",
     speakers: [
-      { id: "rain-1", name: "Rain", x: mid, y: mid, sound: sound({ volume: 0.9, noise: { color: "white", level: 0.7 }, oscillators: [{ wave: "sine", frequency: 48, level: 0.5 }], eq: eq({ lowShelf: { frequency: 200, gain: 3 }, bell: { frequency: 2500, gain: -4, q: 1 }, highShelf: { frequency: 4000, gain: -3 } }) }) },
-      { id: "rain-2", name: "Thunder", x: mid - 6, y: mid + 6, sound: sound({ volume: 0.6, noise: { color: "brown", level: 0.9 }, oscillators: [{ wave: "sine", frequency: 40, level: 1 }], eq: eq({ lowpass: 1200 }) }) },
+      { id: "rain-1", name: "Rain", x: mid, y: mid, sound: sound({ volume: 0.9, noise: { color: "white", level: 0.7 }, oscillators: [{ wave: "sine", frequency: 48, level: 0.5 }], eq: eq({ gain: 3 }, { frequency: 2500, gain: -4 }, { gain: -3 }) }) },
+      { id: "rain-2", name: "Thunder", x: mid - 6, y: mid + 6, sound: sound({ volume: 0.6, noise: { color: "brown", level: 0.9 }, oscillators: [{ wave: "sine", frequency: 40, level: 1 }], eq: eq(null, null, highCut(1200)) }) },
     ],
   },
   {
@@ -44,7 +49,7 @@ export const BUILT_IN_PRESETS: readonly Preset[] = [
     name: "Deep Focus",
     speakers: [
       { id: "focus-1", name: "Hum", x: mid - 3, y: mid - 3, sound: sound({ noise: { color: "brown", level: 0.6 }, oscillators: [{ wave: "sine", frequency: 60, level: 0.8 }, { wave: "triangle", frequency: 120, level: 0.15 }] }) },
-      { id: "focus-2", name: "Air", x: mid + 4, y: mid + 3, sound: sound({ noise: { color: "pink", level: 0.75 }, oscillators: [{ wave: "sine", frequency: 52, level: 0.55 }], eq: eq({ highpass: 80, lowpass: 7000 }) }) },
+      { id: "focus-2", name: "Air", x: mid + 4, y: mid + 3, sound: sound({ noise: { color: "pink", level: 0.75 }, oscillators: [{ wave: "sine", frequency: 52, level: 0.55 }], eq: eq({ type: "lowcut", frequency: 80 }, null, highCut(7000)) }) },
     ],
   },
 ];

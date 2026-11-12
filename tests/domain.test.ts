@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CARRY, actionAt, actionDuration, actionFrames } from "../src/domain/actions.ts";
-import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor } from "../src/domain/characters.ts";
+import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor, scrollToShow, stepCharacter } from "../src/domain/characters.ts";
 import { LANGUAGES, TEXTS, languageForLocale, normalizeLanguage, translate, type TextKey } from "../src/domain/text.ts";
 import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
-import { BAND_IDS, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, peakBoost, xToHz, yToDb } from "../src/domain/equalizer.ts";
+import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, peakBoost, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { MAX_OSCILLATORS, MAX_SPEAKERS, REACH, WAVES, audibleCount, defaultSound, gainAt, loudnessAt, mixFor, normalizeSound, reachOf, waveShape, type Speaker } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
@@ -66,12 +66,14 @@ test("a speaker to the right on screen pans right", () => {
 });
 
 test("sound values are clamped and broken input falls back to defaults", () => {
-  const sound = normalizeSound({ volume: 9, radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], eq: { highpass: 1500, lowpass: 300 } });
+  const sound = normalizeSound({ volume: 9, radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], eq: { bands: [{ type: "lowcut", frequency: 99999, q: 99 }, { type: "nope" }] } });
   assert.equal(sound.volume, 1);
   assert.equal("radius" in sound, false);
   assert.equal(sound.noise.color, "brown");
   assert.equal(sound.oscillators.length, MAX_OSCILLATORS);
-  assert.ok(sound.eq.lowpass >= sound.eq.highpass);
+  assert.deepEqual(sound.eq.bands[0], { type: "lowcut", frequency: 20000, gain: 0, q: EQ_LIMITS.q[1] });
+  assert.equal(sound.eq.bands[1].type, "bell");
+  assert.equal(sound.eq.bands.length, BAND_COUNT);
   assert.deepEqual(normalizeSound(null), defaultSound());
 });
 
@@ -154,23 +156,35 @@ test("a walking character cycles through different pictures and a standing one k
 
 const near = (actual: number, expected: number, tolerance: number) => assert.ok(Math.abs(actual - expected) <= tolerance, actual + " is not within " + tolerance + " of " + expected);
 
-test("a flat equalizer changes nothing in the middle and cuts the far ends", () => {
-  const [low, mid, high] = equalizerResponse(flatEqualizer(), [5, 1000, 23000]);
-  near(mid, 0, 0.1);
-  assert.ok(low < -12 && high < -3);
+test("a flat equalizer changes nothing", () => {
+  for (const gain of equalizerResponse(flatEqualizer(), [20, 200, 1000, 8000, 20000])) near(gain, 0, 0.01);
+  assert.equal(peakBoost(flatEqualizer()), 0);
 });
 
 test("each band shapes its own part of the curve", () => {
-  const eq = { ...flatEqualizer(), lowShelf: { frequency: 200, gain: 9 }, bell: { frequency: 1000, gain: -12, q: 2 }, highShelf: { frequency: 4000, gain: 6 } };
+  const eq: Equalizer = { bands: [{ type: "lowshelf", frequency: 200, gain: 9, q: NEUTRAL_Q }, { type: "bell", frequency: 1000, gain: -12, q: 2 }, { type: "highshelf", frequency: 4000, gain: 6, q: NEUTRAL_Q }] };
   const [bass, shelfCorner, middle, treble] = equalizerResponse(eq, [40, 200, 1000, 12000]);
   near(bass, 9, 1);
   near(shelfCorner, 4.5, 1);
   near(middle, -12, 1);
   near(treble, 6, 1);
-  const cut = equalizerResponse({ ...flatEqualizer(), highpass: 500, lowpass: 2000 }, [500, 1000, 2000, 8000]);
+  const cut = equalizerResponse({ bands: [{ type: "lowcut", frequency: 500, gain: 0, q: NEUTRAL_Q }, { type: "bell", frequency: 1000, gain: 0, q: 1 }, { type: "highcut", frequency: 2000, gain: 0, q: NEUTRAL_Q }] }, [500, 1000, 2000, 8000]);
   near(cut[0], -3, 0.5);
   near(cut[2], -3, 0.5);
   assert.ok(cut[1] > -1 && cut[3] < -20);
+});
+
+test("every point can be any filter kind and Q shapes every kind", () => {
+  for (const type of BAND_TYPES) {
+    const narrow = updateBand(setBandType(flatEqualizer(), 0, type), 0, { frequency: 1000, gain: 6, q: 4 });
+    const wide = updateBand(narrow, 0, { q: 0.5 });
+    assert.equal(narrow.bands[0].type, type);
+    const [a, b] = [equalizerResponse(narrow, [700])[0], equalizerResponse(wide, [700])[0]];
+    assert.ok(Math.abs(a - b) > 0.5, type + ": Q changed nothing");
+  }
+  // A resonant cut rings above 0 dB, and the trim counts that bump.
+  const ringing = updateBand(setBandType(flatEqualizer(), 2, "highcut"), 2, { frequency: 2000, q: 6 });
+  assert.ok(peakBoost(ringing) > 10);
 });
 
 test("graph positions convert both ways and stay on the graph", () => {
@@ -184,25 +198,24 @@ test("graph positions convert both ways and stay on the graph", () => {
   near(points[63], 20000, 0.01);
 });
 
-test("dragging a band keeps every value in range and the cuts in order", () => {
+test("dragging a band keeps every value in range", () => {
   let eq = flatEqualizer();
-  eq = moveBand(eq, "bell", 99999, 99);
-  assert.deepEqual([eq.bell.frequency, eq.bell.gain], [8000, 12]);
-  eq = moveBand(eq, "lowShelf", 1, -99);
-  assert.deepEqual([eq.lowShelf.frequency, eq.lowShelf.gain], [40, -24]);
-  eq = moveBand(eq, "lowpass", 300, 5);
-  eq = moveBand(eq, "highpass", 1500, 5);
-  assert.ok(eq.highpass <= eq.lowpass);
-  assert.deepEqual(handleOf(eq, "lowpass"), { hz: eq.lowpass, db: 0 });
-  assert.equal(BAND_IDS.length, 5);
-  assert.equal(peakBoost(eq), 12);
-  assert.equal(peakBoost(flatEqualizer()), 0);
+  eq = moveBand(eq, 1, 99999, 99);
+  assert.deepEqual([eq.bands[1].frequency, eq.bands[1].gain], [20000, 12]);
+  eq = moveBand(eq, 0, 1, -99);
+  assert.deepEqual([eq.bands[0].frequency, eq.bands[0].gain], [20, -24]);
+  eq = setBandType(eq, 2, "highcut");
+  eq = moveBand(eq, 2, 3000, 9);
+  assert.deepEqual(handleOf(eq, 2), { hz: 3000, db: 0 });
+  assert.equal(eq.bands[2].q, NEUTRAL_Q);
 });
 
-test("the first sound format with separate filters is still read", () => {
+test("older sound formats are still read", () => {
   const eq = normalizeEqualizer({ low: 3, mid: { frequency: 2500, gain: -4, q: 1 }, high: -3 }, { highpass: 80, lowpass: 7000 });
-  assert.deepEqual(eq, { highpass: 80, lowShelf: { frequency: 200, gain: 3 }, bell: { frequency: 2500, gain: -4, q: 1 }, highShelf: { frequency: 4000, gain: -3 }, lowpass: 7000 });
-  assert.equal(normalizeSound({ filter: { highpass: 100, lowpass: 5000 } }).eq.lowpass, 5000);
+  assert.deepEqual(eq.bands.map((band) => [band.type, band.frequency, band.gain]), [["lowshelf", 200, 3], ["bell", 2500, -4], ["highshelf", 4000, -3]]);
+  const five = normalizeEqualizer({ highpass: 80, lowShelf: { frequency: 200, gain: 0 }, bell: { frequency: 900, gain: 2, q: 3 }, highShelf: { frequency: 4000, gain: 0 }, lowpass: 7000 });
+  assert.deepEqual(five.bands.map((band) => [band.type, band.frequency]), [["lowcut", 80], ["bell", 900], ["highcut", 7000]]);
+  assert.equal(normalizeSound({ filter: { highpass: 100, lowpass: 5000 } }).eq.bands[2].frequency, 5000);
   assert.deepEqual(normalizeEqualizer(null), flatEqualizer());
 });
 
@@ -361,4 +374,28 @@ test("names that look like staff or the service are refused, ordinary words are 
   for (const name of ["Admin", "ADM1N", "a d m i n", "the_moderator", "관리자", "운 영 자", "GM", "jace-s", "Hush Garden", "@dmin", "0wner"]) assert.equal(isReservedName(name), true, name);
   for (const name of ["Gmail fan", "Modest", "Devon", "정원사", "ねこ", "Robot", "Guest"]) assert.equal(isReservedName(name), false, name);
   assert.deepEqual(checkName("Official Mina"), { ok: false, problem: "reserved" });
+});
+
+test("putting a speaker down plays the lift backwards", () => {
+  const length = actionDuration("cat", "putDown");
+  assert.equal(length, actionDuration("cat", "lift"));
+  for (const ms of [0, 50, 150, 300]) assert.deepEqual({ ...actionAt("cat", "putDown", ms), done: false }, { ...actionAt("cat", "lift", length - ms), done: false });
+  assert.deepEqual(actionAt("cat", "putDown", 0).prop, CARRY);
+  assert.equal(actionAt("cat", "putDown", length).done, true);
+});
+
+test("the arrows step through the characters and the row scrolls to the chosen one", () => {
+  const last = CHARACTER_KINDS[CHARACTER_KINDS.length - 1];
+  assert.equal(stepCharacter(CHARACTER_KINDS[0], 1), CHARACTER_KINDS[1]);
+  assert.equal(stepCharacter(CHARACTER_KINDS[0], -1), last);
+  assert.equal(stepCharacter(last, 1), CHARACTER_KINDS[0]);
+  assert.equal(scrollToShow({ x: 100, width: 60 }, { offset: 0, width: 300 }), null);
+  assert.equal(scrollToShow({ x: 400, width: 60 }, { offset: 0, width: 300 }), 172);
+  assert.equal(scrollToShow({ x: 20, width: 60 }, { offset: 200, width: 300 }), 8);
+});
+
+test("every language has every text", () => {
+  assert.ok(LANGUAGES.includes("zh"));
+  for (const language of LANGUAGES) for (const key of Object.keys(TEXTS.ko) as TextKey[]) assert.ok(TEXTS[language][key], language + " " + key);
+  assert.equal(languageForLocale("zh-CN"), "zh");
 });

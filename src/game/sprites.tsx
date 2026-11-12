@@ -1,5 +1,6 @@
 /** Vector artwork: ground tiles, characters, speakers and garden decorations. All drawn in code, no image files. */
-import React from "react";
+import React, { useEffect, useRef } from "react";
+import { Animated, Easing, Platform, View } from "react-native";
 import Svg, { Circle, Defs, Ellipse, G, Path, Polygon, RadialGradient, Rect, Stop } from "react-native-svg";
 import { reachOf, waveShape, type NoiseColor, type SpeakerSound, type Wave } from "../domain/sound";
 import { GARDEN_SIZE, TILE_HEIGHT, TILE_WIDTH, toScreen } from "../domain/world";
@@ -94,42 +95,66 @@ export const SpeakerArt = React.memo(function SpeakerArt({ color, selected, play
   );
 });
 
-/** Colour of the sound shadow a speaker casts, by its noise colour. */
-export const SHADOW_TINT: Record<NoiseColor, string> = { brown: "#7a4a21", pink: "#ff4f98", white: "#ffffff" };
-/** Share of the centre darkness left at each quarter of the way out to the reach. */
-const SHADOW_FALLOFF = [1, 0.62, 0.32, 0.1, 0] as const;
+/** Colour of the sound waves a speaker sends out, by its noise colour: pink noise is pink, brown noise brown. */
+export const SHADOW_TINT: Record<NoiseColor, string> = { brown: "#8a5326", pink: "#ff4f98", white: "#ffffff" };
+/** Rings that spread from one speaker at a time, and the seconds one ring takes to reach the edge. */
+const RIPPLE_COUNT = 3;
+const RIPPLE_SECONDS = 2.7;
+const NATIVE_DRIVER = Platform.OS !== "web";
 
-/** How dark the centre of a speaker's sound shadow is (0 to 1): louder is darker, a silent speaker casts none. */
+/** How strong a speaker's sound waves look (0 to 1): louder is stronger, a silent speaker sends none. */
 export function shadowStrength(sound: Pick<SpeakerSound, "volume">): number {
-  return sound.volume <= 0 ? 0 : 0.14 + 0.5 * sound.volume;
+  return sound.volume <= 0 ? 0 : 0.45 + 0.55 * sound.volume;
 }
 
-/** Screen size of a speaker's sound shadow: its round reach seen in quarter view. */
+/** Screen size of the area a speaker is heard in: its round reach seen in quarter view. Louder reaches further. */
 export function shadowSize(sound: Pick<SpeakerSound, "volume">): { width: number; height: number } {
   const reach = reachOf(sound);
   return { width: reach * TILE_WIDTH * Math.SQRT2, height: reach * TILE_HEIGHT * Math.SQRT2 };
 }
 
+/** One ring: it grows from the speaker to the edge of its reach and fades out on the way. */
+function Ripple({ index, width, height, color, strength }: { index: number; width: number; height: number; color: string; strength: number }) {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(progress, { toValue: 1, duration: RIPPLE_SECONDS * 1000, easing: Easing.out(Easing.quad), useNativeDriver: NATIVE_DRIVER }));
+    const delay = setTimeout(() => loop.start(), (index * RIPPLE_SECONDS * 1000) / RIPPLE_COUNT);
+    return () => {
+      clearTimeout(delay);
+      loop.stop();
+    };
+  }, [index, progress]);
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.06, 1] });
+  const opacity = progress.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, strength, 0] });
+  // A circle squashed to the quarter view; the border is thicker than it looks so it stays visible when small.
+  const border = Math.max(3, width * 0.018);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{ position: "absolute", left: 0, top: (height - width) / 2, width, height: width, borderRadius: width / 2, borderWidth: border, borderColor: color, backgroundColor: color + "1f", opacity, transform: [{ scaleY: height / width }, { scale }] }}
+    />
+  );
+}
+
 /**
- * The sound of a speaker drawn on the ground: a soft round shadow in its noise colour, darkest at the speaker and
- * fading to nothing where it stops being heard. Overlapping shadows blend. The caller centres the view on the
- * speaker using shadowSize().
+ * The sound of a speaker drawn on the ground: rings in its noise colour that keep spreading from the speaker to
+ * where it stops being heard, with a faint fill of that area. A louder speaker sends bigger and brighter rings.
+ * The caller centres the view on the speaker using shadowSize().
  */
-export const SoundShadow = React.memo(function SoundShadow({ id, sound }: { id: string; sound: SpeakerSound }) {
+export const SoundShadow = React.memo(function SoundShadow({ sound }: { id: string; sound: SpeakerSound }) {
   const { width, height } = shadowSize(sound);
   const strength = shadowStrength(sound);
-  const gradient = "shade-" + id.replace(/[^A-Za-z0-9_-]/g, "");
+  const color = SHADOW_TINT[sound.noise.color];
+  if (strength <= 0) return null;
   return (
-    <Svg width={width} height={height} viewBox="0 0 100 100" preserveAspectRatio="none" pointerEvents="none">
-      <Defs>
-        <RadialGradient id={gradient} cx="50" cy="50" r="50" gradientUnits="userSpaceOnUse">
-          {SHADOW_FALLOFF.map((share, index) => (
-            <Stop key={index} offset={index / (SHADOW_FALLOFF.length - 1)} stopColor={SHADOW_TINT[sound.noise.color]} stopOpacity={strength * share} />
-          ))}
-        </RadialGradient>
-      </Defs>
-      <Circle cx={50} cy={50} r={50} fill={"url(#" + gradient + ")"} />
-    </Svg>
+    <View pointerEvents="none" style={{ width, height }}>
+      <Svg width={width} height={height} style={{ position: "absolute", left: 0, top: 0 }}>
+        <Ellipse cx={width / 2} cy={height / 2} rx={width / 2} ry={height / 2} fill={color} fillOpacity={0.07 + 0.08 * sound.volume} />
+      </Svg>
+      {Array.from({ length: RIPPLE_COUNT }, (_, index) => (
+        <Ripple key={index} index={index} width={width} height={height} color={color} strength={strength} />
+      ))}
+    </View>
   );
 });
 

@@ -48,26 +48,27 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 
 ## Sound Shadows
 
-- Every speaker always shows its sound on the ground as a soft round shadow; no mode has to be switched on to see it.
-- The shadow has the colour of the noise: brown for brown noise, pink for pink noise, white for white noise.
-- A louder speaker casts a darker shadow. The shadow is darkest at the speaker and fades out to nothing at the speaker's reach, as the sound does.
-- Where shadows overlap, their colours blend.
+- Every speaker always shows its sound on the ground as concentric sound waves: rings that keep spreading from the speaker and fade out at the speaker's reach, over a faint fill of the area it is heard in. No mode has to be switched on to see it.
+- The waves have the colour of the noise: brown for brown noise, pink for pink noise, white for white noise.
+- A louder speaker is heard further away, so its waves spread wider, and they are brighter. A silent speaker sends none.
+- Where waves overlap, their colours blend.
 - A held speaker's shadow moves with the character.
 
 ## Equalizer
 
-- The equalizer and the low and high filters are one control: a single curve with five bands, in the style of graphical parametric equalizers. From left to right: low cut, low shelf, bell, high shelf, high cut.
-- The curve is drawn on a graph of frequency (20 Hz to 20 kHz, by octave) against gain. Each band is a numbered point on the curve. Dragging a point sideways changes its frequency and dragging it up or down changes its gain. The two cut points only move sideways. The bell has a width (Q) control.
-- The high cut never goes below the low cut.
+- The equalizer and the low and high filters are one control: a single curve with three points, in the style of graphical parametric equalizers. A new speaker starts with a low boost, a bell and a high boost.
+- Every point can be switched to any of five filter kinds: bell, low cut, low boost (low shelf), high boost (high shelf) and high cut. Every kind has a Q.
+- The curve is drawn on a graph of frequency (20 Hz to 20 kHz, by octave) against gain. Each point is numbered on the curve. Dragging a point sideways changes its frequency and dragging it up or down changes its gain. A cut point only moves sideways.
+- Selecting a point shows its filter kind as choices and its Q on a knob.
 - A spectrum analyser is drawn behind the curve: the live spectrum of the held speaker after its equalizer, or of the whole mix when that speaker is out of hearing range.
-- The selected band's name, frequency and gain are shown under the graph.
+- The selected point's number, kind, frequency and gain are shown under the graph.
 
 ## Handling Speakers
 
 - There is no edit mode and no edit button in the top bar. A speaker is handled with the character's hands.
 - Lift: when the character stands within 1.6 tiles of a speaker and its hands are free, a "lift" button appears beside that speaker. Pressing it lifts the speaker overhead.
 - While holding, the character walks as usual with both arms up, and the speaker's sound and shadow move with it. Two buttons appear beside the character: "put down" and "edit".
-- Put down places the speaker one step in front of the character.
+- Put down plays the lift animation backwards and then places the speaker one step in front of the character.
 - Edit opens the sound controls. A speaker can be edited only while it is held; putting it down or discarding it closes the controls.
 - Make: the top left button "make a speaker" plays the character's making animation; when it ends, a new speaker with the default sound is in the character's hands.
 - Discard: while holding, the top left button becomes "discard speaker". It plays the character's discarding animation; when it ends, the speaker is gone.
@@ -86,11 +87,11 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Top left: the speaker button (make, or discard while holding), for players who may edit.
 - Top centre: the garden name, the number of visitors in the public garden, and the number of speakers heard.
 - Top right: a settings icon.
-- Settings hold everything else: sound on and off, master volume, language, character name, nearby chat cue, presets (private garden), account (public garden) and leaving the garden.
+- Settings hold everything else: sound on and off, master volume, character, language, character name, nearby chat cue, presets (private garden), account (public garden) and leaving the garden.
 
 ## Languages
 
-- The screens are in Korean, English or Japanese. The player chooses in settings; the choice is kept on the device.
+- The screens are in Korean, English, Japanese or Chinese (simplified). The player chooses in settings; the choice is kept on the device.
 - Until the player chooses, the device language is used, or English when the device uses another language.
 
 ## Private Garden

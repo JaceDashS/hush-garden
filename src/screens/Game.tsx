@@ -424,12 +424,16 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   /** Puts the carried speaker down one step in front of the character. */
   const putDown = () => {
-    if (!carryId || acting.current) return;
-    const ahead = toGarden({ x: facing * 40, y: 14 });
-    const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
+    if (!carryId || !carried || acting.current) return;
+    const id = carryId;
     setEditing(false);
-    setCarryId(null);
-    changeSpeakers(moveSpeaker(placedRef.current, carryId, spot), carryId);
+    // The lift played backwards; the speaker lands when it ends.
+    play("putDown", carried.sound.noise.color, () => {
+      const ahead = toGarden({ x: facing * 40, y: 14 });
+      const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
+      setCarryId(null);
+      if (placedRef.current.some((speaker) => speaker.id === id)) changeSpeakers(moveSpeaker(placedRef.current, id, spot), id);
+    });
   };
 
   /** Makes a new speaker; when the character's animation ends, the speaker is in its hands. */

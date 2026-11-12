@@ -1,14 +1,15 @@
 /**
- * Graphical equalizer: one curve with five draggable bands over a live spectrum. Drag a handle left and right
- * for frequency and up and down for gain; the two cut handles only move sideways.
+ * Graphical equalizer: one curve with three draggable points over a live spectrum. Drag a handle left and right
+ * for frequency and up and down for gain; a cut handle only moves sideways. The selected point can be switched to
+ * another filter kind and its Q is turned with a knob.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
-import { BAND_IDS, EQ_LIMITS, dbToY, equalizerResponse, graphFrequencies, handleOf, hzToX, moveBand, xToHz, yToDb, type BandId, type Equalizer } from "../domain/equalizer";
+import { BAND_INDEXES, BAND_TYPES, EQ_LIMITS, dbToY, equalizerResponse, graphFrequencies, handleOf, hzToX, isCut, moveBand, setBandType, updateBand, xToHz, yToDb, type BandType, type Equalizer } from "../domain/equalizer";
 import type { TextKey } from "../domain/text";
 import { useT } from "../i18n";
-import { NO_TOUCH_SCROLL, Slider, T, colors, useDragLock } from "../ui";
+import { Chips, Knob, NO_TOUCH_SCROLL, T, colors, useDragLock } from "../ui";
 
 const HEIGHT = 180;
 const POINTS = 96;
@@ -17,8 +18,8 @@ const SPECTRUM_MS = 80;
 /** Spectrum levels between these dB values fill the graph from bottom to top. */
 const SPECTRUM_DB = [-100, -10] as const;
 
-const BAND_LABELS: Record<BandId, TextKey> = { highpass: "eq.highpass", lowShelf: "eq.lowShelf", bell: "eq.bell", highShelf: "eq.highShelf", lowpass: "eq.lowpass" };
-const BAND_COLORS: Record<BandId, string> = { highpass: "#8d7f72", lowShelf: "#e9728f", bell: "#5fb893", highShelf: "#6fa8dc", lowpass: "#8d7f72" };
+const TYPE_LABELS: Record<BandType, TextKey> = { bell: "eq.type.bell", lowcut: "eq.type.lowcut", lowshelf: "eq.type.lowshelf", highshelf: "eq.type.highshelf", highcut: "eq.type.highcut" };
+const BAND_COLORS = ["#e9728f", "#5fb893", "#6fa8dc"] as const;
 const GRID_HZ = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
 const GRID_DB = [12, 0, -12, -24];
 
@@ -49,14 +50,14 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
   const t = useT();
   const lock = useDragLock();
   const [width, setWidth] = useState(0);
-  const [selected, setSelected] = useState<BandId>("bell");
+  const [selected, setSelected] = useState(1);
   const [spectrum, setSpectrum] = useState("");
   const frequencies = useMemo(() => graphFrequencies(POINTS), []);
   const root = useRef<React.ComponentRef<typeof View>>(null);
   const origin = useRef({ x: 0, y: 0 });
   const latest = useRef({ eq, width, onChange, readSpectrum, lock });
   latest.current = { eq, width, onChange, readSpectrum, lock };
-  const dragging = useRef<BandId | null>(null);
+  const dragging = useRef<number | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -72,7 +73,7 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
     const drag = (pageX: number, pageY: number) => {
       const state = latest.current;
       const band = dragging.current;
-      if (!band || state.width <= 0) return;
+      if (band === null || state.width <= 0) return;
       const at = local(pageX, pageY);
       state.onChange(moveBand(state.eq, band, xToHz(at.x / state.width), yToDb(at.y / HEIGHT)));
     };
@@ -87,9 +88,9 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
           origin.current = { x, y };
           const state = latest.current;
           const at = local(pageX, pageY);
-          let best: BandId | null = null;
+          let best: number | null = null;
           let bestGap = GRAB_PIXELS;
-          for (const band of BAND_IDS) {
+          for (const band of BAND_INDEXES) {
             const handle = handleOf(state.eq, band);
             const gap = Math.hypot(hzToX(handle.hz) * state.width - at.x, dbToY(handle.db) * HEIGHT - at.y);
             if (gap < bestGap) {
@@ -98,7 +99,7 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
             }
           }
           dragging.current = best;
-          if (best) setSelected(best);
+          if (best !== null) setSelected(best);
         });
       },
       onPanResponderMove: (event) => drag(event.nativeEvent.pageX, event.nativeEvent.pageY),
@@ -121,7 +122,8 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
   }, [eq, frequencies, width]);
 
   const handle = handleOf(eq, selected);
-  const isCut = selected === "highpass" || selected === "lowpass";
+  const band = eq.bands[selected];
+  const cut = isCut(band.type);
   return (
     <View style={{ gap: 6 }}>
       <View
@@ -145,11 +147,11 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
             ))}
             {!!spectrum && <Path d={spectrum} fill="rgba(143,214,180,0.28)" stroke="rgba(143,214,180,0.6)" strokeWidth={1} />}
             <Path d={curve} fill="none" stroke={colors.butter} strokeWidth={2.5} strokeLinejoin="round" />
-            {BAND_IDS.map((band, index) => {
+            {BAND_INDEXES.map((band, index) => {
               const at = handleOf(eq, band);
               const active = band === selected;
               return (
-                <React.Fragment key={band}>
+                <React.Fragment key={index}>
                   <Circle cx={hzToX(at.hz) * width} cy={dbToY(at.db) * HEIGHT} r={active ? 13 : 11} fill={BAND_COLORS[band]} stroke={colors.white} strokeWidth={active ? 3 : 1.5} />
                   <SvgText x={hzToX(at.hz) * width} y={dbToY(at.db) * HEIGHT + 3.5} fontSize={10} fontWeight="700" fill={colors.white} textAnchor="middle">{String(index + 1)}</SvgText>
                 </React.Fragment>
@@ -159,12 +161,15 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
         )}
       </View>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <T size={12.5} weight="800">{BAND_IDS.indexOf(selected) + 1 + ". " + t(BAND_LABELS[selected])}</T>
-        <T size={12.5} weight="700" tone="muted">{hz(handle.hz) + (isCut ? "" : " · " + db(handle.db))}</T>
+        <T size={12.5} weight="800">{t("eq.point", { n: selected + 1 }) + " · " + t(TYPE_LABELS[band.type])}</T>
+        <T size={12.5} weight="700" tone="muted">{hz(handle.hz) + (cut ? "" : " · " + db(handle.db))}</T>
       </View>
-      {selected === "bell" && (
-        <Slider label={t("eq.q")} log value={eq.bell.q} min={EQ_LIMITS.bellQ[0]} max={EQ_LIMITS.bellQ[1]} format={(value) => value.toFixed(2)} onChange={(q) => onChange({ ...eq, bell: { ...eq.bell, q } })} testID="eq-q" />
-      )}
+      <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+        <View style={{ flex: 1, minWidth: 0 }} testID="eq-type">
+          <Chips label={t("eq.type")} value={band.type} options={BAND_TYPES.map((type) => ({ value: type, label: t(TYPE_LABELS[type]) }))} onChange={(type) => onChange(setBandType(eq, selected, type))} />
+        </View>
+        <Knob label={t("eq.q")} log value={band.q} min={EQ_LIMITS.q[0]} max={EQ_LIMITS.q[1]} format={(value) => value.toFixed(2)} color={BAND_COLORS[selected]} onChange={(q) => onChange(updateBand(eq, selected, { q }))} testID="eq-q" />
+      </View>
       <T size={11.5} tone="muted">{t("eq.help")}</T>
     </View>
   );

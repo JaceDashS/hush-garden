@@ -98,6 +98,8 @@ export function Chips<V extends string>({ label, value, options, onChange }: { l
   );
 }
 
+const THUMB = 26;
+
 /**
  * Horizontal slider. `log` spreads frequencies evenly by octave. `format` turns the value into the shown text.
  */
@@ -111,7 +113,8 @@ export function Slider({ label, value, min, max, onChange, log, format = (v) => 
   const toRatio = (v: number) => (log ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min));
   const fromPage = (pageX: number) => {
     const s = latest.current;
-    const ratio = Math.max(0, Math.min(1, (pageX - left.current) / s.width));
+    // The thumb's centre travels between THUMB / 2 from each end, so it is never cut off at 0 or 100 %.
+    const ratio = Math.max(0, Math.min(1, (pageX - left.current - THUMB / 2) / Math.max(1, s.width - THUMB)));
     s.onChange(s.log ? s.min * Math.pow(s.max / s.min, ratio) : s.min + (s.max - s.min) * ratio);
   };
   const responder = useRef(
@@ -155,10 +158,10 @@ export function Slider({ label, value, min, max, onChange, log, format = (v) => 
         style={[{ height: 36, justifyContent: "center" }, NO_TOUCH_SCROLL]}
         {...responder.panHandlers}
       >
-        <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.track }}>
+        <View style={{ height: 8, borderRadius: 4, marginHorizontal: THUMB / 2, backgroundColor: colors.track }}>
           <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.mint, width: `${ratio * 100}%` }} />
         </View>
-        <View pointerEvents="none" style={{ position: "absolute", left: ratio * width - 13, width: 26, height: 26, borderRadius: 13, backgroundColor: colors.white, borderWidth: 3, borderColor: colors.mintDeep }} />
+        <View pointerEvents="none" style={{ position: "absolute", left: ratio * Math.max(0, width - THUMB), width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: colors.white, borderWidth: 3, borderColor: colors.mintDeep }} />
       </View>
     </View>
   );

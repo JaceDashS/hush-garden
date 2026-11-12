@@ -72,12 +72,12 @@
 - Code: `Pose`, `poseFor()`
 
 ## Equalizer
-- Definition: The single five-band curve of a speaker: low cut, low shelf, bell, high shelf, high cut. It replaces the earlier separate EQ and filters.
+- Definition: The single curve of a speaker made of three points; each point is a bell, low cut, low boost, high boost or high cut with its own Q. It replaces the earlier separate EQ and filters.
 - Code: `Equalizer`, `equalizerResponse()`, `EqGraph`
 
 ## Band
-- Definition: One of the five parts of the equalizer, shown as a numbered point on the graph.
-- Code: `BandId`, `moveBand()`
+- Definition: One of the three points of the equalizer, shown as a numbered point on the graph.
+- Code: `EqBand`, `BandType`, `moveBand()`, `setBandType()`
 
 ## Spectrum Analyser
 - Definition: The live picture of how loud each frequency is, drawn behind the equalizer curve.

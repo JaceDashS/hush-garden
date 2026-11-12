@@ -1,5 +1,6 @@
 /**
- * What a character does with a speaker: making one, discarding one and lifting one. Making and discarding are
+ * What a character does with a speaker: making one, discarding one, lifting one and putting it down (lifting
+ * played backwards). Making and discarding are
  * different for each of the ten characters; lifting is shared. Each action is a list of keyframes that the
  * scene plays back, so the motions are data and can be checked without drawing anything.
  *
@@ -7,7 +8,8 @@
  */
 import type { CharacterKind } from "./characters";
 
-export type ActionName = "create" | "discard" | "lift";
+/** `putDown` plays `lift` backwards. */
+export type ActionName = "create" | "discard" | "lift" | "putDown";
 /** What the thing in the character's hands looks like at the moment. */
 export type PropForm = "speaker" | "egg" | "yarn" | "leaf";
 export type FxKind = "puff" | "dirt" | "sparkle" | "crumbs" | "crack" | "leaves";
@@ -379,7 +381,7 @@ const DISCARD: Record<CharacterKind, readonly Keyframe[]> = {
 
 /** The keyframes of an action for a character. */
 export function actionFrames(kind: CharacterKind, name: ActionName): readonly Keyframe[] {
-  return name === "lift" ? LIFT : name === "create" ? CREATE[kind] : DISCARD[kind];
+  return name === "lift" || name === "putDown" ? LIFT : name === "create" ? CREATE[kind] : DISCARD[kind];
 }
 
 /** Length of an action in milliseconds. */
@@ -437,6 +439,10 @@ const riding = (state: Resolved): PropState => (state.ride ? { ...state.prop, x:
 
 /** The character and the prop `ms` milliseconds into an action. After the end it stays on the last keyframe. */
 export function actionAt(kind: CharacterKind, name: ActionName, ms: number): ActionMoment {
+  if (name === "putDown") {
+    const length = actionDuration(kind, "lift");
+    return { ...actionAt(kind, "lift", length - Math.max(0, Math.min(length, ms))), done: ms >= length };
+  }
   const frames = actionFrames(kind, name);
   const states = resolve(frames);
   const last = states[states.length - 1];
