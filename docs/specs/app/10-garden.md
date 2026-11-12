@@ -31,33 +31,72 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 ## Speakers And Sound
 
 - There is one kind of speaker. Every speaker has the same controls:
-  volume, hearing radius, noise (white, pink or brown) with its level, a bass drone (frequency and level), up to three oscillators (wave, frequency, level) and one equalizer.
-- A speaker is loudest next to it and fades smoothly to silence at its radius.
+  volume, noise (white, pink or brown) with its level, up to two oscillators and one equalizer.
+- There is no hearing distance setting. A louder speaker is heard farther away: its reach grows evenly from 2 tiles at volume 0 to 11 tiles at full volume.
+- A speaker is loudest next to it and fades smoothly to silence at its reach.
 - Speakers in range are heard together. The mix is turned down as a whole only when it would be louder than one speaker at full volume.
 - A speaker to the left on screen sounds from the left, and likewise for the right.
-- A bass drone under the noise is part of the default sound, because low sound helps masking.
+- Low sound helps masking, so the default sound carries a low tone: oscillator A starts as a 55 Hz sine. There is no separate bass control.
 - Sound never starts before the player presses a button.
+
+## Oscillators
+
+- A speaker has at most two oscillators, named OSC A and OSC B. The player adds and removes them.
+- Each oscillator is a panel in the manner of synthesiser panels: a display that draws its wave, four picture buttons that choose the wave (sine, triangle, square, sawtooth; pictures, not words), and two knobs: frequency (20 Hz to 8 kHz) and level.
+- A knob is turned by dragging up or right to raise and down or left to lower.
+- A sound saved while speakers still had a bass drone keeps its low tone: the drone becomes a sine oscillator of the same loudness in front of the others, and anything beyond two oscillators is dropped.
+
+## Sound Shadows
+
+- Every speaker always shows its sound on the ground as a soft round shadow; no mode has to be switched on to see it.
+- The shadow has the colour of the noise: brown for brown noise, pink for pink noise, white for white noise.
+- A louder speaker casts a darker shadow. The shadow is darkest at the speaker and fades out to nothing at the speaker's reach, as the sound does.
+- Where shadows overlap, their colours blend.
+- A held speaker's shadow moves with the character.
 
 ## Equalizer
 
 - The equalizer and the low and high filters are one control: a single curve with five bands, in the style of graphical parametric equalizers. From left to right: low cut, low shelf, bell, high shelf, high cut.
 - The curve is drawn on a graph of frequency (20 Hz to 20 kHz, by octave) against gain. Each band is a numbered point on the curve. Dragging a point sideways changes its frequency and dragging it up or down changes its gain. The two cut points only move sideways. The bell has a width (Q) control.
 - The high cut never goes below the low cut.
-- A spectrum analyser is drawn behind the curve: the live spectrum of the selected speaker after its equalizer, or of the whole mix when that speaker is out of hearing range.
+- A spectrum analyser is drawn behind the curve: the live spectrum of the held speaker after its equalizer, or of the whole mix when that speaker is out of hearing range.
 - The selected band's name, frequency and gain are shown under the graph.
 
-## Carrying A Speaker
+## Handling Speakers
 
-- A speaker is moved by carrying it, not by pointing at a spot. With a speaker selected in edit mode, "carry" makes the character walk to the speaker, lift it overhead and hold it with both arms up.
-- While carrying, the character walks as usual and the speaker's sound moves with it.
-- "Put down here" places the speaker one step in front of the character.
-- Walking by hand while the character is on its way cancels the pick-up. Closing the editor or leaving edit mode puts the speaker down.
-- In the public garden other players see the speaker at its new place when it is put down.
+- There is no edit mode and no edit button in the top bar. A speaker is handled with the character's hands.
+- Lift: when the character stands within 1.6 tiles of a speaker and its hands are free, a "lift" button appears beside that speaker. Pressing it lifts the speaker overhead.
+- While holding, the character walks as usual with both arms up, and the speaker's sound and shadow move with it. Two buttons appear beside the character: "put down" and "edit".
+- Put down places the speaker one step in front of the character.
+- Edit opens the sound controls. A speaker can be edited only while it is held; putting it down or discarding it closes the controls.
+- Make: the top left button "make a speaker" plays the character's making animation; when it ends, a new speaker with the default sound is in the character's hands.
+- Discard: while holding, the top left button becomes "discard speaker". It plays the character's discarding animation; when it ends, the speaker is gone.
+- Each of the ten characters has its own making animation and its own discarding animation, twenty in all. For example the chick lays an egg that hatches into a speaker and pecks a speaker to crumbs; the penguin slides away on its belly and comes back pushing one, and slaps one away over the ice.
+- The character cannot walk or start another action while an animation plays.
+- In the public garden only players who may edit see these buttons. Other players see the result (a speaker appearing, moving or disappearing), not the holding or the animations.
+
+## Speaker Controls On A Phone
+
+- Every speaker control works with a thumb on a phone as well as with a mouse.
+- The controls are three tabs so each fits a phone screen: Sound (volume, noise), Oscillators, Equalizer.
+- While a slider, a knob or an equalizer point is dragged, the page does not scroll.
+
+## Top Bar And Settings
+
+- Top left: the speaker button (make, or discard while holding), for players who may edit.
+- Top centre: the garden name, the number of visitors in the public garden, and the number of speakers heard.
+- Top right: a settings icon.
+- Settings hold everything else: sound on and off, master volume, language, character name, nearby chat cue, presets (private garden), account (public garden) and leaving the garden.
+
+## Languages
+
+- The screens are in Korean, English or Japanese. The player chooses in settings; the choice is kept on the device.
+- Until the player chooses, the device language is used, or English when the device uses another language.
 
 ## Private Garden
 
 - Works with no network, no login and no location consent.
-- The player places, carries, tunes and removes speakers (at most 24).
+- The player makes, carries, tunes and discards speakers (at most 24).
 - Built-in presets give ready layouts; the first one is the starting garden.
 - The player saves the current layout as an own preset (at most 20; the same name replaces), applies and deletes presets.
 - Reset returns the garden and the own presets to the first-run state after a confirmation.
@@ -70,7 +109,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - With device location permission the place is the city nearest to the device; otherwise it is estimated from the internet address. Coordinates are rounded to about 1 km before they leave the device. Coordinates and the internet address are never shown.
 - The city-level place is shown above every character.
 - Guests can walk and listen. Chat needs a jace-s account login.
-- Speakers can be placed and tuned only by an administrator or an account or role granted the edit permission. Others do not see the edit controls.
+- Speakers can be made, moved, tuned and discarded only by an administrator or an account or role granted the edit permission. Others do not see the speaker buttons.
 
 ## Nearby Chat
 
@@ -85,9 +124,9 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 
 ## Example
 
-- Input: A player in the private garden stands 2 tiles from a brown noise speaker with radius 8, then walks 10 tiles away.
-- Steps: Loudness follows `(1 - distance / radius)²`.
-- Result: About 56% loudness at 2 tiles, silence beyond 8 tiles.
+- Input: A player in the private garden stands 2 tiles from a brown noise speaker at volume 0.7, then walks 10 tiles away.
+- Steps: The reach is `2 + 9 × 0.7 = 8.3` tiles. Loudness follows `volume × (1 - distance / reach)²`.
+- Result: About 40% loudness at 2 tiles, silence beyond 8.3 tiles; the brown shadow on the ground ends there too.
 
 ## Desktop Chat Focus
 - Desktop web chat focuses when available and after sending. Enter sends without losing focus. Phones retain manual focus.

@@ -6,20 +6,6 @@ export type CharacterKind = (typeof CHARACTER_KINDS)[number];
 
 export const DEFAULT_CHARACTER: CharacterKind = "bunny";
 
-/** Names shown in the character picker. */
-export const CHARACTER_NAMES: Record<CharacterKind, string> = {
-  bunny: "토끼",
-  cat: "고양이",
-  bear: "곰",
-  frog: "개구리",
-  chick: "병아리",
-  fox: "여우",
-  penguin: "펭귄",
-  pig: "돼지",
-  panda: "판다",
-  mouse: "생쥐",
-};
-
 /** Any stored or received value becomes a known character; unknown values become the default. */
 export function normalizeCharacter(value: unknown): CharacterKind {
   return CHARACTER_KINDS.includes(value as CharacterKind) ? (value as CharacterKind) : DEFAULT_CHARACTER;
@@ -50,6 +36,8 @@ export interface Pose {
   sway: number;
   /** Both arms are raised to hold something overhead. */
   armsUp?: boolean;
+  /** Both arms lifted outward by this many degrees; negative closes them in front. */
+  open?: number;
 }
 
 export const STANDING: Pose = { bob: 0, leftFoot: { x: 0, y: 0 }, rightFoot: { x: 0, y: 0 }, arm: 0, sway: 0 };
@@ -70,14 +58,5 @@ export function poseFor(walking: boolean, frame: number, carrying = false): Pose
   return carrying ? { ...pose, arm: 0, armsUp: true } : pose;
 }
 
-/** Number of pictures in the lift when a character picks something up, and the time each is shown. */
-export const LIFT_FRAMES = 4;
-export const LIFT_FRAME_MS = 70;
-
-/** How far (0 on the ground to 1 overhead) the carried thing is raised at a lift picture. */
-export function liftProgress(frame: number): number {
-  return Math.max(0, Math.min(1, frame / (LIFT_FRAMES - 1)));
-}
-
-/** A character can pick up a speaker from this many tiles away. */
-export const PICK_UP_TILES = 1.3;
+/** A character can lift a speaker from this many tiles away; the lift button shows within this distance. */
+export const PICK_UP_TILES = 1.6;

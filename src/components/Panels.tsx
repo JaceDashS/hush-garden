@@ -5,42 +5,46 @@ import type { HushClient } from "../api/client";
 import { ApiError, type User } from "../api/types";
 import type { CueMode } from "../domain/chat";
 import { BUILT_IN_PRESETS, MAX_PRESETS, type MyGarden } from "../domain/garden";
-import { NAME_MAX_LENGTH, NAME_PROBLEM_TEXT, checkName } from "../domain/names";
+import { NAME_MAX_LENGTH, checkName } from "../domain/names";
+import { LANGUAGES, LANGUAGE_NAMES, type TextKey } from "../domain/text";
+import { useT } from "../i18n";
 import type { Settings } from "../settings";
-import { Btn, Card, Chips, Input, Slider, T, colors } from "../ui";
+import { Btn, Card, Chips, DragLockContext, Input, Slider, T, colors } from "../ui";
 import { GoogleButton } from "./GoogleButton";
 
 /** Explains what location is used for before the public garden opens. Nothing is requested until the user agrees. */
 export function ConsentCard({ busy, error, onAgree, onCancel }: { busy: boolean; error: string; onAgree: () => void; onCancel: () => void }) {
+  const t = useT();
   return (
-    <Card title="위치 정보 동의">
-      <T size={14}>모두의 정원에서는 캐릭터 위에 접속한 도시 이름이 표시됩니다.</T>
+    <Card title={t("consent.title")}>
+      <T size={14}>{t("consent.intro")}</T>
       <View style={{ gap: 4 }}>
-        <T size={13} tone="muted">· 기기 위치 권한을 허용하면 그 위치의 도시 이름을, 허용하지 않으면 인터넷 주소로 추정한 도시 이름을 씁니다.</T>
-        <T size={13} tone="muted">· 좌표는 약 1km 단위로 뭉개서 보내고, 서버는 도시 이름만 남기며 좌표는 저장하지 않습니다.</T>
-        <T size={13} tone="muted">· 다른 사람에게는 도시와 나라 이름만 보입니다.</T>
-        <T size={13} tone="muted">· 채팅 내용은 서버 기록에 남습니다.</T>
+        <T size={13} tone="muted">{t("consent.device")}</T>
+        <T size={13} tone="muted">{t("consent.rounded")}</T>
+        <T size={13} tone="muted">{t("consent.shown")}</T>
+        <T size={13} tone="muted">{t("consent.chat")}</T>
       </View>
       {!!error && <T size={13} tone="danger">{error}</T>}
-      <Btn variant="primary" title={busy ? "들어가는 중" : "동의하고 들어가기"} disabled={busy} onPress={onAgree} testID="consent-agree" />
-      <Btn title="돌아가기" disabled={busy} onPress={onCancel} testID="consent-cancel" />
+      <Btn variant="primary" title={t(busy ? "consent.busy" : "consent.agree")} disabled={busy} onPress={onAgree} testID="consent-agree" />
+      <Btn title={t("common.back")} disabled={busy} onPress={onCancel} testID="consent-cancel" />
     </Card>
   );
 }
 
-const LOGIN_ERRORS: Record<string, string> = {
-  INVALID_CREDENTIALS: "아이디 또는 비밀번호가 맞지 않습니다.",
-  EMAIL_NOT_VERIFIED: "이메일 인증을 마친 뒤 로그인할 수 있습니다.",
-  RATE_LIMITED: "로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.",
+const LOGIN_ERRORS: Record<string, TextKey> = {
+  INVALID_CREDENTIALS: "login.invalid",
+  EMAIL_NOT_VERIFIED: "login.unverified",
+  RATE_LIMITED: "login.rateLimited",
 };
 
 /** jace-s account login. Chat needs it; walking and listening do not. */
 export function LoginCard({ client, onLoggedIn, onClose }: { client: HushClient; onLoggedIn: (user: User) => Promise<void>; onClose: () => void }) {
+  const t = useT();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<TextKey | "">("");
   const submit = async () => {
     if (busy || !username.trim() || !password) return;
     setBusy(true);
@@ -48,58 +52,59 @@ export function LoginCard({ client, onLoggedIn, onClose }: { client: HushClient;
     try {
       await onLoggedIn(await client.login(username, password, remember));
     } catch (cause) {
-      setError((cause instanceof ApiError && LOGIN_ERRORS[cause.code]) || "로그인하지 못했습니다. 다시 시도해 주세요.");
+      setError((cause instanceof ApiError && LOGIN_ERRORS[cause.code]) || "login.failed");
     } finally {
       setBusy(false);
       setPassword("");
     }
   };
   return (
-    <Card title="로그인">
-      <T size={13} tone="muted">jace-s 계정으로 로그인하면 주변 사람과 채팅할 수 있습니다.</T>
+    <Card title={t("login.title")}>
+      <T size={13} tone="muted">{t("login.intro")}</T>
       <GoogleButton client={client} remember={remember} disabled={busy} onBusyChange={setBusy} onLoggedIn={onLoggedIn} />
-      <Input label="아이디" placeholder="아이디" value={username} onChangeText={setUsername} testID="login-username" />
-      <Input label="비밀번호" placeholder="비밀번호" value={password} onChangeText={setPassword} secure onSubmit={() => void submit()} testID="login-password" />
+      <Input label={t("login.username")} placeholder={t("login.username")} value={username} onChangeText={setUsername} testID="login-username" />
+      <Input label={t("login.password")} placeholder={t("login.password")} value={password} onChangeText={setPassword} secure onSubmit={() => void submit()} testID="login-password" />
       {Platform.OS === "web" && (
-        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: remember }} accessibilityLabel="로그인 유지" onPress={() => setRemember(!remember)} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: remember }} accessibilityLabel={t("login.remember")} onPress={() => setRemember(!remember)} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View style={{ width: 18, height: 18, borderRadius: 6, borderWidth: 2, borderColor: remember ? colors.mintDeep : colors.panelEdge, backgroundColor: remember ? colors.mint : colors.white }} />
-          <T size={13} tone="muted">로그인 유지</T>
+          <T size={13} tone="muted">{t("login.remember")}</T>
         </Pressable>
       )}
-      {!!error && <T size={13} tone="danger">{error}</T>}
-      <Btn variant="primary" title={busy ? "로그인 중" : "로그인"} disabled={busy || !username.trim() || !password} onPress={() => void submit()} testID="login-submit" />
-      <Btn title="닫기" onPress={onClose} />
+      {!!error && <T size={13} tone="danger">{t(error)}</T>}
+      <Btn variant="primary" title={t(busy ? "login.busy" : "login.submit")} disabled={busy || !username.trim() || !password} onPress={() => void submit()} testID="login-submit" />
+      <Btn title={t("common.close")} onPress={onClose} />
     </Card>
   );
 }
 
 /** Private garden presets: apply a built-in or saved layout, save the current one, delete, or reset everything. */
 export function PresetCard({ garden, onApply, onSave, onDelete, onReset, onClose }: { garden: MyGarden; onApply: (id: string) => void; onSave: (name: string) => void; onDelete: (id: string) => void; onReset: () => void; onClose: () => void }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
   return (
-    <Card title="프리셋">
+    <Card title={t("preset.title")}>
       <ScrollView style={{ maxHeight: 260 }} contentContainerStyle={{ gap: 8 }}>
-        <T size={12.5} tone="muted" weight="700">기본 프리셋</T>
+        <T size={12.5} tone="muted" weight="700">{t("preset.builtIn")}</T>
         {BUILT_IN_PRESETS.map((preset) => (
-          <Btn key={preset.id} small title={preset.name + " 불러오기"} onPress={() => onApply(preset.id)} testID={"preset-" + preset.id} />
+          <Btn key={preset.id} small title={t("preset.load", { name: preset.name })} onPress={() => onApply(preset.id)} testID={"preset-" + preset.id} />
         ))}
-        <T size={12.5} tone="muted" weight="700">내 프리셋</T>
-        {garden.presets.length === 0 && <T size={13} tone="muted">아직 저장한 프리셋이 없습니다.</T>}
+        <T size={12.5} tone="muted" weight="700">{t("preset.mine")}</T>
+        {garden.presets.length === 0 && <T size={13} tone="muted">{t("preset.none")}</T>}
         {garden.presets.map((preset) => (
           <View key={preset.id} style={{ flexDirection: "row", gap: 6 }}>
-            <Btn small title={preset.name + " 불러오기"} onPress={() => onApply(preset.id)} style={{ flex: 1 }} />
-            <Btn small variant="danger" title="삭제" onPress={() => onDelete(preset.id)} />
+            <Btn small title={t("preset.load", { name: preset.name })} onPress={() => onApply(preset.id)} style={{ flex: 1 }} />
+            <Btn small variant="danger" title={t("common.delete")} onPress={() => onDelete(preset.id)} />
           </View>
         ))}
       </ScrollView>
       <View style={{ flexDirection: "row", gap: 6 }}>
         <View style={{ flex: 1 }}>
-          <Input label="새 프리셋 이름" placeholder="새 프리셋 이름" value={name} maxLength={24} onChangeText={setName} testID="preset-name" />
+          <Input label={t("preset.newName")} placeholder={t("preset.newName")} value={name} maxLength={24} onChangeText={setName} testID="preset-name" />
         </View>
         <Btn
           variant="mint"
-          title="저장"
+          title={t("common.save")}
           disabled={!name.trim() || garden.presets.length >= MAX_PRESETS}
           onPress={() => {
             onSave(name);
@@ -108,79 +113,98 @@ export function PresetCard({ garden, onApply, onSave, onDelete, onReset, onClose
           testID="preset-save"
         />
       </View>
-      <T size={12} tone="muted">지금 정원의 스피커 배치와 소리를 내 프리셋으로 저장합니다. 같은 이름은 덮어씁니다.</T>
+      <T size={12} tone="muted">{t("preset.help")}</T>
       {confirmReset ? (
         <View style={{ gap: 6 }}>
-          <T size={13} tone="danger">내 정원과 내 프리셋이 모두 처음 상태로 돌아갑니다.</T>
+          <T size={13} tone="danger">{t("preset.resetWarning")}</T>
           <View style={{ flexDirection: "row", gap: 6 }}>
-            <Btn small variant="danger" title="초기화" onPress={() => { setConfirmReset(false); onReset(); }} testID="preset-reset-confirm" />
-            <Btn small title="취소" onPress={() => setConfirmReset(false)} />
+            <Btn small variant="danger" title={t("preset.reset")} onPress={() => { setConfirmReset(false); onReset(); }} testID="preset-reset-confirm" />
+            <Btn small title={t("common.cancel")} onPress={() => setConfirmReset(false)} />
           </View>
         </View>
       ) : (
-        <Btn small variant="danger" title="처음 상태로 초기화" onPress={() => setConfirmReset(true)} testID="preset-reset" />
+        <Btn small variant="danger" title={t("preset.resetAll")} onPress={() => setConfirmReset(true)} testID="preset-reset" />
       )}
-      <Btn title="닫기" onPress={onClose} />
+      <Btn title={t("common.close")} onPress={onClose} />
     </Card>
   );
 }
 
-const CUES: { value: CueMode; label: string }[] = [
-  { value: "tone", label: "음색 흔들기" },
-  { value: "dip", label: "살짝 줄이기" },
-  { value: "off", label: "끄기" },
-];
+const CUES: readonly CueMode[] = ["tone", "dip", "off"];
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <T size={12.5} tone="muted" weight="700">{title}</T>
+      {children}
+    </View>
+  );
+}
 
 /**
- * `shownName` is the name currently above the character. `onName` receives a checked name, or "" to go back to
- * the account name; `nameError` is the server's refusal, if any.
+ * Everything that is not handling a speaker lives here: sound on and off, volume, language, character name, chat
+ * cue, presets, account and leaving the garden. `shownName` is the name currently above the character. `onName`
+ * receives a checked name, or "" to go back to the account name; `nameError` is the server's refusal, if any.
  */
-export function SettingsCard({ settings, user, online, shownName, nameError, onChange, onName, onLogin, onLogout, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; onChange: (settings: Settings) => void; onName: (name: string) => void; onLogin: () => void; onLogout: () => void; onClose: () => void }) {
+export function SettingsCard({ settings, user, online, playing, shownName, nameError, onChange, onName, onToggleSound, onPresets, onLogin, onLogout, onExit, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; playing: boolean; shownName: string; nameError: string; onChange: (settings: Settings) => void; onName: (name: string) => void; onToggleSound: () => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void }) {
+  const t = useT();
   const [name, setName] = useState(settings.name);
-  const [problem, setProblem] = useState("");
+  const [problem, setProblem] = useState<TextKey | "">("");
+  const [dragging, setDragging] = useState(false);
   const saveName = () => {
     if (!name.trim()) {
       setProblem("");
       return onName("");
     }
     const check = checkName(name);
-    if (!check.ok) return setProblem(NAME_PROBLEM_TEXT[check.problem]);
+    if (!check.ok) return setProblem(("name." + check.problem) as TextKey);
     setProblem("");
     setName(check.name);
     onName(check.name);
   };
   return (
-    <Card title="설정">
-      <View style={{ gap: 6 }}>
-        <T size={12.5} tone="muted" weight="700">{"캐릭터 이름 (지금: " + shownName + ")"}</T>
-        <View style={{ flexDirection: "row", gap: 6 }}>
-          <View style={{ flex: 1 }}>
-            <Input label="캐릭터 이름" placeholder="비우면 계정 이름" value={name} maxLength={NAME_MAX_LENGTH} onChangeText={setName} onSubmit={saveName} testID="settings-name" />
-          </View>
-          <Btn variant="mint" title="바꾸기" onPress={saveName} testID="settings-name-save" />
-        </View>
-        {!!(problem || nameError) && <T size={12.5} tone="danger">{problem || nameError}</T>}
-      </View>
-      <Slider label="전체 음량" value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
-      <View style={{ gap: 6 }}>
-        <T size={12.5} tone="muted" weight="700">주변 채팅 알림</T>
-        <Chips label="주변 채팅 알림" value={settings.cue} options={CUES} onChange={(cue) => onChange({ ...settings, cue })} />
-        <T size={12} tone="muted">음색 흔들기는 음량과 저음을 그대로 두고 소리의 밝기만 잠깐 바꿉니다.</T>
-      </View>
-      {online && (
-        <View style={{ gap: 6 }}>
-          <T size={12.5} tone="muted" weight="700">계정</T>
-          {user ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <T size={14} style={{ flex: 1 }} lines={1}>{user.name}</T>
-              <Btn small title="로그아웃" onPress={onLogout} testID="logout" />
+    <Card title={t("settings.title")} style={{ maxHeight: "100%" }}>
+      <DragLockContext.Provider value={setDragging}>
+        <ScrollView scrollEnabled={!dragging} style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 14 }} keyboardShouldPersistTaps="handled">
+          <Group title={t("settings.sound")}>
+            <Btn variant={playing ? "mint" : "primary"} title={t(playing ? "settings.soundOff" : "settings.soundOn")} onPress={onToggleSound} testID="toggle-sound" />
+            <Slider label={t("settings.volume")} value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
+          </Group>
+          <Group title={t("settings.language")}>
+            <Chips label={t("settings.language")} value={settings.language} options={LANGUAGES.map((language) => ({ value: language, label: LANGUAGE_NAMES[language] }))} onChange={(language) => onChange({ ...settings, language })} />
+          </Group>
+          <Group title={t("settings.nameNow", { name: shownName })}>
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              <View style={{ flex: 1 }}>
+                <Input label={t("settings.name")} placeholder={t("settings.namePlaceholder")} value={name} maxLength={NAME_MAX_LENGTH} onChangeText={setName} onSubmit={saveName} testID="settings-name" />
+              </View>
+              <Btn variant="mint" title={t("settings.nameSave")} onPress={saveName} testID="settings-name-save" />
             </View>
-          ) : (
-            <Btn small variant="mint" title="로그인" onPress={onLogin} testID="open-login" />
+            {!!(problem || nameError) && <T size={12.5} tone="danger">{problem ? t(problem, { n: NAME_MAX_LENGTH }) : nameError}</T>}
+          </Group>
+          <Group title={t("settings.cue")}>
+            <Chips label={t("settings.cue")} value={settings.cue} options={CUES.map((cue) => ({ value: cue, label: t(("cue." + cue) as TextKey) }))} onChange={(cue) => onChange({ ...settings, cue })} />
+            <T size={12} tone="muted">{t("settings.cueHelp")}</T>
+          </Group>
+          {online && (
+            <Group title={t("settings.account")}>
+              {user ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <T size={14} style={{ flex: 1 }} lines={1}>{user.name}</T>
+                  <Btn small title={t("settings.logout")} onPress={onLogout} testID="logout" />
+                </View>
+              ) : (
+                <Btn small variant="mint" title={t("login.submit")} onPress={onLogin} testID="open-login" />
+              )}
+            </Group>
           )}
-        </View>
-      )}
-      <Btn title="닫기" onPress={onClose} />
+          <Group title={t("settings.garden")}>
+            {!online && <Btn small title={t("settings.presets")} onPress={onPresets} testID="open-presets" />}
+            <Btn small variant="danger" title={t("settings.exit")} onPress={onExit} testID="exit" />
+          </Group>
+        </ScrollView>
+      </DragLockContext.Provider>
+      <Btn title={t("common.close")} onPress={onClose} testID="settings-close" />
     </Card>
   );
 }

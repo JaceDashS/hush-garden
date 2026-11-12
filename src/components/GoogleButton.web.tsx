@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { ApiError } from "../api/types";
+import type { TextKey } from "../domain/text";
+import { useLanguage, useT } from "../i18n";
 import { T } from "../ui";
 import type { GoogleButtonProps } from "./GoogleButton";
 
@@ -36,12 +38,12 @@ function loadGoogle(): Promise<GoogleIdentity> {
   return scriptReady;
 }
 
-const FAILED = "구글 로그인에 실패했습니다. 다시 시도해 주세요.";
-const ERRORS: Record<string, string> = {
-  GOOGLE_ACCOUNT_CONFLICT: "이미 가입된 이메일입니다. 기존 계정으로 로그인해 주세요.",
-  RATE_LIMITED: "로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.",
-  ACCOUNT_SUSPENDED: "사용할 수 없는 계정입니다.",
-  ACCOUNT_EXPIRED: "계정 이용 기간이 끝났습니다.",
+const FAILED: TextKey = "google.failed";
+const ERRORS: Record<string, TextKey> = {
+  GOOGLE_ACCOUNT_CONFLICT: "google.conflict",
+  RATE_LIMITED: "login.rateLimited",
+  ACCOUNT_SUSPENDED: "google.suspended",
+  ACCOUNT_EXPIRED: "google.expired",
 };
 
 /** Google's official button. A credential is exchanged for the same account session as password login. */
@@ -51,7 +53,9 @@ export function GoogleButton({ client, remember, disabled, onBusyChange, onLogge
   const latest = useRef({ remember, disabled, onBusyChange, onLoggedIn });
   latest.current = { remember, disabled, onBusyChange, onLoggedIn };
   const [enabled, setEnabled] = useState(false);
-  const [error, setError] = useState("");
+  const t = useT();
+  const language = useLanguage();
+  const [error, setError] = useState<TextKey | "">("");
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -92,7 +96,7 @@ export function GoogleButton({ client, remember, disabled, onBusyChange, onLogge
           theme: "outline",
           size: "large",
           text: "continue_with",
-          locale: "ko",
+          locale: language,
           width: Math.min(320, container.clientWidth || 320),
         });
       } catch {
@@ -106,13 +110,13 @@ export function GoogleButton({ client, remember, disabled, onBusyChange, onLogge
       active = false;
     };
     // A new attempt re-renders the button with a fresh one-use nonce.
-  }, [client, attempt]);
+  }, [client, attempt, language]);
 
   return (
     <View style={{ gap: 8, display: enabled ? "flex" : "none" }}>
       <View ref={(node) => void (host.current = node as unknown as HTMLElement | null)} style={{ minHeight: 44, alignItems: "center" }} />
       {!!error && (
-        <T size={13} tone="danger">{error}</T>
+        <T size={13} tone="danger">{t(error)}</T>
       )}
     </View>
   );

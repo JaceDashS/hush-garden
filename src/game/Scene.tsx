@@ -1,13 +1,14 @@
-/** The quarter-view garden: ground, trees, speakers and characters, with the camera following the player. */
+/** The quarter-view garden: ground, sound shadows, trees, speakers and characters, with the camera following the player. */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, View } from "react-native";
-import Svg, { Ellipse } from "react-native-svg";
-import { gainAt, type NoiseColor, type Speaker } from "../domain/sound";
-import { TILE_HEIGHT, TILE_WIDTH, distance, joystickToInput, toGarden, toScreen, type Point } from "../domain/world";
+import { CARRY, NEUTRAL, actionAt, type ActionName } from "../domain/actions";
+import type { CharacterKind } from "../domain/characters";
+import { loudnessAt, type NoiseColor, type Speaker } from "../domain/sound";
+import { distance, joystickToInput, toScreen, type Point } from "../domain/world";
 import { T, colors } from "../ui";
-import { LIFT_FRAMES, LIFT_FRAME_MS, liftProgress, type CharacterKind } from "../domain/characters";
-import { CHARACTER_SIZE, Character } from "./characters";
-import { GROUND_OFFSET_X, Ground, SPEAKER_SIZE, SpeakerArt, TREES, TREE_SIZE, Tree } from "./sprites";
+import { CHARACTER_FEET, CHARACTER_SIZE, Character } from "./characters";
+import { FxView, PropView } from "./props";
+import { GROUND_OFFSET_X, Ground, SPEAKER_SIZE, SoundShadow, SpeakerArt, TREES, TREE_SIZE, Tree, shadowSize } from "./sprites";
 
 export interface Actor {
   id: string;
@@ -19,6 +20,8 @@ export interface Actor {
   label: string;
   /** Noise colour of the speaker the character holds overhead, if it carries one. */
   carrying?: NoiseColor;
+  /** The action the character is playing: making, discarding or lifting a speaker of the given colour. */
+  action?: { name: ActionName; startedAt: number; color: NoiseColor };
   bubble?: string;
   /** Which of the ten characters to draw. */
   kind: CharacterKind;
@@ -26,9 +29,24 @@ export interface Actor {
   walking?: boolean;
 }
 
+/** Something pressable placed in the garden, such as the lift button beside a speaker. */
+export interface Marker {
+  id: string;
+  x: number;
+  y: number;
+  /** Screen offset of the marker's centre from that garden position; y is down. */
+  offsetX: number;
+  offsetY: number;
+  content: React.ReactNode;
+}
+
 const JOYSTICK_RADIUS = 52;
-const TAP_PIXELS = 8;
-const TAP_MS = 350;
+/** Room above a character for the speaker it holds. */
+const CARRY_HEIGHT = 50;
+const LABEL_HEIGHT = 34;
+/** Time between two pictures of an action. */
+const ACTION_FRAME_MS = 33;
+const MARKER_WIDTH = 220;
 
 const place = (point: Point) => {
   const screen = toScreen(point);
@@ -36,45 +54,42 @@ const place = (point: Point) => {
 };
 const depth = (point: Point) => Math.round((point.x + point.y) * 10);
 
-function Range({ speaker, strong }: { speaker: Speaker; strong: boolean }) {
-  const rx = (speaker.sound.radius * TILE_WIDTH) / Math.SQRT2;
-  const ry = (speaker.sound.radius * TILE_HEIGHT) / Math.SQRT2;
-  const at = place(speaker);
-  return (
-    <View pointerEvents="none" style={{ position: "absolute", left: at.left - rx, top: at.top - ry }}>
-      <Svg width={rx * 2} height={ry * 2}>
-        <Ellipse cx={rx} cy={ry} rx={rx - 2} ry={ry - 2} fill={strong ? "rgba(255,158,181,0.16)" : "rgba(143,214,180,0.12)"} stroke={strong ? colors.accentDeep : colors.mintDeep} strokeWidth={2} strokeDasharray="8 8" />
-      </Svg>
-    </View>
-  );
-}
-
-/** Height the carried speaker adds above the character. */
-const CARRY_HEIGHT = 50;
-const LABEL_HEIGHT = 34;
-
-/** The speaker a character holds. It rises from the ground to overhead when picked up. */
-function CarriedSpeaker({ color }: { color: NoiseColor }) {
-  const [frame, setFrame] = useState(0);
+/** The character with whatever it holds. While an action plays, a timer redraws it frame by frame. */
+function ActorBody({ actor }: { actor: Actor }) {
+  const [now, setNow] = useState(() => Date.now());
+  const action = actor.action;
   useEffect(() => {
-    const timer = setInterval(() => setFrame((current) => (current >= LIFT_FRAMES - 1 ? current : current + 1)), LIFT_FRAME_MS);
+    if (!action) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), ACTION_FRAME_MS);
     return () => clearInterval(timer);
-  }, []);
-  const drop = (1 - liftProgress(frame)) * (CARRY_HEIGHT + 20);
-  return (
-    <View style={{ height: CARRY_HEIGHT, justifyContent: "flex-end", zIndex: 1 }}>
-      <View style={{ transform: [{ translateY: drop + 22 }, { scale: 0.72 }] }}>
-        <SpeakerArt color={color} />
+  }, [action]);
+  const facing = actor.facing ?? 1;
+  const moment = action ? actionAt(actor.kind, action.name, now - action.startedAt) : null;
+  if (!moment) {
+    return (
+      <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
+        <Character kind={actor.kind} facing={facing} walking={actor.walking} carrying={!!actor.carrying} />
+        {!!actor.carrying && <PropView prop={CARRY} form="speaker" color={actor.carrying} facing={facing} origin={CHARACTER_FEET} />}
       </View>
+    );
+  }
+  return (
+    <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
+      <Character kind={actor.kind} facing={facing} turn={moment.turn} walking={moment.walk} carrying={moment.arms === "up"} stance={moment.stance ?? NEUTRAL} />
+      <PropView prop={moment.prop} form={moment.form} color={action!.color} facing={facing} origin={CHARACTER_FEET} />
+      {moment.effects.map((effect, index) => (
+        <FxView key={effect.kind + index + effect.x} kind={effect.kind} x={effect.x} y={effect.y} progress={effect.progress} facing={facing} origin={CHARACTER_FEET} />
+      ))}
     </View>
   );
 }
 
 function ActorView({ actor }: { actor: Actor }) {
   const at = place(actor);
-  const extra = actor.carrying ? CARRY_HEIGHT : 0;
+  const headroom = actor.carrying || actor.action ? CARRY_HEIGHT : 0;
   return (
-    <View pointerEvents="none" style={{ position: "absolute", left: at.left - 90, top: at.top - CHARACTER_SIZE.height - 44 - LABEL_HEIGHT - extra, width: 180, alignItems: "center", zIndex: depth(actor) }}>
+    <View pointerEvents="none" style={{ position: "absolute", left: at.left - 90, top: at.top - CHARACTER_SIZE.height - 44 - LABEL_HEIGHT - headroom, width: 180, alignItems: "center", zIndex: depth(actor) }}>
       <View style={{ height: 40, justifyContent: "flex-end", alignItems: "center" }}>
         {!!actor.bubble && (
           <View style={{ maxWidth: 180, backgroundColor: colors.white, borderRadius: 12, borderWidth: 2, borderColor: colors.ink, paddingHorizontal: 8, paddingVertical: 2 }}>
@@ -82,79 +97,59 @@ function ActorView({ actor }: { actor: Actor }) {
           </View>
         )}
       </View>
-      <View style={{ height: LABEL_HEIGHT, marginBottom: 2, backgroundColor: "rgba(255,250,242,0.88)", borderRadius: 10, paddingHorizontal: 8, justifyContent: "center", alignItems: "center" }}>
+      <View style={{ height: LABEL_HEIGHT, marginBottom: 2 + headroom, backgroundColor: "rgba(255,250,242,0.88)", borderRadius: 10, paddingHorizontal: 8, justifyContent: "center", alignItems: "center" }}>
         <T size={11.5} weight="800" lines={1}>{actor.name}</T>
         <T size={9.5} weight="600" tone="muted" lines={1}>{actor.label}</T>
       </View>
-      {!!actor.carrying && <CarriedSpeaker color={actor.carrying} />}
-      <Character kind={actor.kind} facing={actor.facing} walking={actor.walking} carrying={!!actor.carrying} />
+      <ActorBody actor={actor} />
     </View>
   );
 }
 
-const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking && a.actor.kind === b.actor.kind && a.actor.name === b.actor.name && a.actor.carrying === b.actor.carrying);
+const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking && a.actor.kind === b.actor.kind && a.actor.name === b.actor.name && a.actor.carrying === b.actor.carrying && a.actor.action === b.actor.action);
 
 /**
- * `onInput` receives the joystick direction while a finger or the mouse is held, and zero on release.
- * `onTap` receives the garden position of a short touch that did not move, and the speaker under it if any.
- * `carriedId` is the speaker a character holds: it is drawn in that character's hands, not on the ground.
+ * `onInput` receives the joystick direction while a finger or the mouse is held on the garden, and zero on release.
+ * `carriedId` is the speaker a character holds: it is drawn in that character's hands, not on the ground, while
+ * its sound shadow follows the position it has in `speakers`. `markers` are pressable things placed in the garden.
  */
-export function Scene({ me, actors, speakers, selectedId, carriedId, showRanges, onInput, onTap }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; selectedId?: string | null; carriedId?: string | null; showRanges?: boolean; onInput: (input: Point) => void; onTap?: (point: Point, speakerId: string | null) => void }) {
+export function Scene({ me, actors, speakers, carriedId, markers, onInput }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; carriedId?: string | null; markers?: readonly Marker[]; onInput: (input: Point) => void }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [stick, setStick] = useState<{ x: number; y: number; dx: number; dy: number } | null>(null);
   const root = useRef<React.ComponentRef<typeof View>>(null);
   const origin = useRef({ x: 0, y: 0 });
-  const latest = useRef({ me, size, speakers, onInput, onTap });
-  latest.current = { me, size, speakers, onInput, onTap };
-  const touch = useRef({ x: 0, y: 0, at: 0, moved: 0 });
+  const latest = useRef({ onInput });
+  latest.current = { onInput };
+  const touch = useRef({ x: 0, y: 0 });
 
-  const responder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => {
-          const { pageX, pageY } = event.nativeEvent;
-          root.current?.measureInWindow((x, y) => {
-            origin.current = { x, y };
-          });
-          touch.current = { x: pageX, y: pageY, at: Date.now(), moved: 0 };
-          setStick({ x: pageX - origin.current.x, y: pageY - origin.current.y, dx: 0, dy: 0 });
-        },
-        onPanResponderMove: (event) => {
-          const dx = event.nativeEvent.pageX - touch.current.x;
-          const dy = event.nativeEvent.pageY - touch.current.y;
-          touch.current.moved = Math.max(touch.current.moved, Math.hypot(dx, dy));
-          const length = Math.hypot(dx, dy) || 1;
-          const clamp = Math.min(1, JOYSTICK_RADIUS / length);
-          setStick((current) => (current ? { ...current, dx: dx * clamp, dy: dy * clamp } : current));
-          latest.current.onInput(joystickToInput(dx, dy, JOYSTICK_RADIUS));
-        },
-        onPanResponderRelease: () => finish(true),
-        onPanResponderTerminate: () => finish(false),
-      }),
-    // The handlers read the latest props through refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
-  function finish(completed: boolean) {
-    const state = latest.current;
-    setStick(null);
-    state.onInput({ x: 0, y: 0 });
-    const t = touch.current;
-    if (!completed || !state.onTap || t.moved > TAP_PIXELS || Date.now() - t.at > TAP_MS) return;
-    const camera = place(state.me);
-    const local = { x: t.x - origin.current.x - state.size.width / 2 + camera.left - GROUND_OFFSET_X, y: t.y - origin.current.y - state.size.height / 2 + camera.top };
-    // A tap on a speaker's picture counts as that speaker, even though its ground point is at its feet.
-    const hit = state.speakers
-      .filter((speaker) => {
-        const foot = toScreen(speaker);
-        return Math.abs(local.x - foot.x) <= SPEAKER_SIZE.width / 2 + 6 && local.y >= foot.y - SPEAKER_SIZE.height - 6 && local.y <= foot.y + 12;
-      })
-      .sort((a, b) => depth(b) - depth(a))[0];
-    state.onTap(toGarden(local), hit?.id ?? null);
-  }
+  const responder = useMemo(() => {
+    const finish = () => {
+      setStick(null);
+      latest.current.onInput({ x: 0, y: 0 });
+    };
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (event) => {
+        const { pageX, pageY } = event.nativeEvent;
+        root.current?.measureInWindow((x, y) => {
+          origin.current = { x, y };
+        });
+        touch.current = { x: pageX, y: pageY };
+        setStick({ x: pageX - origin.current.x, y: pageY - origin.current.y, dx: 0, dy: 0 });
+      },
+      onPanResponderMove: (event) => {
+        const dx = event.nativeEvent.pageX - touch.current.x;
+        const dy = event.nativeEvent.pageY - touch.current.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const clamp = Math.min(1, JOYSTICK_RADIUS / length);
+        setStick((current) => (current ? { ...current, dx: dx * clamp, dy: dy * clamp } : current));
+        latest.current.onInput(joystickToInput(dx, dy, JOYSTICK_RADIUS));
+      },
+      onPanResponderRelease: finish,
+      onPanResponderTerminate: finish,
+    });
+  }, []);
 
   const camera = place(me);
   return (
@@ -170,9 +165,17 @@ export function Scene({ me, actors, speakers, selectedId, carriedId, showRanges,
       style={{ flex: 1, overflow: "hidden", backgroundColor: colors.sky }}
       {...responder.panHandlers}
     >
-      <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, transform: [{ translateX: size.width / 2 - camera.left }, { translateY: size.height / 2 - camera.top }] }}>
+      <View pointerEvents="box-none" style={{ position: "absolute", left: 0, top: 0, transform: [{ translateX: size.width / 2 - camera.left }, { translateY: size.height / 2 - camera.top }] }}>
         <Ground />
-        {speakers.map((speaker) => (showRanges || speaker.id === selectedId ? <Range key={"r" + speaker.id} speaker={speaker} strong={speaker.id === selectedId} /> : null))}
+        {speakers.map((speaker) => {
+          const at = place(speaker);
+          const shade = shadowSize(speaker.sound);
+          return (
+            <View key={"shade" + speaker.id} testID={"shadow-" + speaker.id} pointerEvents="none" style={{ position: "absolute", left: at.left - shade.width / 2, top: at.top - shade.height / 2 }}>
+              <SoundShadow id={speaker.id} sound={speaker.sound} />
+            </View>
+          );
+        })}
         {TREES.map((tree) => {
           const at = place(tree);
           return (
@@ -184,17 +187,25 @@ export function Scene({ me, actors, speakers, selectedId, carriedId, showRanges,
         {speakers.map((speaker) => {
           if (speaker.id === carriedId) return null;
           const at = place(speaker);
-          const playing = gainAt(distance(me, speaker), speaker.sound.radius) * speaker.sound.volume > 0.01;
+          const playing = loudnessAt(distance(me, speaker), speaker.sound) > 0.01;
           return (
             <View key={speaker.id} pointerEvents="none" style={{ position: "absolute", left: at.left - 70, top: at.top - SPEAKER_SIZE.height - 14, width: 140, alignItems: "center", zIndex: depth(speaker) }}>
               <View style={{ height: 18, backgroundColor: "rgba(255,250,242,0.88)", borderRadius: 9, paddingHorizontal: 7, justifyContent: "center" }}>
                 <T size={10.5} weight="700" tone="muted" lines={1}>{speaker.name}</T>
               </View>
-              <SpeakerArt color={speaker.sound.noise.color} selected={speaker.id === selectedId} playing={playing} />
+              <SpeakerArt color={speaker.sound.noise.color} playing={playing} />
             </View>
           );
         })}
         {actors.map((actor) => <ActorMemo key={actor.id} actor={actor} />)}
+        {(markers ?? []).map((marker) => {
+          const at = place(marker);
+          return (
+            <View key={marker.id} pointerEvents="box-none" style={{ position: "absolute", left: at.left + marker.offsetX - MARKER_WIDTH / 2, top: at.top + marker.offsetY - 22, width: MARKER_WIDTH, height: 44, alignItems: "center", justifyContent: "center", zIndex: 100000 }}>
+              {marker.content}
+            </View>
+          );
+        })}
       </View>
       {stick && (
         <View pointerEvents="none" style={{ position: "absolute", left: stick.x - JOYSTICK_RADIUS, top: stick.y - JOYSTICK_RADIUS, width: JOYSTICK_RADIUS * 2, height: JOYSTICK_RADIUS * 2, borderRadius: JOYSTICK_RADIUS, backgroundColor: "rgba(255,250,242,0.55)", borderWidth: 3, borderColor: "rgba(74,64,56,0.35)" }}>

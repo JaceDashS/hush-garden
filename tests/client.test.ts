@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { fillNoise } from "../src/audio/noise.ts";
 import { parseServerMessage, socketUrl } from "../src/api/socket.ts";
 import { roundCoordinate } from "../src/coordinates.ts";
-import { DEFAULT_SETTINGS, normalizeSettings } from "../src/settings.ts";
+import { DEFAULT_SETTINGS, deviceLanguage, normalizeSettings } from "../src/settings.ts";
 
 test("socket address uses wss for an https API origin and escapes the ticket", () => {
   assert.equal(socketUrl("https://api.jace-s.com", "a b"), "wss://api.jace-s.com/hush-garden/socket?ticket=a%20b");
@@ -30,9 +30,10 @@ test("server messages are validated and unknown ones are dropped", () => {
 });
 
 test("settings fall back to defaults and keep valid values", () => {
-  assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS);
-  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon" }), { volume: 1, cue: "tone", consent: false, character: "bunny", name: "" });
-  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda", name: " Momo " }), { volume: 0.25, cue: "dip", consent: true, character: "panda", name: "Momo" });
+  const device = deviceLanguage();
+  assert.deepEqual(normalizeSettings(null), { ...DEFAULT_SETTINGS, language: device });
+  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon", language: "xx" }), { volume: 1, cue: "tone", consent: false, character: "bunny", name: "", language: device });
+  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda", name: " Momo ", language: "ja" }), { volume: 0.25, cue: "dip", consent: true, character: "panda", name: "Momo", language: "ja" });
   assert.equal(normalizeSettings({ name: "admin" }).name, "");
 });
 

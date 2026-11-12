@@ -1,6 +1,9 @@
 /**
  * The playable garden. `mode` "mine" is the private offline garden kept on the device; "public" is the shared
  * garden on the server, which needs location consent to enter and a login to chat.
+ *
+ * Speakers are handled with the character's hands: a speaker is made into the hands, lifted from the ground when
+ * the character stands near it, edited only while held, and put down or discarded from the hands.
  */
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,36 +12,46 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HushClient } from "../api/client";
 import { GardenSocket, socketUrl } from "../api/socket";
 import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User } from "../api/types";
-import { audibleCount, type GardenAudio } from "../audio/engine";
+import type { GardenAudio } from "../audio/engine";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
 import { ConsentCard, LoginCard, PresetCard, SettingsCard } from "../components/Panels";
 import { SpeakerEditor } from "../components/SpeakerEditor";
 import { API_ORIGIN } from "../config";
+import { actionDuration, type ActionName } from "../domain/actions";
 import { PICK_UP_TILES } from "../domain/characters";
 import { BUBBLE_MS, CHAT_MAX_LENGTH, cleanMessage, cueFor } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
-import { MAX_SPEAKERS, type Speaker } from "../domain/sound";
-import { GARDEN_SIZE, clampToGarden, distance, keysToInput, step, toGarden, toScreen, type Point } from "../domain/world";
-import { Scene, type Actor } from "../game/Scene";
+import { MAX_SPEAKERS, audibleCount, defaultSound, type NoiseColor, type Speaker } from "../domain/sound";
+import type { TextKey } from "../domain/text";
+import { GARDEN_SIZE, clampToGarden, distance, keysToInput, step, toGarden, type Point } from "../domain/world";
+import { Scene, type Actor, type Marker } from "../game/Scene";
+import { useT } from "../i18n";
 import { requestCoordinates } from "../location";
 import type { Settings } from "../settings";
-import { Btn, Input, Modal, T, colors } from "../ui";
+import { Btn, GearIcon, IconBtn, Input, Modal, T, colors } from "../ui";
 
 type Panel = null | "settings" | "presets" | "login";
 type Link = "consent" | "entering" | "online" | "lost";
+type Notice = { key: TextKey; values?: Record<string, string | number> };
 
-const SELECT_TILES = 1.1;
 const SAVE_DELAY_MS = 400;
 const RETRY_MS = 3000;
+const NOTICE_MS = 3500;
 
 const newId = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-const ENTER_ERRORS: Record<string, string> = {
-  RATE_LIMITED: "잠시 후 다시 시도해 주세요.",
-  GARDEN_FULL: "정원이 가득 찼습니다. 잠시 후 다시 시도해 주세요.",
+const ENTER_ERRORS: Record<string, TextKey> = {
+  RATE_LIMITED: "notice.rateLimited",
+  GARDEN_FULL: "notice.gardenFull",
+};
+const NAME_ERRORS: Record<string, TextKey> = {
+  NAME_NOT_ALLOWED: "name.notAllowed",
+  NAME_SAVE_FAILED: "name.saveFailed",
+  NAME_RATE_LIMITED: "name.rateLimited",
 };
 
 export function Game({ mode, client, audio, settings, onSettings, garden, onGarden, onExit }: { mode: "mine" | "public"; client: HushClient; audio: GardenAudio; settings: Settings; onSettings: (settings: Settings) => void; garden: MyGarden; onGarden: (garden: MyGarden) => void; onExit: () => void }) {
+  const t = useT();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 820;
@@ -49,16 +62,17 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [walking, setWalking] = useState(false);
   const [playing, setPlaying] = useState(audio.running);
   const [panel, setPanel] = useState<Panel>(null);
-  const [editing, setEditing] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  /** The speaker the character holds, and the one it is walking toward to pick up. */
+  /** The speaker in the character's hands. */
   const [carryId, setCarryId] = useState<string | null>(null);
-  const [approachId, setApproachId] = useState<string | null>(null);
-  const [nameError, setNameError] = useState("");
-  const [notice, setNotice] = useState("");
+  /** The action being played. The character cannot walk or start another one until it ends. */
+  const [action, setAction] = useState<Actor["action"]>(undefined);
+  /** The editor of the held speaker is open. */
+  const [editing, setEditing] = useState(false);
+  const [nameError, setNameError] = useState<TextKey | "">("");
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   const [link, setLink] = useState<Link>(online ? (settings.consent ? "entering" : "consent") : "online");
-  const [enterError, setEnterError] = useState("");
+  const [enterError, setEnterError] = useState<TextKey | "">("");
   const [entry, setEntry] = useState<Entry | null>(null);
   const [publicSpeakers, setPublicSpeakers] = useState<Speaker[]>([]);
   const [others, setOthers] = useState<Record<string, RemotePlayer>>({});
@@ -70,12 +84,13 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const desktopChat = Platform.OS === "web" && typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   const placed = online ? publicSpeakers : garden.speakers;
-  /** A carried speaker is wherever the character is, so its sound travels along. */
+  /** A carried speaker is wherever the character is, so its sound and its shadow travel along. */
   const speakers = useMemo(() => (carryId ? placed.map((speaker) => (speaker.id === carryId ? { ...speaker, x: me.x, y: me.y } : speaker)) : placed), [placed, carryId, me]);
   const placedRef = useRef(placed);
   placedRef.current = placed;
-  const approachRef = useRef(approachId);
-  approachRef.current = approachId;
+  const gardenRef = useRef(garden);
+  gardenRef.current = garden;
+  const acting = useRef(false);
   const canEdit = online ? !!entry?.canEdit : true;
   const myId = useRef("me");
   const meRef = useRef(me);
@@ -88,9 +103,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const targets = useRef<Record<string, Point>>({});
   const alive = useRef(true);
 
-  const flash = useCallback((text: string) => {
-    setNotice(text);
-    setTimeout(() => alive.current && setNotice((current) => (current === text ? "" : current)), 3500);
+  const flash = useCallback((key: TextKey, values?: Notice["values"]) => {
+    const next = { key, values };
+    setNotice(next);
+    setTimeout(() => alive.current && setNotice((current) => (current === next ? null : current)), NOTICE_MS);
   }, []);
 
   // --- sound -------------------------------------------------------------------------------------------------
@@ -98,7 +114,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   useEffect(() => audio.setListener(me), [audio, me]);
   useEffect(() => audio.setVolume(settings.volume), [audio, settings.volume]);
 
-  const place = online ? entry?.place ?? "" : "내 정원";
+  const place = online ? entry?.place ?? "" : t("status.mine");
   const togglePlay = useCallback(async () => {
     try {
       if (audio.running) {
@@ -111,7 +127,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         void showPlayback(true, place);
       }
     } catch {
-      flash("소리를 시작하지 못했습니다.");
+      flash("notice.soundFailed");
     }
   }, [audio, flash, place]);
 
@@ -164,24 +180,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       const seconds = (now - last) / 1000;
       last = now;
       const stick = joystick.current;
-      let input = stick.x || stick.y ? stick : keysToInput(keys.current);
-      const target = approachRef.current ? placedRef.current.find((speaker) => speaker.id === approachRef.current) : undefined;
-      if (approachRef.current && (!target || Math.hypot(input.x, input.y) > 0.05)) {
-        // Walking by hand, or a speaker that is gone, cancels the walk to the speaker.
-        approachRef.current = null;
-        setApproachId(null);
-      } else if (target) {
-        if (distance(meRef.current, target) <= PICK_UP_TILES) {
-          approachRef.current = null;
-          setApproachId(null);
-          setCarryId(target.id);
-        } else {
-          const from = toScreen(meRef.current);
-          const to = toScreen(target);
-          const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
-          input = { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
-        }
-      }
+      // The character stays in place while it makes, lifts or discards a speaker.
+      const input = acting.current ? { x: 0, y: 0 } : stick.x || stick.y ? stick : keysToInput(keys.current);
       const active = Math.hypot(input.x, input.y) > 0.05;
       if (active !== wasWalking) {
         wasWalking = active;
@@ -236,9 +236,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
                 }
               }
               for (const id of Object.keys(walkers)) {
-                const facing = walkers[id] || after[id]?.facing || 1;
-                if (!after[id]?.walking || after[id].facing !== facing) {
-                  after[id] = { facing, walking: true };
+                const side = walkers[id] || after[id]?.facing || 1;
+                if (!after[id]?.walking || after[id].facing !== side) {
+                  after[id] = { facing: side, walking: true };
                   moved = true;
                 }
               }
@@ -304,11 +304,11 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
         }
         case "error":
-          if (message.error === "NAME_NOT_ALLOWED" || message.error === "NAME_RATE_LIMITED" || message.error === "NAME_SAVE_FAILED") {
-            setNameError(message.error === "NAME_NOT_ALLOWED" ? "쓸 수 없는 이름입니다." : message.error === "NAME_SAVE_FAILED" ? "이름을 저장하지 못했습니다. 다시 시도해 주세요." : "이름은 잠시 뒤에 다시 바꿀 수 있습니다.");
+          if (NAME_ERRORS[message.error]) {
+            setNameError(NAME_ERRORS[message.error]);
             break;
           }
-          flash(message.error === "CHAT_RATE_LIMITED" ? "조금 천천히 말해 주세요." : message.error === "LOGIN_REQUIRED" ? "채팅은 로그인이 필요합니다." : "요청을 처리하지 못했습니다.");
+          flash(message.error === "CHAT_RATE_LIMITED" ? "notice.chatSlow" : message.error === "LOGIN_REQUIRED" ? "notice.chatLogin" : "notice.requestFailed");
           break;
       }
     },
@@ -325,7 +325,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       const result = await client.enter(coordinates, settingsRef.current.character, settingsRef.current.name);
       if (!alive.current) return;
       setEntry(result);
-      if (result.user && typeof result.characterName === 'string') {
+      if (result.user && typeof result.characterName === "string") {
         const nextSettings = { ...settingsRef.current, name: result.characterName };
         settingsRef.current = nextSettings;
         onSettings(nextSettings);
@@ -339,9 +339,11 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       next.open();
     } catch (cause) {
       if (!alive.current) return;
-      setEnterError((cause instanceof ApiError && ENTER_ERRORS[cause.code]) || "서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.");
+      setEnterError((cause instanceof ApiError && ENTER_ERRORS[cause.code]) || "notice.connectFailed");
       setLink(settingsRef.current.consent ? "lost" : "consent");
     }
+    // Settings are read through a ref, so saving them does not restart the connection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, receive]);
 
   useEffect(() => {
@@ -368,73 +370,92 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     return () => clearInterval(timer);
   }, []);
 
-  // --- speaker editing ---------------------------------------------------------------------------------------
+  // --- speakers ----------------------------------------------------------------------------------------------
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pushPublic = useCallback(
     (speaker: Speaker) => {
       clearTimeout(saveTimers.current[speaker.id]);
       saveTimers.current[speaker.id] = setTimeout(() => {
-        client.saveSpeaker(speaker).catch((cause) => flash(cause instanceof ApiError && cause.status === 403 ? "스피커를 바꿀 권한이 없습니다." : "스피커를 저장하지 못했습니다."));
+        client.saveSpeaker(speaker).catch((cause) => flash(cause instanceof ApiError && cause.status === 403 ? "notice.noPermission" : "notice.saveFailed"));
       }, SAVE_DELAY_MS);
     },
     [client, flash],
   );
 
+  /** Stores a new speaker list. Edits must start from `placedRef.current`, never from the list with the carried speaker moved. */
   const changeSpeakers = useCallback(
     (next: Speaker[], changedId?: string) => {
-      if (!online) return onGarden({ ...garden, speakers: next });
+      if (!online) return onGarden({ ...gardenRef.current, speakers: next });
       setPublicSpeakers(next);
       const changed = next.find((speaker) => speaker.id === changedId);
       if (changed) pushPublic(changed);
     },
-    [online, onGarden, garden, pushPublic],
+    [online, onGarden, pushPublic],
   );
 
-  const selected = placed.find((speaker) => speaker.id === selectedId) ?? null;
+  const carried = carryId ? placed.find((speaker) => speaker.id === carryId) : undefined;
+
+  // A held speaker that someone else removed leaves the hands empty.
+  useEffect(() => {
+    if (carryId && !carried && !acting.current) {
+      setCarryId(null);
+      setEditing(false);
+    }
+  }, [carryId, carried]);
+
+  /** Plays an action of the player's character and runs `after` when it ends. */
+  const play = useCallback((name: ActionName, color: NoiseColor, after: () => void) => {
+    acting.current = true;
+    setAction({ name, startedAt: Date.now(), color });
+    setTimeout(() => {
+      if (!alive.current) return;
+      acting.current = false;
+      setAction(undefined);
+      after();
+    }, actionDuration(settingsRef.current.character, name));
+  }, []);
+
+  /** Lifts a speaker the character stands next to. */
+  const lift = (speaker: Speaker) => {
+    if (acting.current || carryId) return;
+    setCarryId(speaker.id);
+    play("lift", speaker.sound.noise.color, () => undefined);
+  };
 
   /** Puts the carried speaker down one step in front of the character. */
-  const putDown = useCallback(() => {
-    if (!carryId) return;
+  const putDown = () => {
+    if (!carryId || acting.current) return;
     const ahead = toGarden({ x: facing * 40, y: 14 });
     const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
+    setEditing(false);
     setCarryId(null);
     changeSpeakers(moveSpeaker(placedRef.current, carryId, spot), carryId);
-  }, [carryId, facing, changeSpeakers]);
-
-  /** The carry button: put down when holding, cancel when walking over, otherwise walk to the speaker and lift it. */
-  const carrySelected = () => {
-    if (carryId) return putDown();
-    if (approachId) return setApproachId(null);
-    if (selected) setApproachId(selected.id);
   };
 
-  const onTap = useCallback(
-    (point: Point, speakerId: string | null) => {
-      if (!editing || !canEdit || carryId) return;
-      const near = placed.map((speaker) => ({ speaker, gap: distance(speaker, point) })).filter((item) => item.gap < SELECT_TILES).sort((a, b) => a.gap - b.gap)[0];
-      setApproachId(null);
-      setSelectedId(speakerId ?? near?.speaker.id ?? null);
-    },
-    [editing, canEdit, carryId, placed],
-  );
-
-  const addHere = () => {
-    if (placed.length >= MAX_SPEAKERS) return flash("스피커는 " + MAX_SPEAKERS + "개까지 놓을 수 있습니다.");
-    const id = newId();
-    changeSpeakers(addSpeaker(placed, { x: me.x + 1, y: me.y }, id), id);
-    setSelectedId(id);
+  /** Makes a new speaker; when the character's animation ends, the speaker is in its hands. */
+  const create = () => {
+    if (acting.current || carryId) return;
+    if (placed.length >= MAX_SPEAKERS) return flash("notice.maxSpeakers", { n: MAX_SPEAKERS });
+    play("create", defaultSound().noise.color, () => {
+      if (placedRef.current.length >= MAX_SPEAKERS) return;
+      const id = newId();
+      changeSpeakers(addSpeaker(placedRef.current, meRef.current, id), id);
+      setCarryId(id);
+    });
   };
 
-  const removeSelected = () => {
-    if (!selected) return;
-    const id = selected.id;
-    setSelectedId(null);
-    setCarryId(null);
-    setApproachId(null);
-    if (!online) return onGarden({ ...garden, speakers: removeSpeaker(placed, id) });
-    setPublicSpeakers(removeSpeaker(placed, id));
-    clearTimeout(saveTimers.current[id]);
-    client.deleteSpeaker(id).catch(() => flash("스피커를 지우지 못했습니다."));
+  /** Discards the held speaker; it is removed when the character's animation ends. */
+  const discard = () => {
+    if (acting.current || !carried) return;
+    const id = carried.id;
+    setEditing(false);
+    play("discard", carried.sound.noise.color, () => {
+      setCarryId(null);
+      if (!online) return onGarden({ ...gardenRef.current, speakers: removeSpeaker(placedRef.current, id) });
+      setPublicSpeakers(removeSpeaker(placedRef.current, id));
+      clearTimeout(saveTimers.current[id]);
+      client.deleteSpeaker(id).catch(() => flash("notice.deleteFailed"));
+    });
   };
 
   // --- chat and account --------------------------------------------------------------------------------------
@@ -465,66 +486,74 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       setPanel(null);
       await connect();
     } catch {
-      flash("로그아웃하지 못했습니다. 다시 시도해 주세요.");
+      flash("notice.logoutFailed");
     }
   };
 
-  const myName = online ? entry?.name ?? "…" : settings.name || "나";
-  const carried = carryId ? placed.find((speaker) => speaker.id === carryId) : undefined;
+  const myName = online ? entry?.name ?? "…" : settings.name || t("name.me");
   const actors: Actor[] = useMemo(() => {
     const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, name: player.name, label: player.place, bubble: bubbles[player.id]?.text, kind: player.character, facing: motion[player.id]?.facing, walking: motion[player.id]?.walking }));
-    list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, facing, walking, carrying: carried?.sound.noise.color });
+    list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, facing, walking, carrying: action ? undefined : carried?.sound.noise.color, action });
     return list;
-  }, [others, motion, bubbles, me, myName, place, facing, walking, settings.character, carried]);
+  }, [others, motion, bubbles, me, myName, place, facing, walking, settings.character, carried, action]);
+
+  /** The speaker close enough to lift, if the hands are free. */
+  const liftable = useMemo(() => {
+    if (!canEdit || carryId || action) return null;
+    return placed.map((speaker) => ({ speaker, gap: distance(speaker, me) })).filter((item) => item.gap <= PICK_UP_TILES).sort((a, b) => a.gap - b.gap)[0]?.speaker ?? null;
+  }, [canEdit, carryId, action, placed, me]);
+
+  const markers: Marker[] = [];
+  if (liftable) markers.push({ id: "lift", x: liftable.x, y: liftable.y, offsetX: 66, offsetY: -34, content: <Btn small variant="mint" title={t("near.lift")} onPress={() => lift(liftable)} testID="speaker-lift" /> });
+  if (carried && !action) {
+    markers.push({
+      id: "hold",
+      x: me.x,
+      y: me.y,
+      offsetX: wide ? 104 : 0,
+      offsetY: wide ? -30 : 30,
+      content: (
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <Btn small variant="mint" title={t("hold.putDown")} onPress={putDown} testID="speaker-put-down" />
+          {!editing && <Btn small title={t("hold.edit")} onPress={() => setEditing(true)} testID="speaker-edit" />}
+        </View>
+      ),
+    });
+  }
 
   const heard = audibleCount(me, speakers);
-  const showEditor = editing && !!selected;
+  const showEditor = editing && !!carried && !action;
+  const lostText = online && link === "lost" ? t(enterError || "notice.lost") : "";
+  const pill = { backgroundColor: "rgba(255,250,242,0.92)", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 4, alignItems: "center" } as const;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: wide ? "row" : "column" }}>
       <View style={{ flex: 1 }}>
-        <Scene me={me} actors={actors} speakers={speakers} selectedId={editing ? selectedId : null} carriedId={carryId} showRanges={editing} onInput={(input) => (joystick.current = input)} onTap={onTap} />
+        <Scene me={me} actors={actors} speakers={speakers} carriedId={carryId} markers={markers} onInput={(input) => (joystick.current = input)} />
 
         <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, top: insets.top + 8, paddingHorizontal: 10, gap: 6 }}>
-          <View pointerEvents="box-none" style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <Btn small title="나가기" onPress={onExit} testID="exit" />
-            <Btn small variant={playing ? "mint" : "primary"} title={playing ? "소리 끄기" : "소리 켜기"} onPress={() => void togglePlay()} testID="toggle-sound" />
-            {canEdit && (
-              <Btn
-                small
-                variant={editing ? "mint" : "plain"}
-                title={editing ? "편집 끝내기" : "스피커 편집"}
-                onPress={() => {
-                  putDown();
-                  setApproachId(null);
-                  setEditing(!editing);
-                  setSelectedId(null);
-                }}
-                testID="toggle-edit"
-              />
-            )}
-            {editing && <Btn small title="스피커 놓기" onPress={addHere} testID="add-speaker" />}
-            {!online && <Btn small title="프리셋" onPress={() => setPanel("presets")} testID="open-presets" />}
-            <Btn small title="설정" onPress={() => setPanel("settings")} testID="open-settings" />
-          </View>
-          <View pointerEvents="none" style={{ alignSelf: "flex-start", backgroundColor: "rgba(255,250,242,0.9)", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
-            <T size={12} weight="700" tone="muted">
-              {(online ? "모두의 정원" + (link === "online" ? " · " + (Object.keys(others).length + 1) + "명" : "") : "내 정원 (오프라인)") + " · 들리는 스피커 " + heard + "개"}
-            </T>
+          <View pointerEvents="box-none" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+            <View pointerEvents="box-none" style={{ flex: 1, alignItems: "flex-start" }}>
+              {canEdit && link === "online" && (carried ? <Btn small variant="danger" title={t("top.discard")} disabled={!!action} onPress={discard} testID="speaker-discard" /> : <Btn small variant="primary" title={t("top.create")} disabled={!!action || !!carryId} onPress={create} testID="speaker-create" />)}
+            </View>
+            <View pointerEvents="none" testID="garden-status" style={[pill, { flexShrink: 1 }]}>
+              <T size={12} weight="800" lines={1}>{t(online ? "status.public" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}</T>
+              <T size={11.5} weight="700" tone="muted" lines={1}>{t("status.heard", { n: heard })}</T>
+            </View>
+            <View pointerEvents="box-none" style={{ flex: 1, alignItems: "flex-end" }}>
+              <IconBtn label={t("top.settings")} onPress={() => setPanel("settings")} testID="open-settings">
+                <GearIcon />
+              </IconBtn>
+            </View>
           </View>
           {!!notice && (
-            <View pointerEvents="none" style={{ alignSelf: "flex-start", backgroundColor: colors.butter, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
-              <T size={12.5} weight="700">{notice}</T>
+            <View pointerEvents="none" style={[pill, { alignSelf: "center", backgroundColor: colors.butter }]}>
+              <T size={12.5} weight="700">{t(notice.key, notice.values)}</T>
             </View>
           )}
-          {online && link === "lost" && (
-            <View pointerEvents="none" style={{ alignSelf: "flex-start", backgroundColor: colors.butter, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
-              <T size={12.5} weight="700">{enterError || "연결이 끊겼습니다. 다시 연결하는 중입니다."}</T>
-            </View>
-          )}
-          {editing && !selected && (
-            <View pointerEvents="none" style={{ alignSelf: "flex-start", backgroundColor: "rgba(255,250,242,0.9)", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
-              <T size={12.5}>스피커를 눌러 소리를 바꾸거나, 스피커 놓기로 새로 놓으세요.</T>
+          {!!lostText && (
+            <View pointerEvents="none" style={[pill, { alignSelf: "center", backgroundColor: colors.butter }]}>
+              <T size={12.5} weight="700">{lostText}</T>
             </View>
           )}
         </View>
@@ -534,31 +563,24 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             {entry?.canChat ? (
               <>
                 <View style={{ flex: 1 }}>
-                  <Input inputRef={chatInput} autoFocus={desktopChat} submitBehavior={desktopChat ? "submit" : undefined} label="채팅" placeholder="주변 사람에게 말하기" value={draft} maxLength={CHAT_MAX_LENGTH} onChangeText={setDraft} onSubmit={sendChat} testID="chat-input" />
+                  <Input inputRef={chatInput} autoFocus={desktopChat} submitBehavior={desktopChat ? "submit" : undefined} label={t("chat.label")} placeholder={t("chat.placeholder")} value={draft} maxLength={CHAT_MAX_LENGTH} onChangeText={setDraft} onSubmit={sendChat} testID="chat-input" />
                 </View>
-                <Btn variant="primary" title="보내기" disabled={!draft.trim()} onPress={sendChat} testID="chat-send" />
+                <Btn variant="primary" title={t("chat.send")} disabled={!draft.trim()} onPress={sendChat} testID="chat-send" />
               </>
             ) : (
-              <Btn small variant="mint" title="로그인하고 채팅하기" onPress={() => setPanel("login")} testID="chat-login" />
+              <Btn small variant="mint" title={t("chat.login")} onPress={() => setPanel("login")} testID="chat-login" />
             )}
           </View>
         )}
       </View>
 
-      {showEditor && selected && (
-        <View style={wide ? { width: 340, backgroundColor: colors.panel, borderLeftWidth: 2, borderLeftColor: colors.panelEdge, paddingTop: insets.top } : { height: "46%", backgroundColor: colors.panel, borderTopWidth: 2, borderTopColor: colors.panelEdge, paddingBottom: insets.bottom }}>
+      {showEditor && carried && (
+        <View style={wide ? { width: 380, backgroundColor: colors.panel, borderLeftWidth: 2, borderLeftColor: colors.panelEdge, paddingTop: insets.top } : { height: "56%", backgroundColor: colors.panel, borderTopWidth: 2, borderTopColor: colors.panelEdge, paddingBottom: insets.bottom }}>
           <SpeakerEditor
-            speaker={selected}
-            carry={carryId ? "carrying" : approachId ? "approaching" : "idle"}
+            speaker={carried}
             onChange={(speaker) => changeSpeakers(updateSpeaker(placedRef.current, speaker.id, { name: speaker.name, sound: speaker.sound }), speaker.id)}
-            onCarry={carrySelected}
-            onDelete={removeSelected}
-            onClose={() => {
-              putDown();
-              setApproachId(null);
-              setSelectedId(null);
-            }}
-            readSpectrum={() => audio.spectrum(selected.id)}
+            onClose={() => setEditing(false)}
+            readSpectrum={() => audio.spectrum(carried.id)}
           />
         </View>
       )}
@@ -568,7 +590,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           {link === "consent" ? (
             <ConsentCard
               busy={false}
-              error={enterError}
+              error={enterError ? t(enterError) : ""}
               onCancel={onExit}
               onAgree={() => {
                 onSettings({ ...settings, consent: true });
@@ -578,15 +600,28 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             />
           ) : (
             <View style={{ backgroundColor: colors.panel, borderRadius: 24, borderWidth: 2, borderColor: colors.panelEdge, padding: 18, gap: 12 }}>
-              <T size={16} weight="800">정원으로 들어가는 중…</T>
-              <Btn title="돌아가기" onPress={onExit} />
+              <T size={16} weight="800">{t("entering.title")}</T>
+              <Btn title={t("common.back")} onPress={onExit} />
             </View>
           )}
         </Modal>
       )}
       {panel === "settings" && (
         <Modal onClose={() => setPanel(null)}>
-          <SettingsCard settings={settings} user={entry?.user ?? null} online={online} shownName={myName} nameError={nameError} onChange={onSettings} onName={changeName} onLogin={() => setPanel("login")} onLogout={() => void logout()}
+          <SettingsCard
+            settings={settings}
+            user={entry?.user ?? null}
+            online={online}
+            playing={playing}
+            shownName={myName}
+            nameError={nameError ? t(nameError) : ""}
+            onChange={onSettings}
+            onName={changeName}
+            onToggleSound={() => void togglePlay()}
+            onPresets={() => setPanel("presets")}
+            onLogin={() => setPanel("login")}
+            onLogout={() => void logout()}
+            onExit={onExit}
             onClose={() => setPanel(null)}
           />
         </Modal>
@@ -601,13 +636,15 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           <PresetCard
             garden={garden}
             onApply={(id) => {
-              setSelectedId(null);
+              setCarryId(null);
+              setEditing(false);
               onGarden(applyPreset(garden, id));
             }}
             onSave={(name) => onGarden(savePreset(garden, name, newId()))}
             onDelete={(id) => onGarden(deletePreset(garden, id))}
             onReset={() => {
-              setSelectedId(null);
+              setCarryId(null);
+              setEditing(false);
               onGarden(resetGarden());
             }}
             onClose={() => setPanel(null)}

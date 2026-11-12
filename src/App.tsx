@@ -8,9 +8,11 @@ import { GardenAudio } from "./audio/engine";
 import { configureSession } from "./audio/session";
 import { API_ORIGIN } from "./config";
 import { initialGarden, type MyGarden } from "./domain/garden";
-import { CHARACTER_KINDS, CHARACTER_NAMES, type CharacterKind } from "./domain/characters";
+import { CHARACTER_KINDS, type CharacterKind } from "./domain/characters";
+import type { TextKey } from "./domain/text";
 import { Character } from "./game/characters";
 import { SpeakerArt } from "./game/sprites";
+import { LanguageProvider, useT } from "./i18n";
 import { Game } from "./screens/Game";
 import { DEFAULT_SETTINGS, type Settings } from "./settings";
 import { loadGarden, loadSettings, saveGarden, saveSettings } from "./storage";
@@ -20,6 +22,7 @@ type Mode = "home" | "mine" | "public";
 
 /** Title screen: choose the private offline garden or the shared public garden. */
 function Home({ character, onCharacter, onPick }: { character: CharacterKind; onCharacter: (kind: CharacterKind) => void; onPick: (mode: "mine" | "public") => void }) {
+  const t = useT();
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, alignItems: "center", justifyContent: "center", padding: 20 }}>
       <View style={{ width: "100%", maxWidth: 380, gap: 14 }}>
@@ -30,22 +33,23 @@ function Home({ character, onCharacter, onPick }: { character: CharacterKind; on
         </View>
         <Card>
           <T size={30} weight="800" style={{ textAlign: "center" }}>Hush Garden</T>
-          <T size={14} tone="muted" style={{ textAlign: "center" }}>스피커 가까이 걸어가면 소음이 포근하게 가려집니다.</T>
-          <T size={12.5} tone="muted" weight="700">캐릭터 고르기</T>
+          <T size={14} tone="muted" style={{ textAlign: "center" }}>{t("home.tagline")}</T>
+          <T size={12.5} tone="muted" weight="700">{t("home.pickCharacter")}</T>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
             {CHARACTER_KINDS.map((kind) => {
               const selected = kind === character;
+              const name = t(("character." + kind) as TextKey);
               return (
-                <Pressable key={kind} accessibilityRole="radio" accessibilityLabel={CHARACTER_NAMES[kind]} accessibilityState={{ selected }} testID={"character-" + kind} onPress={() => onCharacter(kind)} style={{ alignItems: "center", paddingHorizontal: 4, paddingTop: 4, paddingBottom: 2, borderRadius: 16, borderWidth: 2, borderColor: selected ? colors.mintDeep : "transparent", backgroundColor: selected ? "#e6f6ee" : "transparent" }}>
+                <Pressable key={kind} accessibilityRole="radio" accessibilityLabel={name} accessibilityState={{ selected }} testID={"character-" + kind} onPress={() => onCharacter(kind)} style={{ alignItems: "center", paddingHorizontal: 4, paddingTop: 4, paddingBottom: 2, borderRadius: 16, borderWidth: 2, borderColor: selected ? colors.mintDeep : "transparent", backgroundColor: selected ? "#e6f6ee" : "transparent" }}>
                   <Character kind={kind} />
-                  <T size={11} weight="700" tone={selected ? "ink" : "muted"}>{CHARACTER_NAMES[kind]}</T>
+                  <T size={11} weight="700" tone={selected ? "ink" : "muted"}>{name}</T>
                 </Pressable>
               );
             })}
           </ScrollView>
-          <Btn variant="primary" title="내 정원 (혼자, 오프라인)" onPress={() => onPick("mine")} testID="pick-mine" />
-          <Btn variant="mint" title="모두의 정원 (온라인)" onPress={() => onPick("public")} testID="pick-public" />
-          <T size={12} tone="muted" style={{ textAlign: "center" }}>방향키·WASD 또는 화면을 누른 채 끌어서 움직입니다.</T>
+          <Btn variant="primary" title={t("home.mine")} onPress={() => onPick("mine")} testID="pick-mine" />
+          <Btn variant="mint" title={t("home.public")} onPress={() => onPick("public")} testID="pick-public" />
+          <T size={12} tone="muted" style={{ textAlign: "center" }}>{t("home.controls")}</T>
         </Card>
       </View>
     </View>
@@ -98,6 +102,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
+      <LanguageProvider language={settings.language}>
       <StatusBar style="dark" />
       {!ready ? (
         <View style={{ flex: 1, backgroundColor: colors.sky }} />
@@ -106,6 +111,7 @@ export default function App() {
       ) : (
         <Game key={mode} mode={mode} client={client} audio={audio} settings={settings} onSettings={changeSettings} garden={garden} onGarden={changeGarden} onExit={exit} />
       )}
+      </LanguageProvider>
     </SafeAreaProvider>
   );
 }

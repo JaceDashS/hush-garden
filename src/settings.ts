@@ -2,11 +2,22 @@
 import { DEFAULT_CHARACTER, normalizeCharacter, type CharacterKind } from "./domain/characters";
 import type { CueMode } from "./domain/chat";
 import { checkName } from "./domain/names";
+import { languageForLocale, normalizeLanguage, type Language } from "./domain/text";
 
 /** A stored name that no longer passes the name rule is dropped. */
 function nameOrEmpty(value: unknown): string {
   const check = checkName(value);
   return check.ok ? check.name : "";
+}
+
+/** The language the device is set to, used until the player picks one. */
+export function deviceLanguage(): Language {
+  try {
+    const browser = (globalThis as { navigator?: { language?: string } }).navigator?.language;
+    return languageForLocale(browser || Intl.DateTimeFormat().resolvedOptions().locale);
+  } catch {
+    return "en";
+  }
 }
 
 export interface Settings {
@@ -20,11 +31,13 @@ export interface Settings {
   character: CharacterKind;
   /** The character name the player typed. Empty means the account name, or "Guest". */
   name: string;
+  /** The language of the screens. */
+  language: Language;
 }
 
-export const DEFAULT_SETTINGS: Settings = { volume: 0.8, cue: "tone", consent: false, character: DEFAULT_CHARACTER, name: "" };
+export const DEFAULT_SETTINGS: Settings = { volume: 0.8, cue: "tone", consent: false, character: DEFAULT_CHARACTER, name: "", language: "ko" };
 
-/** Turns stored JSON into valid settings; unknown or broken values fall back to defaults. */
+/** Turns stored JSON into valid settings; unknown or broken values fall back to defaults. A missing language becomes the device language. */
 export function normalizeSettings(value: unknown): Settings {
   const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return {
@@ -33,5 +46,6 @@ export function normalizeSettings(value: unknown): Settings {
     consent: v.consent === true,
     character: normalizeCharacter(v.character),
     name: nameOrEmpty(v.name),
+    language: normalizeLanguage(v.language, deviceLanguage()),
   };
 }

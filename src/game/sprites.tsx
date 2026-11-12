@@ -1,6 +1,7 @@
 /** Vector artwork: ground tiles, characters, speakers and garden decorations. All drawn in code, no image files. */
 import React from "react";
-import Svg, { Circle, Ellipse, G, Path, Polygon, Rect } from "react-native-svg";
+import Svg, { Circle, Defs, Ellipse, G, Path, Polygon, RadialGradient, Rect, Stop } from "react-native-svg";
+import { reachOf, waveShape, type NoiseColor, type SpeakerSound, type Wave } from "../domain/sound";
 import { GARDEN_SIZE, TILE_HEIGHT, TILE_WIDTH, toScreen } from "../domain/world";
 
 /** Screen size of the whole garden; x is shifted so the left corner starts at 0. */
@@ -66,12 +67,12 @@ export const SPEAKER_SIZE = { width: 60, height: 76 };
 
 const SPEAKER_TINT = { brown: "#d9a877", pink: "#ffb3c6", white: "#f4f1ea" } as const;
 
-/** The one kind of speaker: a smiling cabinet on little feet, tinted by its noise colour. */
-export const SpeakerArt = React.memo(function SpeakerArt({ color, selected, playing }: { color: keyof typeof SPEAKER_TINT; selected?: boolean; playing?: boolean }) {
+/** The one kind of speaker: a smiling cabinet on little feet, tinted by its noise colour. `shadow` false leaves out the ground shadow for a speaker held in the air. */
+export const SpeakerArt = React.memo(function SpeakerArt({ color, selected, playing, shadow = true }: { color: keyof typeof SPEAKER_TINT; selected?: boolean; playing?: boolean; shadow?: boolean }) {
   const tint = SPEAKER_TINT[color];
   return (
     <Svg width={SPEAKER_SIZE.width} height={SPEAKER_SIZE.height} viewBox="0 0 60 76" pointerEvents="none">
-      <Ellipse cx={30} cy={70} rx={20} ry={5} fill="rgba(74,64,56,0.18)" />
+      {shadow && <Ellipse cx={30} cy={70} rx={20} ry={5} fill="rgba(74,64,56,0.18)" />}
       {playing && (
         <G opacity={0.9}>
           <Path d="M8 14 q-6 8 0 16" stroke="#8fd6b4" strokeWidth={3} fill="none" strokeLinecap="round" />
@@ -92,6 +93,59 @@ export const SpeakerArt = React.memo(function SpeakerArt({ color, selected, play
     </Svg>
   );
 });
+
+/** Colour of the sound shadow a speaker casts, by its noise colour. */
+export const SHADOW_TINT: Record<NoiseColor, string> = { brown: "#7a4a21", pink: "#ff4f98", white: "#ffffff" };
+/** Share of the centre darkness left at each quarter of the way out to the reach. */
+const SHADOW_FALLOFF = [1, 0.62, 0.32, 0.1, 0] as const;
+
+/** How dark the centre of a speaker's sound shadow is (0 to 1): louder is darker, a silent speaker casts none. */
+export function shadowStrength(sound: Pick<SpeakerSound, "volume">): number {
+  return sound.volume <= 0 ? 0 : 0.14 + 0.5 * sound.volume;
+}
+
+/** Screen size of a speaker's sound shadow: its round reach seen in quarter view. */
+export function shadowSize(sound: Pick<SpeakerSound, "volume">): { width: number; height: number } {
+  const reach = reachOf(sound);
+  return { width: reach * TILE_WIDTH * Math.SQRT2, height: reach * TILE_HEIGHT * Math.SQRT2 };
+}
+
+/**
+ * The sound of a speaker drawn on the ground: a soft round shadow in its noise colour, darkest at the speaker and
+ * fading to nothing where it stops being heard. Overlapping shadows blend. The caller centres the view on the
+ * speaker using shadowSize().
+ */
+export const SoundShadow = React.memo(function SoundShadow({ id, sound }: { id: string; sound: SpeakerSound }) {
+  const { width, height } = shadowSize(sound);
+  const strength = shadowStrength(sound);
+  const gradient = "shade-" + id.replace(/[^A-Za-z0-9_-]/g, "");
+  return (
+    <Svg width={width} height={height} viewBox="0 0 100 100" preserveAspectRatio="none" pointerEvents="none">
+      <Defs>
+        <RadialGradient id={gradient} cx="50" cy="50" r="50" gradientUnits="userSpaceOnUse">
+          {SHADOW_FALLOFF.map((share, index) => (
+            <Stop key={index} offset={index / (SHADOW_FALLOFF.length - 1)} stopColor={SHADOW_TINT[sound.noise.color]} stopOpacity={strength * share} />
+          ))}
+        </RadialGradient>
+      </Defs>
+      <Circle cx={50} cy={50} r={50} fill={"url(#" + gradient + ")"} />
+    </Svg>
+  );
+});
+
+/** A wave drawn as a line: the wave buttons and the oscillator display use it. `cycles` repeats the wave. */
+export function WavePicture({ wave, width, height, color, strokeWidth = 2.5, cycles = 1 }: { wave: Wave; width: number; height: number; color: string; strokeWidth?: number; cycles?: number }) {
+  const count = 48 * cycles + 1;
+  const pad = strokeWidth + 1;
+  const d = waveShape(wave, count, 0, cycles)
+    .map((value, index) => (index === 0 ? "M" : "L") + (pad + (index / (count - 1)) * (width - pad * 2)).toFixed(1) + " " + (height / 2 - value * (height / 2 - pad)).toFixed(1))
+    .join(" ");
+  return (
+    <Svg width={width} height={height} pointerEvents="none">
+      <Path d={d} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
+    </Svg>
+  );
+}
 
 export const TREE_SIZE = { width: 72, height: 96 };
 

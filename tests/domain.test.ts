@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CHARACTER_KINDS, CHARACTER_NAMES, LIFT_FRAMES, STANDING, WALK_FRAMES, liftProgress, nextWalkFrame, normalizeCharacter, poseFor } from "../src/domain/characters.ts";
+import { CARRY, actionAt, actionDuration, actionFrames } from "../src/domain/actions.ts";
+import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor } from "../src/domain/characters.ts";
+import { LANGUAGES, TEXTS, languageForLocale, normalizeLanguage, translate, type TextKey } from "../src/domain/text.ts";
 import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
 import { BAND_IDS, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, peakBoost, xToHz, yToDb } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
-import { MAX_SPEAKERS, defaultSound, gainAt, mixFor, normalizeSound, type Speaker } from "../src/domain/sound.ts";
+import { MAX_OSCILLATORS, MAX_SPEAKERS, REACH, WAVES, audibleCount, defaultSound, gainAt, loudnessAt, mixFor, normalizeSound, reachOf, waveShape, type Speaker } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
 
 const speaker = (id: string, x: number, y: number, patch = {}): Speaker => ({ id, name: id, x, y, sound: { ...defaultSound(), ...patch } });
@@ -48,7 +50,7 @@ test("a speaker is loudest next to it and silent at its radius", () => {
 });
 
 test("two speakers in range are both heard", () => {
-  const levels = mixFor({ x: 10, y: 10 }, [speaker("a", 8, 10), speaker("b", 12, 10), speaker("far", 0, 0, { radius: 2 })]);
+  const levels = mixFor({ x: 10, y: 10 }, [speaker("a", 8, 10), speaker("b", 12, 10), speaker("far", 0, 0)]);
   assert.ok(levels[0].gain > 0 && levels[1].gain > 0);
   assert.equal(levels[2].gain, 0);
 });
@@ -66,9 +68,9 @@ test("a speaker to the right on screen pans right", () => {
 test("sound values are clamped and broken input falls back to defaults", () => {
   const sound = normalizeSound({ volume: 9, radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], eq: { highpass: 1500, lowpass: 300 } });
   assert.equal(sound.volume, 1);
-  assert.equal(sound.radius, 2);
+  assert.equal("radius" in sound, false);
   assert.equal(sound.noise.color, "brown");
-  assert.equal(sound.oscillators.length, 3);
+  assert.equal(sound.oscillators.length, MAX_OSCILLATORS);
   assert.ok(sound.eq.lowpass >= sound.eq.highpass);
   assert.deepEqual(normalizeSound(null), defaultSound());
 });
@@ -130,7 +132,7 @@ test("chat messages are trimmed, limited and never empty", () => {
 test("there are ten characters, each with a name, and unknown ones fall back to the first", () => {
   assert.equal(CHARACTER_KINDS.length, 10);
   assert.equal(new Set(CHARACTER_KINDS).size, 10);
-  assert.ok(CHARACTER_KINDS.every((kind) => CHARACTER_NAMES[kind]));
+  assert.ok(LANGUAGES.every((language) => CHARACTER_KINDS.every((kind) => translate(language, ("character." + kind) as TextKey))));
   assert.equal(normalizeCharacter("panda"), "panda");
   assert.equal(normalizeCharacter("dragon"), "bunny");
   assert.equal(normalizeCharacter(undefined), "bunny");
@@ -214,11 +216,137 @@ test("a carrying character keeps its arms up while its feet keep stepping", () =
   assert.equal(poseFor(true, 0).armsUp, undefined);
 });
 
-test("a picked up speaker rises from the ground to overhead", () => {
-  assert.equal(liftProgress(0), 0);
-  assert.ok(liftProgress(1) > 0 && liftProgress(1) < 1);
-  assert.equal(liftProgress(LIFT_FRAMES - 1), 1);
-  assert.equal(liftProgress(99), 1);
+test("a lifted speaker rises from the ground in front to overhead", () => {
+  const start = actionAt("bunny", "lift", 0);
+  const end = actionAt("bunny", "lift", actionDuration("bunny", "lift"));
+  assert.ok(start.prop.y === 0 && start.prop.x > 0 && start.arms === "down");
+  assert.deepEqual(end.prop, CARRY);
+  assert.ok(end.arms === "up" && end.done);
+  assert.deepEqual(actionFrames("bunny", "lift"), actionFrames("mouse", "lift"));
+});
+
+const settled = (moment: ReturnType<typeof actionAt>) => {
+  const { hop, shiftX, tilt, squash, arm, open, sway } = moment.stance;
+  return [hop, shiftX, tilt % 360, squash - 1, arm, open, sway].every((value) => Math.abs(value) < 1e-9) && moment.turn === 1;
+};
+
+test("making a speaker ends with it held overhead, for every character", () => {
+  for (const kind of CHARACTER_KINDS) {
+    const duration = actionDuration(kind, "create");
+    assert.ok(duration >= 1000 && duration <= 2000, kind);
+    const start = actionAt(kind, "create", 0);
+    assert.ok(start.arms === "down" && !start.done, kind);
+    const end = actionAt(kind, "create", duration);
+    assert.deepEqual(end.prop, CARRY, kind);
+    assert.ok(end.form === "speaker" && end.arms === "up" && end.done && settled(end), kind);
+    assert.deepEqual(actionAt(kind, "create", duration + 500).prop, CARRY, kind);
+  }
+});
+
+test("discarding starts from the held speaker and ends with nothing, for every character", () => {
+  for (const kind of CHARACTER_KINDS) {
+    const duration = actionDuration(kind, "discard");
+    assert.ok(duration >= 1000 && duration <= 2000, kind);
+    const start = actionAt(kind, "discard", 0);
+    assert.deepEqual(start.prop, CARRY, kind);
+    assert.ok(start.form === "speaker" && start.arms === "up", kind);
+    const end = actionAt(kind, "discard", duration);
+    assert.ok(end.prop.opacity === 0 && end.arms === "down" && end.done && settled(end), kind);
+  }
+});
+
+test("every character makes and discards a speaker in its own way", () => {
+  for (const name of ["create", "discard"] as const) {
+    const scripts = CHARACTER_KINDS.map((kind) => JSON.stringify(actionFrames(kind, name)));
+    assert.equal(new Set(scripts).size, CHARACTER_KINDS.length, name);
+    for (const kind of CHARACTER_KINDS) {
+      const times = actionFrames(kind, name).map((frame) => frame.t);
+      assert.ok(times.every((time, index) => index === 0 || time > times[index - 1]), kind + " " + name);
+    }
+  }
+});
+
+test("an action glides between keyframes and shows its effects only briefly", () => {
+  // The frog is out of sight at the top of its leap and lands holding the speaker.
+  assert.ok(actionAt("frog", "create", 600).stance.hop > 300);
+  const falling = actionAt("frog", "create", 900);
+  assert.ok(falling.stance.hop > 0 && falling.stance.hop < 320 && Math.abs(falling.prop.y - (CARRY.y + falling.stance.hop)) < 1e-9);
+  assert.ok(actionAt("pig", "create", 260).effects.some((effect) => effect.kind === "dirt" && effect.progress > 0 && effect.progress < 1));
+  assert.equal(actionAt("pig", "create", 1500).effects.length, 0);
+  // The chick turns around to watch its egg, which hatches into the speaker.
+  assert.equal(actionAt("chick", "create", 900).turn, -1);
+  assert.equal(actionAt("chick", "create", 900).form, "egg");
+  assert.equal(actionAt("chick", "create", 1200).form, "speaker");
+});
+
+test("a louder speaker is heard farther away and a silent one is not heard", () => {
+  assert.equal(reachOf({ volume: 0 }), REACH[0]);
+  assert.equal(reachOf({ volume: 1 }), REACH[1]);
+  assert.ok(reachOf({ volume: 0.9 }) > reachOf({ volume: 0.3 }));
+  assert.equal(loudnessAt(0, { volume: 0.5 }), 0.5);
+  assert.equal(loudnessAt(reachOf({ volume: 0.5 }), { volume: 0.5 }), 0);
+  assert.ok(loudnessAt(9, { volume: 1 }) > 0);
+  assert.equal(loudnessAt(9, { volume: 0.4 }), 0);
+  assert.equal(audibleCount({ x: 10, y: 10 }, [speaker("near", 11, 10), speaker("far", 0, 0), speaker("mute", 10, 10, { volume: 0 })]), 1);
+});
+
+test("the default sound gets its low end from oscillator A and holds at most two oscillators", () => {
+  const sound = defaultSound();
+  assert.equal(sound.oscillators.length, 1);
+  assert.ok(sound.oscillators[0].wave === "sine" && sound.oscillators[0].frequency <= 80 && sound.oscillators[0].level > 0);
+  assert.equal("bass" in sound, false);
+  assert.equal(MAX_OSCILLATORS, 2);
+  // An explicit empty list stays empty: the player removed the oscillators.
+  assert.equal(normalizeSound({ oscillators: [] }).oscillators.length, 0);
+});
+
+test("a stored bass drone becomes a sine oscillator of the same loudness", () => {
+  const sound = normalizeSound({ bass: { frequency: 60, level: 0.3 }, oscillators: [{ wave: "square", frequency: 300, level: 0.4 }, { wave: "triangle", frequency: 500, level: 0.1 }] });
+  assert.equal(sound.oscillators.length, 2);
+  assert.deepEqual(sound.oscillators[0].wave, "sine");
+  assert.equal(sound.oscillators[0].frequency, 60);
+  // The drone played at 0.5 of its level and an oscillator plays at 0.3 of its level.
+  near(sound.oscillators[0].level * 0.3, 0.3 * 0.5, 1e-9);
+  assert.equal(sound.oscillators[1].wave, "square");
+  assert.equal(normalizeSound({ bass: { frequency: 60, level: 0 } }).oscillators.length, 0);
+  assert.equal(normalizeSound({ bass: { frequency: 60, level: 1 } }).oscillators[0].level, 1);
+  // Normalising again changes nothing.
+  assert.deepEqual(normalizeSound(sound), sound);
+});
+
+test("wave pictures stay in range and differ by wave", () => {
+  const shapes = WAVES.map((wave) => waveShape(wave, 33));
+  assert.ok(shapes.every((shape) => shape.length === 33 && shape.every((value) => value >= -1 && value <= 1)));
+  assert.equal(new Set(shapes.map((shape) => shape.map((value) => value.toFixed(3)).join())).size, WAVES.length);
+  near(waveShape("sine", 5)[1], 1, 1e-9);
+  assert.equal(waveShape("square", 5)[3], -1);
+  assert.equal(waveShape("sine", 9, 0, 2).length, 9);
+  near(waveShape("sine", 9, 0, 2)[1], 1, 1e-9);
+});
+
+test("every text exists in every language and fills in its values", () => {
+  const keys = Object.keys(TEXTS.ko) as TextKey[];
+  for (const language of LANGUAGES) {
+    assert.deepEqual(Object.keys(TEXTS[language]).sort(), [...keys].sort(), language);
+    for (const key of keys) {
+      assert.ok(TEXTS[language][key].trim(), language + " " + key);
+      const marks = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort().join();
+      assert.equal(marks(TEXTS[language][key]), marks(TEXTS.ko[key]), language + " " + key);
+    }
+  }
+  assert.equal(translate("en", "status.heard", { n: 2 }), "2 speakers heard");
+  assert.equal(translate("ko", "status.heard", { n: 2 }), "들리는 스피커 2개");
+  assert.equal(translate("ja", "osc.add", { name: "OSC B" }), "OSC B を追加");
+});
+
+test("the language follows the device and unknown values fall back", () => {
+  assert.equal(languageForLocale("ja-JP"), "ja");
+  assert.equal(languageForLocale("ko_KR"), "ko");
+  assert.equal(languageForLocale("fr-FR"), "en");
+  assert.equal(languageForLocale(undefined), "en");
+  assert.equal(normalizeLanguage("ja"), "ja");
+  assert.equal(normalizeLanguage("xx"), "ko");
+  assert.equal(normalizeLanguage(null, "en"), "en");
 });
 
 test("character names are cleaned and limited", () => {

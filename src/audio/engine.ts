@@ -1,5 +1,5 @@
 /**
- * Synthesises what the listener hears. Each speaker in range is a voice (noise, bass drone and tones through an
+ * Synthesises what the listener hears. Each speaker in range is a voice (noise and oscillator tones through an
  * EQ and filters); voices are summed on a bus. A chat cue briefly swaps part of the bus for a darker copy leaning
  * toward the talker, so loudness and bass stay and only the brightness moves.
  *
@@ -8,7 +8,7 @@
 import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
 import { peakBoost } from "../domain/equalizer";
-import { dbToGain, gainAt, mixFor, type NoiseColor, type Speaker } from "../domain/sound";
+import { dbToGain, mixFor, reachOf, type NoiseColor, type Speaker } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { fillNoise } from "./noise";
 
@@ -27,8 +27,6 @@ interface Voice {
   sources: (AudioBufferSourceNode | OscillatorNode)[];
   nodes: { disconnect(): void }[];
   noiseGain: GainNode;
-  bass: OscillatorNode;
-  bassGain: GainNode;
   tones: { oscillator: OscillatorNode; gain: GainNode }[];
   filters: { highpass: BiquadFilterNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; lowpass: BiquadFilterNode };
   trim: GainNode;
@@ -190,7 +188,7 @@ export class GardenAudio {
     const wanted = new Set<string>();
     const levels = mixFor(this.listener, this.speakers);
     this.speakers.forEach((speaker, index) => {
-      const awake = distance(this.listener, speaker) < speaker.sound.radius + WAKE_MARGIN && speaker.sound.volume > 0;
+      const awake = distance(this.listener, speaker) < reachOf(speaker.sound) + WAKE_MARGIN && speaker.sound.volume > 0;
       if (!awake) return;
       wanted.add(speaker.id);
       const key = JSON.stringify(speaker.sound);
@@ -242,9 +240,6 @@ export class GardenAudio {
     noise.buffer = this.noise(context, sound.noise.color);
     noise.loop = true;
     const noiseGain = feed(noise);
-    const bass = context.createOscillator();
-    bass.type = "sine";
-    const bassGain = feed(bass);
     const tones = sound.oscillators.map((item) => {
       const oscillator = context.createOscillator();
       oscillator.type = item.wave;
@@ -273,7 +268,7 @@ export class GardenAudio {
     nodes.push(sum, ...Object.values(filters), trim, level, pan);
     const at = context.currentTime;
     for (const source of sources) source.start(at);
-    return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, bass, bassGain, tones, filters, trim, level, pan };
+    return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, tones, filters, trim, level, pan };
   }
 
   /** Applies sound values to an existing voice. Values glide, so dragging a slider is heard without clicks. */
@@ -281,8 +276,6 @@ export class GardenAudio {
     const now = context.currentTime;
     const set = (param: { setTargetAtTime(value: number, start: number, constant: number): unknown }, value: number) => param.setTargetAtTime(value, now, GLIDE / 2);
     set(voice.noiseGain.gain, sound.noise.level);
-    set(voice.bass.frequency, sound.bass.frequency);
-    set(voice.bassGain.gain, sound.bass.level * 0.5);
     voice.tones.forEach((tone, index) => {
       set(tone.oscillator.frequency, sound.oscillators[index].frequency);
       set(tone.gain.gain, sound.oscillators[index].level * 0.3);
@@ -310,9 +303,4 @@ export class GardenAudio {
       try { node.disconnect(); } catch { /* already disconnected */ }
     }
   }
-}
-
-/** How many speakers the listener can currently hear. Shown in the HUD. */
-export function audibleCount(listener: Point, speakers: readonly Speaker[]): number {
-  return speakers.filter((speaker) => gainAt(distance(listener, speaker), speaker.sound.radius) * speaker.sound.volume > 0.01).length;
 }

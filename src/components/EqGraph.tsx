@@ -6,16 +6,18 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { BAND_IDS, EQ_LIMITS, dbToY, equalizerResponse, graphFrequencies, handleOf, hzToX, moveBand, xToHz, yToDb, type BandId, type Equalizer } from "../domain/equalizer";
-import { Slider, T, colors } from "../ui";
+import type { TextKey } from "../domain/text";
+import { useT } from "../i18n";
+import { NO_TOUCH_SCROLL, Slider, T, colors, useDragLock } from "../ui";
 
-const HEIGHT = 190;
+const HEIGHT = 180;
 const POINTS = 96;
-const GRAB_PIXELS = 30;
+const GRAB_PIXELS = 36;
 const SPECTRUM_MS = 80;
 /** Spectrum levels between these dB values fill the graph from bottom to top. */
 const SPECTRUM_DB = [-100, -10] as const;
 
-const BAND_LABELS: Record<BandId, string> = { highpass: "저음 자르기", lowShelf: "낮은 음", bell: "중간 음", highShelf: "높은 음", lowpass: "고음 자르기" };
+const BAND_LABELS: Record<BandId, TextKey> = { highpass: "eq.highpass", lowShelf: "eq.lowShelf", bell: "eq.bell", highShelf: "eq.highShelf", lowpass: "eq.lowpass" };
 const BAND_COLORS: Record<BandId, string> = { highpass: "#8d7f72", lowShelf: "#e9728f", bell: "#5fb893", highShelf: "#6fa8dc", lowpass: "#8d7f72" };
 const GRID_HZ = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
 const GRID_DB = [12, 0, -12, -24];
@@ -44,14 +46,16 @@ function spectrumPath(spectrum: Spectrum, frequencies: readonly number[], width:
  * `readSpectrum` returns the current analyser data, or null while no sound plays; it is polled a few times a second.
  */
 export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChange: (eq: Equalizer) => void; readSpectrum: () => Spectrum | null }) {
+  const t = useT();
+  const lock = useDragLock();
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<BandId>("bell");
   const [spectrum, setSpectrum] = useState("");
   const frequencies = useMemo(() => graphFrequencies(POINTS), []);
   const root = useRef<React.ComponentRef<typeof View>>(null);
   const origin = useRef({ x: 0, y: 0 });
-  const latest = useRef({ eq, width, onChange, readSpectrum });
-  latest.current = { eq, width, onChange, readSpectrum };
+  const latest = useRef({ eq, width, onChange, readSpectrum, lock });
+  latest.current = { eq, width, onChange, readSpectrum, lock };
   const dragging = useRef<BandId | null>(null);
 
   useEffect(() => {
@@ -78,6 +82,7 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (event) => {
         const { pageX, pageY } = event.nativeEvent;
+        latest.current.lock(true);
         root.current?.measureInWindow((x, y) => {
           origin.current = { x, y };
           const state = latest.current;
@@ -97,8 +102,14 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
         });
       },
       onPanResponderMove: (event) => drag(event.nativeEvent.pageX, event.nativeEvent.pageY),
-      onPanResponderRelease: () => (dragging.current = null),
-      onPanResponderTerminate: () => (dragging.current = null),
+      onPanResponderRelease: () => {
+        dragging.current = null;
+        latest.current.lock(false);
+      },
+      onPanResponderTerminate: () => {
+        dragging.current = null;
+        latest.current.lock(false);
+      },
     });
   }, []);
 
@@ -116,9 +127,9 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
       <View
         ref={root}
         testID="eq-graph"
-        accessibilityLabel="이퀄라이저 그래프"
+        accessibilityLabel={t("eq.graph")}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-        style={{ height: HEIGHT, borderRadius: 14, overflow: "hidden", backgroundColor: "#3d3632" }}
+        style={[{ height: HEIGHT, borderRadius: 14, overflow: "hidden", backgroundColor: "#3d3632" }, NO_TOUCH_SCROLL]}
         {...responder.panHandlers}
       >
         {width > 0 && (
@@ -139,7 +150,7 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
               const active = band === selected;
               return (
                 <React.Fragment key={band}>
-                  <Circle cx={hzToX(at.hz) * width} cy={dbToY(at.db) * HEIGHT} r={active ? 11 : 9} fill={BAND_COLORS[band]} stroke={colors.white} strokeWidth={active ? 3 : 1.5} />
+                  <Circle cx={hzToX(at.hz) * width} cy={dbToY(at.db) * HEIGHT} r={active ? 13 : 11} fill={BAND_COLORS[band]} stroke={colors.white} strokeWidth={active ? 3 : 1.5} />
                   <SvgText x={hzToX(at.hz) * width} y={dbToY(at.db) * HEIGHT + 3.5} fontSize={10} fontWeight="700" fill={colors.white} textAnchor="middle">{String(index + 1)}</SvgText>
                 </React.Fragment>
               );
@@ -148,13 +159,13 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
         )}
       </View>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <T size={12.5} weight="800">{BAND_IDS.indexOf(selected) + 1 + ". " + BAND_LABELS[selected]}</T>
+        <T size={12.5} weight="800">{BAND_IDS.indexOf(selected) + 1 + ". " + t(BAND_LABELS[selected])}</T>
         <T size={12.5} weight="700" tone="muted">{hz(handle.hz) + (isCut ? "" : " · " + db(handle.db))}</T>
       </View>
       {selected === "bell" && (
-        <Slider label="폭 (Q)" log value={eq.bell.q} min={EQ_LIMITS.bellQ[0]} max={EQ_LIMITS.bellQ[1]} format={(value) => value.toFixed(2)} onChange={(q) => onChange({ ...eq, bell: { ...eq.bell, q } })} testID="eq-q" />
+        <Slider label={t("eq.q")} log value={eq.bell.q} min={EQ_LIMITS.bellQ[0]} max={EQ_LIMITS.bellQ[1]} format={(value) => value.toFixed(2)} onChange={(q) => onChange({ ...eq, bell: { ...eq.bell, q } })} testID="eq-q" />
       )}
-      <T size={11.5} tone="muted">점을 끌어 주파수와 세기를 바꿉니다. 1번과 5번은 그 바깥 소리를 잘라냅니다. 초록 그림자는 지금 나는 소리의 스펙트럼입니다.</T>
+      <T size={11.5} tone="muted">{t("eq.help")}</T>
     </View>
   );
 }

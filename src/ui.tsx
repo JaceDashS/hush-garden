@@ -1,6 +1,7 @@
 /** Shared pastel UI parts. */
-import React, { useRef, useState } from "react";
-import { PanResponder, Pressable, Text, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import React, { createContext, useContext, useRef, useState } from "react";
+import { PanResponder, Platform, Pressable, Text, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
 
 export const colors = {
   sky: "#dff3ea",
@@ -17,6 +18,20 @@ export const colors = {
   track: "#eadfce",
   white: "#ffffff",
 } as const;
+
+/**
+ * Controls that are dragged (sliders, knobs, the equalizer graph) call this with true while a finger is on them and
+ * false when it lifts. A scrolling parent provides it to stop scrolling meanwhile, so a drag on a phone moves the
+ * control instead of the page.
+ */
+export const DragLockContext = createContext<(locked: boolean) => void>(() => undefined);
+export const useDragLock = () => useContext(DragLockContext);
+
+/** On the web a dragged control must tell the browser not to scroll or select text with the same touch. */
+export const NO_TOUCH_SCROLL = (Platform.OS === "web" ? { touchAction: "none", userSelect: "none", cursor: "grab" } : null) as ViewStyle | null;
+
+/** Pixels of drag that turn a knob from one end to the other. */
+const KNOB_TRAVEL = 170;
 
 export function T({ children, size = 14, weight = "500", tone = "ink", style, lines }: { children: React.ReactNode; size?: number; weight?: TextStyle["fontWeight"]; tone?: "ink" | "muted" | "danger" | "white"; style?: StyleProp<TextStyle>; lines?: number }) {
   return <Text numberOfLines={lines} style={[{ fontSize: size, fontWeight: weight, color: colors[tone], lineHeight: Math.round(size * 1.4) }, style]}>{children}</Text>;
@@ -88,10 +103,11 @@ export function Chips<V extends string>({ label, value, options, onChange }: { l
  */
 export function Slider({ label, value, min, max, onChange, log, format = (v) => String(Math.round(v)), testID }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; log?: boolean; format?: (value: number) => string; testID?: string }) {
   const [width, setWidth] = useState(1);
+  const lock = useDragLock();
   const left = useRef(0);
   const track = useRef<React.ComponentRef<typeof View>>(null);
-  const latest = useRef({ width, min, max, log, onChange });
-  latest.current = { width, min, max, log, onChange };
+  const latest = useRef({ width, min, max, log, onChange, lock });
+  latest.current = { width, min, max, log, onChange, lock };
   const toRatio = (v: number) => (log ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min));
   const fromPage = (pageX: number) => {
     const s = latest.current;
@@ -105,12 +121,15 @@ export function Slider({ label, value, min, max, onChange, log, format = (v) => 
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (event) => {
         const pageX = event.nativeEvent.pageX;
+        latest.current.lock(true);
         track.current?.measureInWindow((x) => {
           left.current = x;
           fromPage(pageX);
         });
       },
       onPanResponderMove: (event) => fromPage(event.nativeEvent.pageX),
+      onPanResponderRelease: () => latest.current.lock(false),
+      onPanResponderTerminate: () => latest.current.lock(false),
     }),
   ).current;
   const ratio = Math.max(0, Math.min(1, toRatio(value)));
@@ -133,15 +152,128 @@ export function Slider({ label, value, min, max, onChange, log, format = (v) => 
         accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
         onAccessibilityAction={(event) => stepBy(event.nativeEvent.actionName === "increment" ? 1 : -1)}
         onLayout={(event) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
-        style={{ height: 30, justifyContent: "center" }}
+        style={[{ height: 36, justifyContent: "center" }, NO_TOUCH_SCROLL]}
         {...responder.panHandlers}
       >
         <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.track }}>
           <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.mint, width: `${ratio * 100}%` }} />
         </View>
-        <View pointerEvents="none" style={{ position: "absolute", left: ratio * width - 11, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, borderWidth: 3, borderColor: colors.mintDeep }} />
+        <View pointerEvents="none" style={{ position: "absolute", left: ratio * width - 13, width: 26, height: 26, borderRadius: 13, backgroundColor: colors.white, borderWidth: 3, borderColor: colors.mintDeep }} />
       </View>
     </View>
+  );
+}
+
+/**
+ * A round knob in the manner of synthesiser panels. Dragging up or to the right raises the value and dragging
+ * down or to the left lowers it, so it works with a mouse and with a thumb. `log` spreads frequencies by octave.
+ */
+export function Knob({ label, value, min, max, onChange, log, format = (v) => String(Math.round(v)), size = 64, color = colors.mintDeep, testID }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; log?: boolean; format?: (value: number) => string; size?: number; color?: string; testID?: string }) {
+  const lock = useDragLock();
+  const toRatio = (v: number) => Math.max(0, Math.min(1, log ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min)));
+  const fromRatio = (ratio: number) => (log ? min * Math.pow(max / min, ratio) : min + (max - min) * ratio);
+  const ratio = toRatio(value);
+  const latest = useRef({ ratio, fromRatio, onChange, lock });
+  latest.current = { ratio, fromRatio, onChange, lock };
+  const start = useRef(0);
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        start.current = latest.current.ratio;
+        latest.current.lock(true);
+      },
+      onPanResponderMove: (_event, gesture) => {
+        const next = Math.max(0, Math.min(1, start.current + (gesture.dx - gesture.dy) / KNOB_TRAVEL));
+        latest.current.onChange(latest.current.fromRatio(next));
+      },
+      onPanResponderRelease: () => latest.current.lock(false),
+      onPanResponderTerminate: () => latest.current.lock(false),
+    }),
+  ).current;
+  const stepBy = (direction: number) => onChange(fromRatio(Math.max(0, Math.min(1, ratio + direction * 0.05))));
+  const middle = size / 2;
+  const radius = size / 2 - 5;
+  const at = (share: number, length: number) => {
+    const angle = ((-225 + share * 270) * Math.PI) / 180;
+    return { x: middle + Math.cos(angle) * length, y: middle + Math.sin(angle) * length };
+  };
+  const arc = (share: number) => {
+    const from = at(0, radius);
+    const to = at(share, radius);
+    return "M" + from.x.toFixed(1) + " " + from.y.toFixed(1) + " A" + radius + " " + radius + " 0 " + (share * 270 > 180 ? 1 : 0) + " 1 " + to.x.toFixed(1) + " " + to.y.toFixed(1);
+  };
+  const tip = at(ratio, radius - 9);
+  const tail = at(ratio, radius - 20);
+  return (
+    <View style={{ alignItems: "center", gap: 2, minWidth: size + 12 }}>
+      <View
+        testID={testID}
+        accessibilityRole="adjustable"
+        accessibilityLabel={label}
+        accessibilityValue={{ text: format(value) }}
+        accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+        onAccessibilityAction={(event) => stepBy(event.nativeEvent.actionName === "increment" ? 1 : -1)}
+        style={[{ width: size, height: size }, NO_TOUCH_SCROLL]}
+        {...responder.panHandlers}
+      >
+        <Svg width={size} height={size} pointerEvents="none">
+          <Path d={arc(1)} stroke={colors.track} strokeWidth={5} fill="none" strokeLinecap="round" />
+          {ratio > 0.005 && <Path d={arc(ratio)} stroke={color} strokeWidth={5} fill="none" strokeLinecap="round" />}
+          <Circle cx={middle} cy={middle} r={radius - 7} fill={colors.white} stroke={colors.ink} strokeWidth={2} />
+          <Line x1={tail.x} y1={tail.y} x2={tip.x} y2={tip.y} stroke={colors.ink} strokeWidth={3} strokeLinecap="round" />
+        </Svg>
+      </View>
+      <T size={11.5} tone="muted" weight="700">{label}</T>
+      <T size={12.5} weight="800">{format(value)}</T>
+    </View>
+  );
+}
+
+/** A round button that shows a picture instead of text. `label` is what screen readers say. */
+export function IconBtn({ label, onPress, children, size = 44, variant = "plain", testID }: { label: string; onPress: () => void; children: React.ReactNode; size?: number; variant?: "plain" | "mint"; testID?: string }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      testID={testID}
+      onPress={onPress}
+      style={({ pressed }) => ({ width: size, height: size, borderRadius: size / 2, backgroundColor: variant === "mint" ? colors.mint : colors.white, borderWidth: 2, borderColor: variant === "mint" ? colors.mintDeep : colors.panelEdge, borderBottomWidth: pressed ? 2 : 4, alignItems: "center", justifyContent: "center" })}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+/** A row of tabs; the chosen one is filled. */
+export function Tabs<V extends string>({ value, options, onChange }: { value: V; options: readonly { value: V; label: string }[]; onChange: (value: V) => void }) {
+  return (
+    <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: colors.track, borderRadius: 14, padding: 3, gap: 3 }}>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable key={option.value} accessibilityRole="tab" accessibilityLabel={option.label} accessibilityState={{ selected }} testID={"tab-" + option.value} onPress={() => onChange(option.value)} style={{ flex: 1, minHeight: 36, alignItems: "center", justifyContent: "center", borderRadius: 11, backgroundColor: selected ? colors.white : "transparent" }}>
+            <T size={13} weight="800" tone={selected ? "ink" : "muted"} lines={1}>{option.label}</T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** The gear picture of the settings button. */
+export function GearIcon({ size = 24 }: { size?: number }) {
+  const teeth = Array.from({ length: 8 }, (_, index) => index * 45);
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" pointerEvents="none">
+      {teeth.map((angle) => (
+        <Rect key={angle} x={10.4} y={1.6} width={3.2} height={5} rx={1.2} fill={colors.ink} transform={"rotate(" + angle + " 12 12)"} />
+      ))}
+      <Circle cx={12} cy={12} r={7} fill={colors.ink} />
+      <Circle cx={12} cy={12} r={3} fill={colors.white} />
+    </Svg>
   );
 }
 

@@ -1,6 +1,8 @@
 /** The ten characters, drawn in code. Every character is built from the same parts so one pose moves them all. */
 import React, { useEffect, useState } from "react";
+import { View } from "react-native";
 import Svg, { Circle, Ellipse, G, Path, Polygon } from "react-native-svg";
+import type { Stance } from "../domain/actions";
 import { WALK_FRAME_MS, nextWalkFrame, poseFor, type CharacterKind, type Pose } from "../domain/characters";
 
 export const CHARACTER_SIZE = { width: 56, height: 64 };
@@ -174,13 +176,17 @@ function Face({ look }: { look: Look }) {
   }
 }
 
-/** One character picture in the given pose. `facing` -1 mirrors it to look left. */
-export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facing = 1 }: { kind: CharacterKind; pose: Pose; facing?: 1 | -1 }) {
+/** Where the feet touch the ground inside the character picture. */
+export const CHARACTER_FEET = { x: 28, y: 59 };
+
+/** One character picture in the given pose. `facing` -1 mirrors it to look left. `shadow` false leaves out the ground shadow. */
+export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facing = 1, shadow = true }: { kind: CharacterKind; pose: Pose; facing?: 1 | -1; shadow?: boolean }) {
+  const open = pose.open ?? 0;
   const look = LOOKS[kind];
   const limb = kind === "panda" ? INK : look.body;
   return (
-    <Svg width={CHARACTER_SIZE.width} height={CHARACTER_SIZE.height} viewBox="0 0 56 64" pointerEvents="none">
-      <Ellipse cx={28} cy={59} rx={17 - Math.abs(pose.bob)} ry={4.5} fill="rgba(74,64,56,0.18)" />
+    <Svg width={CHARACTER_SIZE.width} height={CHARACTER_SIZE.height} viewBox="0 0 56 64" pointerEvents="none" style={{ overflow: "visible" }}>
+      {shadow && <Ellipse cx={28} cy={59} rx={17 - Math.abs(pose.bob)} ry={4.5} fill="rgba(74,64,56,0.18)" />}
       <G transform={facing === -1 ? "translate(56 0) scale(-1 1)" : undefined}>
         <Ellipse cx={22 + pose.leftFoot.x} cy={56 + pose.leftFoot.y} rx={6} ry={4} fill={limb} stroke={INK} strokeWidth={2} />
         <Ellipse cx={35 + pose.rightFoot.x} cy={56 + pose.rightFoot.y} rx={6} ry={4} fill={limb} stroke={INK} strokeWidth={2} />
@@ -189,8 +195,8 @@ export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facin
           {kind === "chick" && <Path d="M26 17 q2 -8 4 -1 q3 -6 3 2" stroke={INK} strokeWidth={2} fill={look.body} strokeLinecap="round" strokeLinejoin="round" />}
           {!pose.armsUp && (
             <G>
-              <Ellipse cx={11} cy={42} rx={4} ry={6.5} fill={limb} stroke={INK} strokeWidth={2} transform={`rotate(${20 + pose.arm} 12 37)`} />
-              <Ellipse cx={45} cy={42} rx={4} ry={6.5} fill={limb} stroke={INK} strokeWidth={2} transform={`rotate(${-20 + pose.arm} 44 37)`} />
+              <Ellipse cx={11} cy={42} rx={4} ry={6.5} fill={limb} stroke={INK} strokeWidth={2} transform={`rotate(${20 + pose.arm + open} 12 37)`} />
+              <Ellipse cx={45} cy={42} rx={4} ry={6.5} fill={limb} stroke={INK} strokeWidth={2} transform={`rotate(${-20 + pose.arm - open} 44 37)`} />
             </G>
           )}
           <Ellipse cx={28} cy={36} rx={20} ry={19} fill={look.body} stroke={INK} strokeWidth={2.5} />
@@ -211,9 +217,11 @@ export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facin
 /**
  * A character that plays its walking cycle while `walking` is true and stands still otherwise.
  * Each character keeps its own timer, so characters step out of sync like a real crowd.
- * `carrying` raises both arms to hold a speaker overhead.
+ * `carrying` raises both arms to hold a speaker overhead. `stance` displaces the whole body during an action:
+ * it hops, leans, shifts and squashes around its feet while its shadow stays on the ground. `turn` -1 shows the
+ * character turned around without changing the direction its `stance` moves in.
  */
-export function Character({ kind, facing = 1, walking = false, carrying = false }: { kind: CharacterKind; facing?: 1 | -1; walking?: boolean; carrying?: boolean }) {
+export function Character({ kind, facing = 1, walking = false, carrying = false, stance, turn = 1 }: { kind: CharacterKind; facing?: 1 | -1; walking?: boolean; carrying?: boolean; stance?: Stance; turn?: 1 | -1 }) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     if (!walking) return;
@@ -221,5 +229,22 @@ export function Character({ kind, facing = 1, walking = false, carrying = false 
     const timer = setInterval(() => setFrame(nextWalkFrame), WALK_FRAME_MS);
     return () => clearInterval(timer);
   }, [walking]);
-  return <CharacterArt kind={kind} pose={poseFor(walking, frame, carrying)} facing={facing} />;
+  const base = poseFor(walking, frame, carrying);
+  if (!stance) return <CharacterArt kind={kind} pose={base} facing={facing} />;
+  const pose: Pose = { ...base, arm: walking || carrying ? base.arm : stance.arm, sway: base.sway + stance.sway, open: carrying ? 0 : stance.open };
+  const look = (facing * turn) as 1 | -1;
+  const squash = Math.max(0.3, stance.squash);
+  const lift = Math.max(0, stance.hop);
+  return (
+    <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
+      <View pointerEvents="none" style={{ position: "absolute", left: stance.shiftX * facing, top: 0, opacity: Math.max(0.25, 1 - lift / 160) }}>
+        <Svg width={CHARACTER_SIZE.width} height={CHARACTER_SIZE.height} viewBox="0 0 56 64">
+          <Ellipse cx={CHARACTER_FEET.x} cy={CHARACTER_FEET.y} rx={Math.max(6, 17 - lift / 12)} ry={4.5} fill="rgba(74,64,56,0.18)" />
+        </Svg>
+      </View>
+      <View style={{ transformOrigin: CHARACTER_FEET.x + "px " + CHARACTER_FEET.y + "px", transform: [{ translateX: stance.shiftX * facing }, { translateY: -stance.hop }, { rotate: stance.tilt * look + "deg" }, { scaleX: 1 / Math.sqrt(squash) }, { scaleY: squash }] }}>
+        <CharacterArt kind={kind} pose={pose} facing={look} shadow={false} />
+      </View>
+    </View>
+  );
 }

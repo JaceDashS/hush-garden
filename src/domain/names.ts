@@ -41,9 +41,3 @@ export function checkName(value: unknown): NameCheck {
   if (isReservedName(name)) return { ok: false, problem: "reserved" };
   return { ok: true, name };
 }
-
-export const NAME_PROBLEM_TEXT: Record<NameProblem, string> = {
-  empty: "이름을 입력해 주세요.",
-  too_long: "이름은 " + NAME_MAX_LENGTH + "자까지 쓸 수 있습니다.",
-  reserved: "관리자나 운영자로 보일 수 있는 이름은 쓸 수 없습니다.",
-};

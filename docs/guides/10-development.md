@@ -41,10 +41,10 @@ A second visitor can be any WebSocket client: `POST /hush-garden/enter` with `{"
 - A rule (movement, loudness, limits, presets, chat range): `src/domain/`, with a test in `tests/domain.test.ts`.
 - A sound limit: change `LIMITS` in `src/domain/sound.ts` and the same limit in the platform `services/api/src/services/hushGarden/rules.ts`; the server value is the one enforced.
 - Art: `src/game/sprites.tsx`.
-- Text: the screens are in Korean; strings are inline in `src/screens/`, `src/components/` and `src/App.tsx`.
+- Text: every screen text is a key in `src/domain/text.ts` with a Korean, an English and a Japanese entry; screens read it with `useT()` from `src/i18n.tsx`. A new text needs all three entries, which a test checks.
 
 ## Example
 
-- Input: The hearing radius limit should grow from 18 to 24 tiles.
-- Steps: Change `LIMITS.radius` here and the radius clamp in the platform rules → update both specs and the clamp tests → release the server before the client.
-- Result: An editor can set 24 and the server stores it.
+- Input: The oscillator frequency limit should grow from 8 kHz to 12 kHz.
+- Steps: Change `LIMITS.oscillatorFrequency` here and the oscillator clamp in the platform rules → update both specs, the API sound fields and the clamp tests → release the server before the client.
+- Result: An editor can set 12 kHz and the server stores it.

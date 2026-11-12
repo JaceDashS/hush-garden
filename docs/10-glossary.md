@@ -23,9 +23,19 @@
 - Definition: The audio nodes that play one speaker while the listener is near it.
 - Code: `Voice` in `src/audio/engine.ts`
 
-## Radius
-- Definition: How far a speaker is heard, in tiles. Loudness reaches zero at the radius.
-- Code: `SpeakerSound.radius`, `gainAt()`
+## Reach
+- Definition: How far a speaker is heard, in tiles. It follows from the volume (2 tiles when silent up to 11 at full volume); there is no setting for it.
+- Code: `reachOf()`, `REACH`, `loudnessAt()`
+- Avoid: "radius", "range" for a speaker (the former radius setting no longer exists).
+
+## Sound Shadow
+- Definition: The soft round shadow a speaker casts on the ground in its noise colour, darker when louder and fading out at its reach.
+- Code: `SoundShadow`, `shadowStrength()`, `shadowSize()`
+
+## Oscillator
+- Definition: One synthesised tone of a speaker: a wave, a frequency and a level. A speaker has at most two, shown as the panels OSC A and OSC B.
+- Code: `Oscillator`, `MAX_OSCILLATORS`, `OscillatorPanel`
+- Avoid: "bass", "drone" (the low end is an oscillator now).
 
 ## Preset
 - Definition: A saved speaker layout with sounds. Built-in presets ship with the app; own presets are saved by the player.
@@ -58,7 +68,7 @@
 - Avoid: "nickname", "username" (the account name is a different thing).
 
 ## Pose
-- Definition: Where a character's feet, arms, body and ears sit in one picture: standing, a walking frame, or arms up while carrying.
+- Definition: Where a character's feet, arms, body and ears sit in one picture: standing, a walking frame, or arms up while holding.
 - Code: `Pose`, `poseFor()`
 
 ## Equalizer
@@ -73,6 +83,24 @@
 - Definition: The live picture of how loud each frequency is, drawn behind the equalizer curve.
 - Code: `GardenAudio.spectrum()`
 
-## Carrying
-- Definition: Moving a speaker by having the character walk to it, lift it overhead, walk, and put it down.
-- Code: `carryId`, `putDown()`, `CarriedSpeaker`
+## Holding
+- Definition: Having a speaker in the character's hands, overhead. A speaker is lifted or made into the hands and leaves them by being put down or discarded. Only a held speaker can be edited.
+- Code: `carryId`, `lift()`, `putDown()`, `CARRY`
+- UI text: 들기, 내려놓기, 편집
+- Avoid: "edit mode", "select" (they no longer exist).
+
+## Action
+- Definition: A short animation of a character handling a speaker: making, discarding or lifting. Making and discarding are different for every character.
+- Code: `ActionName`, `actionAt()`, `Keyframe`
+
+## Stance
+- Definition: How a character's whole body is displaced during an action: hop, shift, lean and squash, on top of its pose.
+- Code: `Stance`, `NEUTRAL`
+
+## Prop
+- Definition: What a character handles during an action and how it looks at that moment: usually the speaker, sometimes an egg, a ball of yarn or a leaf.
+- Code: `PropState`, `PropForm`, `PropView`
+
+## Marker
+- Definition: A pressable button placed in the garden beside a speaker or the character.
+- Code: `Marker` in `src/game/Scene.tsx`

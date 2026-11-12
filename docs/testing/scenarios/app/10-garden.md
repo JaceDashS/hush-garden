@@ -21,9 +21,15 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "stands still without input and inside the joystick dead zone", "joystick input never exceeds full speed". Browser check: pressing on the garden showed the joystick and dragging walked.
 
 ## Louder When Closer
-- Input: a speaker with radius 8 heard from 0, 2, 6, 8 and 20 tiles.
-- Result: 1 at the speaker, falling with distance, 0 at 8 and beyond.
+- Input: a point with reach 8 heard from 0, 2, 6, 8 and 20 tiles.
+- Result: 1 at the point, falling with distance, 0 at 8 and beyond.
 - Test: "a speaker is loudest next to it and silent at its radius". Browser check: the audible speaker count dropped from 3 to 2 after walking away.
+
+## Louder Reaches Farther
+- Input: speakers at volume 0, 0.3, 0.4, 0.5, 0.9 and 1; a listener 9 tiles away; a silent speaker at the listener's position.
+- Steps: `reachOf()` → `2 + 9 × volume`; `loudnessAt()` → volume times the distance share.
+- Result: reach 2 tiles at volume 0 and 11 at volume 1; the full-volume speaker is heard at 9 tiles and the 0.4 one is not; a silent speaker is never counted as heard.
+- Test: "a louder speaker is heard farther away and a silent one is not heard". Browser check 2026-11-12: the editor showed "reaches 8.3 tiles" at 70%.
 
 ## Two Speakers Blend
 - Input: listener between two speakers in range and one out of range.
@@ -41,14 +47,25 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "a speaker to the right on screen pans right".
 
 ## Sound Values Are Clamped
-- Input: volume 9, radius -1, an unknown noise colour, five oscillators, high cut below low cut; and `null`.
-- Result: values inside their ranges, three oscillators, high cut at least the low cut; `null` gives the default sound.
+- Input: volume 9, a stored radius, an unknown noise colour, five oscillators, high cut below low cut; and `null`.
+- Result: values inside their ranges, no radius, two oscillators, high cut at least the low cut; `null` gives the default sound.
 - Test: "sound values are clamped and broken input falls back to defaults".
+
+## Default Low End
+- Input: the default sound; a sound with an explicit empty oscillator list.
+- Result: one oscillator, a sine at or below 80 Hz with a level above zero, and no bass field; the empty list stays empty.
+- Test: "the default sound gets its low end from oscillator A and holds at most two oscillators".
+
+## Stored Bass Drone
+- Input: a stored sound with `bass: {frequency: 60, level: 0.3}` and two oscillators; a drone at level 0; a drone at level 1.
+- Steps: `normalizeSound()` turns the drone into a sine oscillator at `level × 0.5 / 0.3` in front and keeps two.
+- Result: sine 60 Hz at level 0.5 followed by the first stored oscillator; no oscillator for level 0; level capped at 1; normalising the result again changes nothing.
+- Test: "a stored bass drone becomes a sine oscillator of the same loudness". Browser check 2026-11-12: the speakers seeded on the local server with a drone were served with one oscillator each.
 
 ## Edit Speakers
 - Input: add at (3, 4), put down at (99, -5), rename with spaces, change volume, remove; then add 27 speakers.
 - Result: the position is clamped, the name trimmed, the volume stored, the list empty after removal; never more than 24.
-- Test: "speakers can be added, moved, edited and removed", "a full garden refuses another speaker". Browser check: selecting a speaker opened its controls; volume, noise colour and an added oscillator changed at once.
+- Test: "speakers can be added, moved, edited and removed", "a full garden refuses another speaker".
 
 ## Presets
 - Input: add a speaker, save "Night" twice, apply a built-in preset, apply "Night", delete it, reset.
@@ -92,13 +109,13 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 
 ## Log In And Chat
 - Input: login with an administrator account, a second visitor nearby sends a message, then the player sends one.
-- Result: the chat box and the edit button appear; the other visitor's bubble shows with the place `Seoul, South Korea`; both messages are in the server log.
+- Result: the chat box and the make a speaker button appear; the other visitor's bubble shows with the place `Seoul, South Korea`; both messages are in the server log.
 - Test: Browser check only.
 
 ## Edit A Public Speaker
-- Input: an administrator presses "place speaker" in the public garden.
-- Result: the speaker appears and is stored by the server.
-- Test: Browser check only.
+- Input: an administrator in the public garden makes a speaker, edits it while holding it, puts it down, lifts it again and discards it.
+- Result: the server stores the new speaker with volume, noise, oscillators and equalizer only; after discarding, the server list is back to what it was.
+- Test: Browser check 2026-11-12 against a local API: four speakers before, five after making, four after discarding; no stored sound had a radius or a bass field. A guest saw no speaker button.
 
 ## Ten Characters
 - Input: the character list; the values "panda", "dragon" and nothing.
@@ -121,8 +138,8 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "dragging a band keeps every value in range and the cuts in order", "graph positions convert both ways and stay on the graph". Browser check 2026-11-12: dragging the bell up and the high cut left redrew the curve and the readout showed 5.9 kHz.
 
 ## Spectrum Analyser
-- Input: a selected speaker playing white noise with a bass drone and a 9 kHz high cut.
-- Result: the shadow behind the curve shows a bump at the bass frequency and falls off above the high cut; it changes when a band is dragged.
+- Input: a held speaker playing brown noise with oscillator A at 55 Hz.
+- Result: the shadow behind the curve is highest at the low end and falls toward the high end; it changes when a band is dragged.
 - Test: Browser check 2026-11-12 only.
 
 ## Old Sound Format
@@ -130,10 +147,50 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: the same values in the five-band model.
 - Test: "the first sound format with separate filters is still read".
 
-## Carry A Speaker
-- Input: a selected speaker a few tiles away; carry pressed; walk right; put down pressed.
-- Result: the character walks to the speaker, holds it overhead with its arms up while its feet keep stepping, and the speaker ends next to the character at the new place.
-- Test: "a carrying character keeps its arms up while its feet keep stepping", "a picked up speaker rises from the ground to overhead". Browser check 2026-11-12: the stored position changed from (14, 17) to about (17.8, 12.4) only after putting down.
+## Lift Carry And Put Down
+- Input: the character walks next to a speaker; lift pressed; walk; put down pressed.
+- Result: a lift button appears beside the speaker only within 1.6 tiles and only with free hands; after lifting, the speaker is overhead with the arms up while the feet keep stepping, and put down and edit buttons appear beside the character; after putting down the speaker stands one step in front and the lift button is back.
+- Test: "a carrying character keeps its arms up while its feet keep stepping", "a lifted speaker rises from the ground in front to overhead". Browser check 2026-11-12 at phone size: lift button beside the speaker, then put down and edit under the character.
+
+## Edit Only While Holding
+- Input: a speaker on the ground; then the same speaker held.
+- Result: no way to open the sound controls for a speaker on the ground; while held, edit opens the three tabs; putting down or discarding closes them.
+- Test: Browser check 2026-11-12.
+
+## Make A Speaker
+- Input: make a speaker pressed with free hands, for each of the ten characters; and with 24 speakers in the garden.
+- Result: the character plays its own making animation for 1 to 2 seconds without walking; at the end a default speaker is overhead with the arms up and the body back to normal; the top left button reads discard. With 24 speakers nothing is made and a notice says the garden holds 24.
+- Test: "making a speaker ends with it held overhead, for every character", "an action glides between keyframes and shows its effects only briefly". Browser check 2026-11-12 in slow motion: fox, penguin, chick, panda, bunny, cat, bear, frog and pig.
+
+## Discard A Speaker
+- Input: discard pressed while holding, for each of the ten characters.
+- Result: the character plays its own discarding animation starting from the held speaker; at the end nothing is in its hands, the speaker is gone from the garden and the count of speakers heard drops.
+- Test: "discarding starts from the held speaker and ends with nothing, for every character". Browser check 2026-11-12 in slow motion: fox, penguin, chick, panda, bunny, cat, bear, frog and pig.
+
+## Twenty Different Animations
+- Input: the keyframes of making and of discarding for the ten characters.
+- Result: no two characters share a making list or a discarding list; keyframe times only increase.
+- Test: "every character makes and discards a speaker in its own way".
+
+## Sound Shadows
+- Input: the starting private garden with a brown, a pink and a white speaker; a speaker made and carried.
+- Result: each speaker has a soft shadow in its noise colour without pressing anything; shadows fade outward and blend where they overlap; the held speaker's shadow follows the character.
+- Test: Browser check 2026-11-12.
+
+## Oscillator Panels
+- Input: the oscillator tab of a new speaker; add pressed; the square wave picture pressed on OSC A; the OSC A level knob dragged up 57 px; the OSC B frequency knob dragged right 50 px.
+- Result: OSC A at 55 Hz and 55%; OSC B appears at 165 Hz and 20% and the add button goes away; the display of OSC A shows a square wave; the level reads 82%; the frequency of OSC B reads 676 Hz.
+- Test: "wave pictures stay in range and differ by wave". Browser check 2026-11-12 at 375 by 812.
+
+## Top Bar And Settings
+- Input: the garden at phone size; the gear pressed.
+- Result: speaker button left, status centre, gear right; settings show sound on or off, master volume, language, character name, chat cue, presets and leave the garden.
+- Test: Browser check 2026-11-12.
+
+## Languages
+- Input: every text key in Korean, English and Japanese; device locales `ja-JP`, `ko_KR`, `fr-FR` and none; Korean chosen in settings while the screens were English.
+- Result: every key has a non-empty text with the same `{name}` parts in all three languages; the locales give Japanese, Korean, English and English; the open settings card and the top bar switched to Korean at once.
+- Test: "every text exists in every language and fills in its values", "the language follows the device and unknown values fall back", "settings fall back to defaults and keep valid values". Browser check 2026-11-12.
 
 ## Character Name Rules
 - Input: "  Mina   Kim ", spaces only, a number, 17 characters, 16 Korean characters; "Admin", "ADM1N", "a d m i n", "the_moderator", "관리자", "운 영 자", "GM", "jace-s", "Hush Garden", "@dmin", "0wner"; "Gmail fan", "Modest", "Devon", "정원사", "ねこ", "Robot", "Guest".
@@ -142,6 +199,8 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 
 ## Not Yet Verified
 - Name change and other players' characters in the public garden were not checked in a browser after these features were added (the server rules are tested in the platform repository).
+- The mouse's two animations were not watched in a browser; the other nine characters were sampled at one to five moments each in slow motion, not watched at full speed.
+- Knobs, sliders and the equalizer were dragged with a mouse at phone size, not with a finger on a phone. Japanese screens were not looked at.
 - Sound and chat cue by ear on real earphones (the signal was measured in the browser: running context, non-zero level, strongest below 200 Hz).
 - Android: installation, background playback with the screen off, lock screen buttons, vibration, device location.
 - Windows desktop app: login through the HTTP plugin, location prompt, offline start.

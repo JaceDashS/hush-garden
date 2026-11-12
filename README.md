@@ -2,7 +2,7 @@
 
 A cute quarter-view garden where speakers play masking noise. Walk closer to a speaker and its noise grows louder; use it with earphones to block out a room.
 
-- Private garden: works offline. Place speakers, shape their sound (noise, bass, oscillators, EQ, filters), save presets.
+- Private garden: works offline. Make speakers, carry them around, shape their sound (noise, two oscillators, one equalizer), save presets.
 - Public garden: one shared garden. Enter with location consent, see others with their city above their head, and chat nearby after logging in.
 - One Expo (React Native) codebase for the web app, the Android app and a Windows desktop app.
 

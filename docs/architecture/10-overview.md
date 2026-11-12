@@ -23,10 +23,10 @@ Key points in text: `App` owns the audio engine and stored data and switches bet
 
 | Module | Code | Role |
 | --- | --- | --- |
-| Rules | `src/domain/` | Geometry and movement, sound model, equalizer response, distance mixing, speaker editing and presets, characters and poses, name rules, chat range and cue |
+| Rules | `src/domain/` | Geometry and movement, sound model, equalizer response, distance mixing, speaker editing and presets, characters and poses, speaker actions, name rules, chat range and cue, texts in three languages |
 | Audio | `src/audio/` | Synthesis graph, noise generation, background playback session |
-| Game view | `src/game/` | Quarter-view scene, joystick, the ten animated characters, speaker and garden art |
-| Screens and panels | `src/screens/`, `src/components/`, `src/ui.tsx` | Game HUD, speaker editor with the equalizer graph, consent, login, presets, settings |
+| Game view | `src/game/` | Quarter-view scene, joystick, markers, the ten animated characters, props and effects of actions, speaker, sound shadow and garden art |
+| Screens and panels | `src/screens/`, `src/components/`, `src/ui.tsx` | Top bar, speaker editor with oscillator panels and the equalizer graph, consent, login, presets, settings; `src/i18n.tsx` gives screens the chosen language |
 | Server access | `src/api/` | Account and garden HTTP client, garden socket, per-platform transport |
 | Device data | `src/storage.ts`, `src/settings.ts`, `src/location.ts`, `src/coordinates.ts` | Private garden, settings, device location |
 | Desktop wrapper | `src-tauri/` | Tauri window around the web export |

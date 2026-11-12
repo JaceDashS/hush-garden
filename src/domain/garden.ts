@@ -26,25 +26,25 @@ export const BUILT_IN_PRESETS: readonly Preset[] = [
     id: "builtin-meadow",
     name: "Brown Meadow",
     speakers: [
-      { id: "meadow-1", name: "Brown", x: mid - 4, y: mid, sound: sound({ noise: { color: "brown", level: 0.85 }, bass: { frequency: 55, level: 0.4 } }) },
-      { id: "meadow-2", name: "Pink", x: mid + 4, y: mid - 3, sound: sound({ noise: { color: "pink", level: 0.7 }, bass: { frequency: 60, level: 0.25 } }) },
-      { id: "meadow-3", name: "White", x: mid + 2, y: mid + 5, sound: sound({ noise: { color: "white", level: 0.55 }, bass: { frequency: 50, level: 0.3 }, eq: eq({ lowpass: 9000 }) }) },
+      { id: "meadow-1", name: "Brown", x: mid - 4, y: mid, sound: sound({ noise: { color: "brown", level: 0.85 }, oscillators: [{ wave: "sine", frequency: 55, level: 0.6 }] }) },
+      { id: "meadow-2", name: "Pink", x: mid + 4, y: mid - 3, sound: sound({ noise: { color: "pink", level: 0.7 }, oscillators: [{ wave: "sine", frequency: 60, level: 0.4 }] }) },
+      { id: "meadow-3", name: "White", x: mid + 2, y: mid + 5, sound: sound({ noise: { color: "white", level: 0.55 }, oscillators: [{ wave: "sine", frequency: 50, level: 0.5 }], eq: eq({ lowpass: 9000 }) }) },
     ],
   },
   {
     id: "builtin-rain",
     name: "White Rain",
     speakers: [
-      { id: "rain-1", name: "Rain", x: mid, y: mid, sound: sound({ radius: 12, noise: { color: "white", level: 0.7 }, bass: { frequency: 48, level: 0.3 }, eq: eq({ lowShelf: { frequency: 200, gain: 3 }, bell: { frequency: 2500, gain: -4, q: 1 }, highShelf: { frequency: 4000, gain: -3 } }) }) },
-      { id: "rain-2", name: "Thunder", x: mid - 6, y: mid + 6, sound: sound({ radius: 7, noise: { color: "brown", level: 0.9 }, bass: { frequency: 40, level: 0.6 }, eq: eq({ lowpass: 1200 }) }) },
+      { id: "rain-1", name: "Rain", x: mid, y: mid, sound: sound({ volume: 0.9, noise: { color: "white", level: 0.7 }, oscillators: [{ wave: "sine", frequency: 48, level: 0.5 }], eq: eq({ lowShelf: { frequency: 200, gain: 3 }, bell: { frequency: 2500, gain: -4, q: 1 }, highShelf: { frequency: 4000, gain: -3 } }) }) },
+      { id: "rain-2", name: "Thunder", x: mid - 6, y: mid + 6, sound: sound({ volume: 0.6, noise: { color: "brown", level: 0.9 }, oscillators: [{ wave: "sine", frequency: 40, level: 1 }], eq: eq({ lowpass: 1200 }) }) },
     ],
   },
   {
     id: "builtin-focus",
     name: "Deep Focus",
     speakers: [
-      { id: "focus-1", name: "Hum", x: mid - 3, y: mid - 3, sound: sound({ noise: { color: "brown", level: 0.6 }, bass: { frequency: 60, level: 0.5 }, oscillators: [{ wave: "sine", frequency: 120, level: 0.15 }, { wave: "sine", frequency: 180, level: 0.08 }] }) },
-      { id: "focus-2", name: "Air", x: mid + 4, y: mid + 3, sound: sound({ noise: { color: "pink", level: 0.75 }, bass: { frequency: 52, level: 0.35 }, eq: eq({ highpass: 80, lowpass: 7000 }) }) },
+      { id: "focus-1", name: "Hum", x: mid - 3, y: mid - 3, sound: sound({ noise: { color: "brown", level: 0.6 }, oscillators: [{ wave: "sine", frequency: 60, level: 0.8 }, { wave: "triangle", frequency: 120, level: 0.15 }] }) },
+      { id: "focus-2", name: "Air", x: mid + 4, y: mid + 3, sound: sound({ noise: { color: "pink", level: 0.75 }, oscillators: [{ wave: "sine", frequency: 52, level: 0.55 }], eq: eq({ highpass: 80, lowpass: 7000 }) }) },
     ],
   },
 ];
