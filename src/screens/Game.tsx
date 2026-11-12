@@ -551,6 +551,33 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   const heard = audibleCount(me, speakers);
   const showEditor = editing && !!carried && !action;
+
+  // The settings card is prepared once and only redrawn when what it shows changes, not on every step.
+  const settingsHandlers = useRef({ onSettings, changeName, togglePlay, logout, onExit });
+  settingsHandlers.current = { onSettings, changeName, togglePlay, logout, onExit };
+  const settingsOpen = panel === "settings";
+  const settingsCard = useMemo(
+    () => (
+      <SettingsCard
+        open={settingsOpen}
+        settings={settings}
+        user={entry?.user ?? null}
+        online={online}
+        playing={playing}
+        shownName={myName}
+        nameError={nameError ? t(nameError) : ""}
+        onChange={(next) => settingsHandlers.current.onSettings(next)}
+        onName={(name) => settingsHandlers.current.changeName(name)}
+        onToggleSound={() => void settingsHandlers.current.togglePlay()}
+        onPresets={() => setPanel("presets")}
+        onLogin={() => setPanel("login")}
+        onLogout={() => void settingsHandlers.current.logout()}
+        onExit={() => settingsHandlers.current.onExit()}
+        onClose={() => setPanel(null)}
+      />
+    ),
+    [settingsOpen, settings, entry?.user, online, playing, myName, nameError, t],
+  );
   const lostText = online && link === "lost" ? t(enterError || "notice.lost") : "";
   const pill = { backgroundColor: "rgba(255,250,242,0.92)", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 4, alignItems: "center" } as const;
 
@@ -634,26 +661,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           )}
         </Modal>
       )}
-      {panel === "settings" && (
-        <Modal onClose={() => setPanel(null)}>
-          <SettingsCard
-            settings={settings}
-            user={entry?.user ?? null}
-            online={online}
-            playing={playing}
-            shownName={myName}
-            nameError={nameError ? t(nameError) : ""}
-            onChange={onSettings}
-            onName={changeName}
-            onToggleSound={() => void togglePlay()}
-            onPresets={() => setPanel("presets")}
-            onLogin={() => setPanel("login")}
-            onLogout={() => void logout()}
-            onExit={onExit}
-            onClose={() => setPanel(null)}
-          />
-        </Modal>
-      )}
+      {/* Kept mounted and laid out while closed, so it opens at once and fully drawn. */}
+      <Modal hidden={panel !== "settings"} onClose={() => setPanel(null)}>
+        {settingsCard}
+      </Modal>
       {panel === "login" && (
         <Modal onClose={() => setPanel(null)}>
           <LoginCard client={client} onLoggedIn={afterLogin} onClose={() => setPanel(null)} />

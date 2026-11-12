@@ -1,5 +1,5 @@
 /** Cards shown over the garden: location consent, login, presets and settings. */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, Pressable, ScrollView, View } from "react-native";
 import type { HushClient } from "../api/client";
 import { ApiError, type User } from "../api/types";
@@ -146,10 +146,17 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  * Everything that is not handling a speaker lives here: sound on and off, volume, character, language, character name, chat
  * cue, presets, account and leaving the garden. `shownName` is the name currently above the character. `onName`
  * receives a checked name, or "" to go back to the account name; `nameError` is the server's refusal, if any.
+ * `open` is false while the card is kept prepared but not shown.
  */
-export function SettingsCard({ settings, user, online, playing, shownName, nameError, onChange, onName, onToggleSound, onPresets, onLogin, onLogout, onExit, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; playing: boolean; shownName: string; nameError: string; onChange: (settings: Settings) => void; onName: (name: string) => void; onToggleSound: () => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void }) {
+export function SettingsCard({ open = true, settings, user, online, playing, shownName, nameError, onChange, onName, onToggleSound, onPresets, onLogin, onLogout, onExit, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; playing: boolean; shownName: string; nameError: string; onChange: (settings: Settings) => void; onName: (name: string) => void; onToggleSound: () => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
   const t = useT();
   const [name, setName] = useState(settings.name);
+  // The card is prepared before it is opened, so each opening starts from the saved name with no error shown.
+  useEffect(() => {
+    if (!open) return;
+    setName(settings.name);
+    setProblem("");
+  }, [open]);
   const [problem, setProblem] = useState<TextKey | "">("");
   const [dragging, setDragging] = useState(false);
   const saveName = () => {

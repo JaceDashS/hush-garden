@@ -62,7 +62,7 @@ function spectrumPath(spectrum: Spectrum, frequencies: readonly number[], width:
 /**
  * `readSpectrum` returns the current analyser data, or null while no sound plays; it is polled a few times a second.
  */
-export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChange: (eq: Equalizer) => void; readSpectrum: () => Spectrum | null }) {
+export function EqGraph({ eq, onChange, readSpectrum, active = true }: { eq: Equalizer; onChange: (eq: Equalizer) => void; readSpectrum: () => Spectrum | null; active?: boolean }) {
   const t = useT();
   const lock = useDragLock();
   const [width, setWidth] = useState(0);
@@ -78,14 +78,16 @@ export function EqGraph({ eq, onChange, readSpectrum }: { eq: Equalizer; onChang
   latest.current = { eq, width, onChange, readSpectrum, lock };
   const dragging = useRef<number | null>(null);
 
+  // The spectrum is only read while the graph is shown.
   useEffect(() => {
+    if (!active) return;
     const timer = setInterval(() => {
       const state = latest.current;
       const data = state.width > 0 ? state.readSpectrum() : null;
       setSpectrum(data ? spectrumPath(data, frequencies, state.width) : "");
     }, SPECTRUM_MS);
     return () => clearInterval(timer);
-  }, [frequencies]);
+  }, [frequencies, active]);
 
   const responder = useMemo(() => {
     const local = (pageX: number, pageY: number) => ({ x: pageX - origin.current.x, y: pageY - origin.current.y });

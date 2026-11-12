@@ -16,7 +16,7 @@ import { LanguageProvider, useT } from "./i18n";
 import { Game } from "./screens/Game";
 import { DEFAULT_SETTINGS, type Settings } from "./settings";
 import { loadGarden, loadSettings, saveGarden, saveSettings } from "./storage";
-import { Btn, Card, T, colors } from "./ui";
+import { Btn, Card, Prepared, T, colors } from "./ui";
 
 type Mode = "home" | "mine" | "public";
 
@@ -25,7 +25,7 @@ function Home({ character, onCharacter, onPick }: { character: CharacterKind; on
   const t = useT();
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <View style={{ width: "100%", maxWidth: 380, gap: 14 }}>
+      <Prepared style={{ width: "100%", maxWidth: 380, gap: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 6 }}>
           <SpeakerArt color="brown" playing />
           <Character kind={character} walking />
@@ -40,7 +40,7 @@ function Home({ character, onCharacter, onPick }: { character: CharacterKind; on
           <Btn variant="mint" title={t("home.public")} onPress={() => onPick("public")} testID="pick-public" />
           <T size={12} tone="muted" style={{ textAlign: "center" }}>{t("home.controls")}</T>
         </Card>
-      </View>
+      </Prepared>
     </View>
   );
 }

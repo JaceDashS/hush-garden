@@ -1,7 +1,8 @@
 /**
  * Sound controls of the speaker the character holds. Every speaker has the same controls; there is only one kind.
  * The controls are split into three tabs so each fits a phone screen, and the page does not scroll while a
- * slider, a knob or an equalizer point is being dragged.
+ * slider, a knob or an equalizer point is being dragged. All three tabs are kept laid out, so switching shows a
+ * tab at once and fully drawn, and the editor itself appears only once it is ready.
  */
 import React, { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
@@ -9,7 +10,7 @@ import Svg, { Path } from "react-native-svg";
 import { LIMITS, MAX_OSCILLATORS, NOISE_COLORS, WAVES, defaultOscillator, reachOf, type Oscillator, type Speaker, type SpeakerSound } from "../domain/sound";
 import { SHADOW_TINT, WavePicture } from "../game/sprites";
 import { useT } from "../i18n";
-import { Btn, Chips, DragLockContext, IconBtn, Input, Knob, Slider, T, Tabs, colors } from "../ui";
+import { Btn, Chips, DragLockContext, HIDDEN_READY, IconBtn, Input, Knob, Prepared, Slider, T, Tabs, colors } from "../ui";
 import { EqGraph, type Spectrum } from "./EqGraph";
 
 type Tab = "sound" | "osc" | "eq";
@@ -21,6 +22,8 @@ const PANELS = [
 ] as const;
 
 const DISPLAY = "#3d3632";
+/** The shown tab is in the flow; the others are laid out on top of it, invisible, ready to be switched to. */
+const pane = (shown: boolean) => (shown ? { gap: 10 } : { gap: 10, position: "absolute" as const, left: 12, right: 12, top: 12, ...HIDDEN_READY });
 const percent = (value: number) => Math.round(value * 100) + "%";
 const hz = (value: number) => (value >= 1000 ? (value / 1000).toFixed(2) + " kHz" : Math.round(value) + " Hz");
 
@@ -79,6 +82,7 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
   const next = sound.oscillators.length;
   return (
     <DragLockContext.Provider value={setDragging}>
+      <Prepared style={{ flex: 1 }}>
       <View testID="speaker-editor" style={{ flex: 1 }}>
         <View style={{ paddingHorizontal: 12, paddingTop: 10, gap: 8 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -90,8 +94,7 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
           <Tabs value={tab} onChange={setTab} options={[{ value: "sound", label: t("tab.sound") }, { value: "osc", label: t("tab.osc") }, { value: "eq", label: t("tab.eq") }]} />
         </View>
         <ScrollView style={{ flex: 1 }} scrollEnabled={!dragging} contentContainerStyle={{ padding: 12, gap: 10 }} keyboardShouldPersistTaps="handled">
-          {tab === "sound" && (
-            <>
+          <View style={pane(tab === "sound")} pointerEvents={tab === "sound" ? "auto" : "none"}>
               <Slider label={t("editor.volume")} value={sound.volume} min={0} max={1} format={percent} onChange={(volume) => set({ volume })} testID="speaker-volume" />
               <T size={12} tone="muted">{t("editor.reach", { n: reachOf(sound).toFixed(1) })}</T>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, borderTopWidth: 2, borderTopColor: colors.track }}>
@@ -99,20 +102,20 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
                 <Chips label={t("noise.kind")} value={sound.noise.color} options={NOISE_COLORS.map((color) => ({ value: color, label: t(("noise." + color) as "noise.white") }))} onChange={(color) => set({ noise: { ...sound.noise, color } })} />
               </View>
               <Slider label={t("noise.level")} value={sound.noise.level} min={0} max={1} format={percent} onChange={(level) => set({ noise: { ...sound.noise, level } })} testID="noise-level" />
-            </>
-          )}
-          {tab === "osc" && (
-            <>
+          </View>
+          <View style={pane(tab === "osc")} pointerEvents={tab === "osc" ? "auto" : "none"}>
               {sound.oscillators.length === 0 && <T size={12.5} tone="muted">{t("osc.empty")}</T>}
               {sound.oscillators.map((oscillator, index) => (
                 <OscillatorPanel key={index} index={index} oscillator={oscillator} onChange={(patch) => setOscillator(index, patch)} onRemove={() => set({ oscillators: sound.oscillators.filter((_, i) => i !== index) })} />
               ))}
               {next < MAX_OSCILLATORS && <Btn small title={t("osc.add", { name: PANELS[next].name })} onPress={() => set({ oscillators: [...sound.oscillators, defaultOscillator(next)] })} testID="oscillator-add" />}
-            </>
-          )}
-          {tab === "eq" && <EqGraph eq={sound.eq} onChange={(eq) => set({ eq })} readSpectrum={readSpectrum} />}
+          </View>
+          <View style={pane(tab === "eq")} pointerEvents={tab === "eq" ? "auto" : "none"}>
+            <EqGraph eq={sound.eq} active={tab === "eq"} onChange={(eq) => set({ eq })} readSpectrum={readSpectrum} />
+          </View>
         </ScrollView>
       </View>
+      </Prepared>
     </DragLockContext.Provider>
   );
 }

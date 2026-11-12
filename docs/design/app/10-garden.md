@@ -210,6 +210,7 @@ stateDiagram-v2
 - Input: the held speaker and drags on its controls.
 - Output: the edited speaker.
 - Code: `src/components/SpeakerEditor.tsx` → `SpeakerEditor`, `OscillatorPanel`; `src/ui.tsx` → `Knob`, `Slider`, `Tabs`, `DragLockContext`, `NO_TOUCH_SCROLL`; `src/game/sprites.tsx` → `WavePicture`; `src/domain/sound.ts` → `waveShape()`.
+- `Prepared` (`src/ui.tsx`) lays its children out invisibly (`HIDDEN_READY`) and reveals them three frames after its first layout, when measured children have applied their sizes; with `hidden` it stays invisible but mounted. `Modal` uses it, the settings modal is always mounted with `hidden` while closed, and its card is memoised so walking does not redraw it. The speaker editor keeps the inactive tabs absolutely placed and hidden; the equalizer reads the spectrum only while its tab is shown.
 - Three tabs: Sound (volume with the reach it gives, noise colour and level), Oscillators (OSC A and OSC B panels, an add button while fewer than two), Equalizer ([Equalizer](#equalizer)).
 - An oscillator panel has a dark display with two cycles of the wave, drawn taller as the level rises; four wave buttons that show the wave as a picture; and a frequency knob (logarithmic) and a level knob.
 - A knob turns by `(right − up) / 170 px` of drag, so vertical and horizontal drags both work.

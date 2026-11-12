@@ -89,6 +89,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Top left: the speaker button (make, or discard while holding), for players who may edit.
 - Top centre: the garden name, the number of visitors in the public garden, and the number of speakers heard.
 - Top right: a settings icon.
+- Screens are prepared before they are shown, so a half-drawn state never flashes: the settings are kept laid out while closed and open at once; the speaker editor and other panels appear only once laid out; the editor keeps all three tabs laid out so switching tabs is instant.
 - Escape opens the settings and closes them, or any other open panel, again (web and desktop).
 - Settings hold everything else: sound on and off, master volume, character, language, character name, nearby chat cue, presets (private garden), account (public garden) and leaving the garden.
 

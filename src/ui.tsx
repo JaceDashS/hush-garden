@@ -1,5 +1,5 @@
 /** Shared pastel UI parts. */
-import React, { createContext, useContext, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { PanResponder, Platform, Pressable, Text, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
 
@@ -281,11 +281,52 @@ export function GearIcon({ size = 24 }: { size?: number }) {
 }
 
 /** Dimmed full-screen layer with a centered card. */
-export function Modal({ children, onClose }: { children: React.ReactNode; onClose?: () => void }) {
+/**
+ * Style that keeps a view laid out and ready but invisible and untouchable. On the web it is also taken out of
+ * keyboard focus. Used to prepare screens before they are shown.
+ */
+export const HIDDEN_READY: ViewStyle = { opacity: 0, ...(Platform.OS === "web" ? ({ visibility: "hidden" } as ViewStyle) : null) };
+
+/** Frames to wait after the first layout, so measured children (sliders, graphs, scrolled rows) have settled. */
+const SETTLE_FRAMES = 3;
+
+/**
+ * Shows its children only once they are ready: it lays them out invisibly first, waits until the measurements
+ * that depend on that layout have been applied, and then reveals them in one go, so a half-built screen never
+ * flashes. With `hidden` it stays invisible but keeps everything mounted and laid out, ready to show at once.
+ */
+export function Prepared({ children, hidden = false, style }: { children: React.ReactNode; hidden?: boolean; style?: StyleProp<ViewStyle> }) {
+  const [ready, setReady] = useState(false);
+  const started = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => () => {
+    alive.current = false;
+  }, []);
+  const onLayout = () => {
+    if (started.current) return;
+    started.current = true;
+    let frames = SETTLE_FRAMES;
+    const tick = () => {
+      if (!alive.current) return;
+      if (--frames <= 0) setReady(true);
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+  const shown = ready && !hidden;
   return (
-    <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 50, alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <View onLayout={onLayout} pointerEvents={shown ? "auto" : "none"} aria-hidden={!shown} style={[style, shown ? null : HIDDEN_READY]}>
+      {children}
+    </View>
+  );
+}
+
+/** A centred card over a dimmed backdrop. With `hidden` it is kept prepared but not shown, so it opens at once. */
+export function Modal({ children, onClose, hidden = false }: { children: React.ReactNode; onClose?: () => void; hidden?: boolean }) {
+  return (
+    <Prepared hidden={hidden} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: hidden ? -1 : 50, alignItems: "center", justifyContent: "center", padding: 16 }}>
       <Pressable accessibilityLabel="닫기" onPress={onClose} style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(74, 64, 56, 0.45)" }} />
       <View style={{ width: "100%", maxWidth: 380, maxHeight: "92%" }}>{children}</View>
-    </View>
+    </Prepared>
   );
 }
