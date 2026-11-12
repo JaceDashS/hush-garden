@@ -152,6 +152,7 @@ const ko = {
   "character.previous": "이전 캐릭터",
   "character.next": "다음 캐릭터",
   "settings.character": "내 캐릭터",
+  "notice.replaced": "다른 창에서 같은 정원에 들어와 이 연결은 닫혔습니다.",
 } as const;
 
 export type TextKey = keyof typeof ko;
@@ -299,6 +300,7 @@ const en: Record<TextKey, string> = {
   "character.previous": "Previous character",
   "character.next": "Next character",
   "settings.character": "My character",
+  "notice.replaced": "This garden was opened again in another window, so this connection was closed.",
 };
 
 const ja: Record<TextKey, string> = {
@@ -444,6 +446,7 @@ const ja: Record<TextKey, string> = {
   "character.previous": "前のキャラクター",
   "character.next": "次のキャラクター",
   "settings.character": "自分のキャラクター",
+  "notice.replaced": "別のウィンドウで同じ庭に入ったため、この接続は閉じられました。",
 };
 
 const zh: Record<TextKey, string> = {
@@ -589,6 +592,7 @@ const zh: Record<TextKey, string> = {
   "character.previous": "上一个角色",
   "character.next": "下一个角色",
   "settings.character": "我的角色",
+  "notice.replaced": "在另一个窗口重新进入了花园，因此此连接已关闭。",
 };
 
 export const TEXTS: Record<Language, Record<TextKey, string>> = { ko, en, ja, zh };

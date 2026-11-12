@@ -10,7 +10,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Platform, View, useWindowDimensions, type TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HushClient } from "../api/client";
-import { GardenSocket, socketUrl } from "../api/socket";
+import { GardenSocket, REPLACED_CODE, socketUrl } from "../api/socket";
+import { getDeviceId } from "../deviceId";
 import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User } from "../api/types";
 import type { GardenAudio } from "../audio/engine";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
@@ -31,7 +32,8 @@ import type { Settings } from "../settings";
 import { Btn, GearIcon, IconBtn, Input, Modal, T, colors } from "../ui";
 
 type Panel = null | "settings" | "presets" | "login";
-type Link = "consent" | "entering" | "online" | "lost";
+/** `replaced`: a newer visit from this device took over; this one does not reconnect by itself. */
+type Link = "consent" | "entering" | "online" | "lost" | "replaced";
 type Notice = { key: TextKey; values?: Record<string, string | number> };
 
 const SAVE_DELAY_MS = 400;
@@ -344,7 +346,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     setEnterError("");
     try {
       const coordinates = await requestCoordinates();
-      const result = await client.enter(coordinates, settingsRef.current.character, settingsRef.current.name);
+      const result = await client.enter(coordinates, settingsRef.current.character, settingsRef.current.name, await getDeviceId());
       if (!alive.current) return;
       setEntry(result);
       if (result.user && typeof result.characterName === "string") {
@@ -352,10 +354,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         settingsRef.current = nextSettings;
         onSettings(nextSettings);
       }
-      const next = new GardenSocket(socketUrl(API_ORIGIN, result.ticket), receive, () => {
+      const next = new GardenSocket(socketUrl(API_ORIGIN, result.ticket), receive, (code) => {
         if (!alive.current) return;
         socket.current = null;
-        setLink("lost");
+        setLink(code === REPLACED_CODE ? "replaced" : "lost");
       });
       socket.current = next;
       next.open();
@@ -578,7 +580,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     ),
     [settingsOpen, settings, entry?.user, online, playing, myName, nameError, t],
   );
-  const lostText = online && link === "lost" ? t(enterError || "notice.lost") : "";
+  const lostText = online && link === "lost" ? t(enterError || "notice.lost") : online && link === "replaced" ? t("notice.replaced") : "";
   const pill = { backgroundColor: "rgba(255,250,242,0.92)", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 4, alignItems: "center" } as const;
 
   return (
