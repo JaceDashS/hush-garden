@@ -160,3 +160,7 @@ flowchart LR
 - Output: The chat text field receives focus; Enter submits without blurring. Touch-primary web and native mobile keep their existing focus behavior.
 - Code: `src/screens/Game.tsx` passes the chat ref, desktop autoFocus and submit behavior to `Input`; sendChat restores desktop focus. `src/ui.tsx` forwards optional inputRef, autoFocus and submitBehavior only to TextInput.
 - Scenario: Input a signed-in desktop player with chat available; steps type a message and press Enter or Send; result the draft clears and typing can continue in the same field. On a phone, entering the garden does not automatically open the keyboard.
+
+## Account Character Name Restore
+- Input: Authenticated enter response with characterName. Output: settings.name replaced by the server nickname, including empty fallback. Code: src/api/types.ts Entry and src/screens/Game.tsx entry handling. NAME_SAVE_FAILED is displayed for failed socket saves.
+- Scenario: Input another device with stale name; steps enter the public garden after login; expected result settings and displayed name follow the account profile. Private offline use remains device-local.

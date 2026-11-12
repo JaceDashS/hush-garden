@@ -29,6 +29,8 @@ export interface Transport {
 
 /** Result of entering the public garden. */
 export interface Entry {
+  /** Server-owned account nickname; empty uses the account display name. */
+  characterName?: string;
   /** One-use ticket for the garden socket. */
   ticket: string;
   /** City-level place shown above the character. */

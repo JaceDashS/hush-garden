@@ -153,3 +153,9 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Expected result: Desktop chat focuses on appearance and after either submission. Enter keeps focus. Mobile does not auto-focus on appearance and retains existing submit behavior.
 - Design: [Desktop Chat Focus](../../../design/app/10-garden.md#desktop-chat-focus).
 - Verification: TypeScript check passed. Physical mobile and authenticated production interaction not run.
+
+## Account Character Name Restore
+- Input: A signed-in public garden entry with characterName Momo and cached name Old.
+- Steps: Apply the entry response; change the name online; reconnect on another device.
+- Expected result: Momo replaces the local name; successful rename is saved; save failure is shown. Guests and private offline mode do not fetch an account profile.
+- Design: [Account Character Name Restore](../../../design/app/10-garden.md#account-character-name-restore).

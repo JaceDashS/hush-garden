@@ -93,3 +93,8 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Desktop web chat focuses when available and after sending. Enter sends without losing focus. Phones retain manual focus.
 - Example: Input an authenticated PC player; steps send nearby chat; expected result the empty chat field stays ready for the next message.
 - Design: [Desktop Chat Focus](../../design/app/10-garden.md#desktop-chat-focus).
+
+## Account Character Name Restore
+- Public garden entry after login restores the account nickname instead of the device nickname. Explicit online name changes persist on the server. Private gardens and guests retain device settings.
+- Example: Input a second device with an old name. Steps: Log in and enter the public garden. Expected result: The saved account nickname appears.
+- Design: [Account Character Name Restore](../../design/app/10-garden.md#account-character-name-restore).

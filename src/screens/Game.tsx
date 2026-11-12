@@ -304,8 +304,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
         }
         case "error":
-          if (message.error === "NAME_NOT_ALLOWED" || message.error === "NAME_RATE_LIMITED") {
-            setNameError(message.error === "NAME_NOT_ALLOWED" ? "쓸 수 없는 이름입니다." : "이름은 잠시 뒤에 다시 바꿀 수 있습니다.");
+          if (message.error === "NAME_NOT_ALLOWED" || message.error === "NAME_RATE_LIMITED" || message.error === "NAME_SAVE_FAILED") {
+            setNameError(message.error === "NAME_NOT_ALLOWED" ? "쓸 수 없는 이름입니다." : message.error === "NAME_SAVE_FAILED" ? "이름을 저장하지 못했습니다. 다시 시도해 주세요." : "이름은 잠시 뒤에 다시 바꿀 수 있습니다.");
             break;
           }
           flash(message.error === "CHAT_RATE_LIMITED" ? "조금 천천히 말해 주세요." : message.error === "LOGIN_REQUIRED" ? "채팅은 로그인이 필요합니다." : "요청을 처리하지 못했습니다.");
@@ -325,6 +325,11 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       const result = await client.enter(coordinates, settingsRef.current.character, settingsRef.current.name);
       if (!alive.current) return;
       setEntry(result);
+      if (result.user && typeof result.characterName === 'string') {
+        const nextSettings = { ...settingsRef.current, name: result.characterName };
+        settingsRef.current = nextSettings;
+        onSettings(nextSettings);
+      }
       const next = new GardenSocket(socketUrl(API_ORIGIN, result.ticket), receive, () => {
         if (!alive.current) return;
         socket.current = null;
