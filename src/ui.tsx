@@ -49,9 +49,9 @@ export function Card({ title, children, style }: { title?: string; children: Rea
   );
 }
 
-export function Input({ label, value, onChangeText, secure, onSubmit, testID, maxLength, placeholder }: { label: string; value: string; onChangeText: (text: string) => void; secure?: boolean; onSubmit?: () => void; testID?: string; maxLength?: number; placeholder?: string }) {
+export function Input({ label, value, onChangeText, secure, onSubmit, testID, maxLength, placeholder, inputRef, autoFocus, submitBehavior }: { label: string; value: string; onChangeText: (text: string) => void; secure?: boolean; onSubmit?: () => void; testID?: string; maxLength?: number; placeholder?: string; inputRef?: React.Ref<React.ComponentRef<typeof TextInput>>; autoFocus?: boolean; submitBehavior?: "submit" }) {
   return (
-    <TextInput
+    <TextInput ref={inputRef} autoFocus={autoFocus} submitBehavior={submitBehavior}
       accessibilityLabel={label}
       testID={testID}
       value={value}

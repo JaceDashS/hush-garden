@@ -88,3 +88,8 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Input: A player in the private garden stands 2 tiles from a brown noise speaker with radius 8, then walks 10 tiles away.
 - Steps: Loudness follows `(1 - distance / radius)²`.
 - Result: About 56% loudness at 2 tiles, silence beyond 8 tiles.
+
+## Desktop Chat Focus
+- Desktop web chat focuses when available and after sending. Enter sends without losing focus. Phones retain manual focus.
+- Example: Input an authenticated PC player; steps send nearby chat; expected result the empty chat field stays ready for the next message.
+- Design: [Desktop Chat Focus](../../design/app/10-garden.md#desktop-chat-focus).

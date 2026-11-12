@@ -154,3 +154,9 @@ flowchart LR
 - Reserved parts match anywhere ("admin", "moderator", "관리자", …). Short words ("gm", "mod", "dev", "bot", …) are refused only as the whole name, so "Modest" and "Devon" pass.
 - The server repeats the check and decides; its refusal is shown under the name field.
 - Scenario: "ADM1N" → simplified to "admin" → refused. "Gmail fan" → "gmailfan" → accepted.
+
+## Desktop Chat Focus
+- Input: Chat becomes available on a web device whose primary pointer is fine and supports hover, or the player sends a message.
+- Output: The chat text field receives focus; Enter submits without blurring. Touch-primary web and native mobile keep their existing focus behavior.
+- Code: `src/screens/Game.tsx` passes the chat ref, desktop autoFocus and submit behavior to `Input`; sendChat restores desktop focus. `src/ui.tsx` forwards optional inputRef, autoFocus and submitBehavior only to TextInput.
+- Scenario: Input a signed-in desktop player with chat available; steps type a message and press Enter or Send; result the draft clears and typing can continue in the same field. On a phone, entering the garden does not automatically open the keyboard.

@@ -146,3 +146,10 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Android: installation, background playback with the screen off, lock screen buttons, vibration, device location.
 - Windows desktop app: login through the HTTP plugin, location prompt, offline start.
 - iPhone: no build.
+
+## Desktop Chat Focus
+- Input: Authenticated public garden on desktop web with a fine hover pointer, and separately on a touch-primary phone or native mobile.
+- Steps: Open chat, type a message, submit with Enter or Send.
+- Expected result: Desktop chat focuses on appearance and after either submission. Enter keeps focus. Mobile does not auto-focus on appearance and retains existing submit behavior.
+- Design: [Desktop Chat Focus](../../../design/app/10-garden.md#desktop-chat-focus).
+- Verification: TypeScript check passed. Physical mobile and authenticated production interaction not run.

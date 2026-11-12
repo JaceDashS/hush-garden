@@ -4,7 +4,7 @@
  */
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, View, useWindowDimensions } from "react-native";
+import { Platform, View, useWindowDimensions, type TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HushClient } from "../api/client";
 import { GardenSocket, socketUrl } from "../api/socket";
@@ -66,6 +66,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [motion, setMotion] = useState<Record<string, { facing: 1 | -1; walking: boolean }>>({});
   const [bubbles, setBubbles] = useState<Record<string, { text: string; until: number }>>({});
   const [draft, setDraft] = useState("");
+  const chatInput = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const desktopChat = Platform.OS === "web" && typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   const placed = online ? publicSpeakers : garden.speakers;
   /** A carried speaker is wherever the character is, so its sound travels along. */
@@ -436,6 +438,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (!text) return;
     socket.current?.chat(text);
     setDraft("");
+    if (desktopChat) chatInput.current?.focus();
   };
 
   /** Saves the character name. Online, the server decides and answers with a rename or an error. */
@@ -526,7 +529,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             {entry?.canChat ? (
               <>
                 <View style={{ flex: 1 }}>
-                  <Input label="채팅" placeholder="주변 사람에게 말하기" value={draft} maxLength={CHAT_MAX_LENGTH} onChangeText={setDraft} onSubmit={sendChat} testID="chat-input" />
+                  <Input inputRef={chatInput} autoFocus={desktopChat} submitBehavior={desktopChat ? "submit" : undefined} label="채팅" placeholder="주변 사람에게 말하기" value={draft} maxLength={CHAT_MAX_LENGTH} onChangeText={setDraft} onSubmit={sendChat} testID="chat-input" />
                 </View>
                 <Btn variant="primary" title="보내기" disabled={!draft.trim()} onPress={sendChat} testID="chat-send" />
               </>
