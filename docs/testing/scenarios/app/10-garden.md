@@ -202,8 +202,14 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 
 ## Top Bar And Settings
 - Input: the garden at phone size; the gear pressed.
-- Result: speaker button left, status centre, gear right; settings show sound on or off, master volume, language, character name, chat cue, presets and leave the garden.
-- Test: Browser check 2026-11-12.
+- Result: speaker button left, status centre, sound button and gear right; settings show master volume, language, character name, chat cue, presets and leave the garden.
+- Test: Browser check 2026-11-12; sound button and settings without the on and off button checked in Chrome 2026-11-14.
+
+## Sound Button And M Key
+- Input: the private garden on a desktop browser with sound on; then a phone-size touch browser.
+- Steps: hover the sound button → a volume slider unfolds out of it to the left (width 0 to 182 px within about 0.2 s, content uncovered from the right) and a hint "Turn sound off" with an M key below → click it → the picture shows a cross and the hint reads "Turn sound on" → drag the slider to about 30 % → move the mouse away → press M twice → on the phone, tap the button.
+- Result: sound turns off and on with each click or M; the slider sets the master volume (the settings show the same 29 %); the slider folds back and the hint closes after leaving; on the phone the tap turns sound off and no slider appears.
+- Test: Browser check in Chrome 2026-11-14 (desktop 1100 × 700 and touch 390 × 760).
 
 ## Languages
 - Input: every text key in Korean, English and Japanese; device locales `ja-JP`, `ko_KR`, `fr-FR` and none; Korean chosen in settings while the screens were English.

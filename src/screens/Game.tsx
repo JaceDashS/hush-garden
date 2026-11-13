@@ -16,6 +16,7 @@ import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User 
 import type { GardenAudio } from "../audio/engine";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
 import { ConsentCard, LoginCard, PresetCard, SettingsCard } from "../components/Panels";
+import { SOUND_KEY_CODE, SoundButton } from "../components/SoundButton";
 import { SpeakerEditor } from "../components/SpeakerEditor";
 import { API_ORIGIN } from "../config";
 import { actionDuration, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
@@ -148,6 +149,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       flash("notice.soundFailed");
     }
   }, [audio, flash, place]);
+  // The key handler is set up once, so it reaches the current toggle through a ref.
+  const togglePlayRef = useRef(togglePlay);
+  togglePlayRef.current = togglePlay;
 
   useEffect(() => {
     if (playing) void showPlayback(true, place);
@@ -179,6 +183,11 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         return;
       }
       if (typing(event)) return;
+      if (event.code === SOUND_KEY_CODE && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        void togglePlayRef.current();
+        return;
+      }
       if (event.key.startsWith("Arrow")) event.preventDefault();
       keys.current.add(event.key);
     };
@@ -565,12 +574,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         settings={settings}
         user={entry?.user ?? null}
         online={online}
-        playing={playing}
         shownName={myName}
         nameError={nameError ? t(nameError) : ""}
         onChange={(next) => settingsHandlers.current.onSettings(next)}
         onName={(name) => settingsHandlers.current.changeName(name)}
-        onToggleSound={() => void settingsHandlers.current.togglePlay()}
         onPresets={() => setPanel("presets")}
         onLogin={() => setPanel("login")}
         onLogout={() => void settingsHandlers.current.logout()}
@@ -578,7 +585,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         onClose={() => setPanel(null)}
       />
     ),
-    [settingsOpen, settings, entry?.user, online, playing, myName, nameError, t],
+    [settingsOpen, settings, entry?.user, online, myName, nameError, t],
   );
   const lostText = online && link === "lost" ? t(enterError || "notice.lost") : online && link === "replaced" ? t("notice.replaced") : "";
   const pill = { backgroundColor: "rgba(255,250,242,0.92)", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 4, alignItems: "center" } as const;
@@ -597,7 +604,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               <T size={12} weight="800" lines={1}>{t(online ? "status.public" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}</T>
               <T size={11.5} weight="700" tone="muted" lines={1}>{t("status.heard", { n: heard })}</T>
             </View>
-            <View pointerEvents="box-none" style={{ flex: 1, alignItems: "flex-end" }}>
+            <View pointerEvents="box-none" style={{ flex: 1, flexDirection: "row", justifyContent: "flex-end", gap: 6 }}>
+              <SoundButton playing={playing} volume={settings.volume} onToggle={() => void togglePlay()} onVolume={(volume) => onSettings({ ...settings, volume })} />
               <IconBtn label={t("top.settings")} onPress={() => setPanel("settings")} testID="open-settings">
                 <GearIcon />
               </IconBtn>

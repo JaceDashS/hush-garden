@@ -222,10 +222,13 @@ stateDiagram-v2
 
 ## Top Bar And Settings
 
-- Code: `src/screens/Game.tsx` (top bar), `src/components/Panels.tsx` → `SettingsCard`; `src/ui.tsx` → `IconBtn`, `GearIcon`.
-- The top bar is one row: the make or discard button on the left for players who may edit, the status pill in the centre (garden, visitors when online, speakers heard), the gear button on the right. Notices appear centred under it.
-- The settings card holds sound on and off, master volume, language, character name, chat cue, account (public garden), presets (private garden) and leaving the garden.
-- Scenario: A guest in the public garden → no speaker button on the left; the centre shows the garden, the visitor count and the speakers heard; the gear opens settings with a login button.
+- Code: `src/screens/Game.tsx` (top bar, M key), `src/components/SoundButton.tsx` → `SoundButton`, `SOUND_KEY_CODE`; `src/components/Panels.tsx` → `SettingsCard`; `src/ui.tsx` → `IconBtn`, `GearIcon`, `SpeakerIcon`, `Slider` (`bare`).
+- The top bar is one row: the make or discard button on the left for players who may edit, the status pill in the centre (garden, visitors when online, speakers heard), the sound button and the gear button on the right. Notices appear centred under it.
+- The sound button calls the same `togglePlay()` as the lock screen controls: it starts or pauses the audio context, so on and off always match the media notification. The M key is matched by `event.code` (`KeyM`), so it works with a Korean or other keyboard layout; it is ignored while typing, with Ctrl, Alt or Meta, and on key repeat. The key handler is set up once and reaches the current toggle through a ref.
+- Hover uses pointer enter and leave on the button's box and only counts a mouse pointer, so a tap on a phone browser never opens it. The slider pill and the hint are drawn absolutely, the pill reaching under the button so moving onto it does not leave the box; closing waits 250 ms and is held while the slider is dragged (through `DragLockContext`).
+- The pill unfolds in 180 ms (ease out) and folds back the same way: an `Animated.View` grows its width from 0 to the full pill with `overflow: hidden`, while the content inside keeps its full width anchored at the button, so the slider is uncovered from right to left rather than squeezed. It stays drawn while folding and is removed when folded. Width cannot use the native driver; this runs only with a mouse, on the web and desktop.
+- The settings card holds master volume, language, character name, chat cue, account (public garden), presets (private garden) and leaving the garden.
+- Scenario: A guest in the public garden → no speaker button on the left; the centre shows the garden, the visitor count and the speakers heard; the sound button and the gear are on the right; the gear opens settings with a login button.
 
 ## Languages
 

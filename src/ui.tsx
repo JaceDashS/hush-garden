@@ -103,7 +103,8 @@ const THUMB = 26;
 /**
  * Horizontal slider. `log` spreads frequencies evenly by octave. `format` turns the value into the shown text.
  */
-export function Slider({ label, value, min, max, onChange, log, format = (v) => String(Math.round(v)), testID }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; log?: boolean; format?: (value: number) => string; testID?: string }) {
+/** A horizontal slider with its label and value above. `bare` leaves out that line; the label still names it for screen readers. */
+export function Slider({ label, value, min, max, onChange, log, format = (v) => String(Math.round(v)), testID, bare }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; log?: boolean; format?: (value: number) => string; testID?: string; bare?: boolean }) {
   const [width, setWidth] = useState(1);
   const lock = useDragLock();
   const left = useRef(0);
@@ -142,10 +143,12 @@ export function Slider({ label, value, min, max, onChange, log, format = (v) => 
   };
   return (
     <View style={{ gap: 2 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-        <T size={12.5} tone="muted" weight="700">{label}</T>
-        <T size={12.5} weight="700">{format(value)}</T>
-      </View>
+      {!bare && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <T size={12.5} tone="muted" weight="700">{label}</T>
+          <T size={12.5} weight="700">{format(value)}</T>
+        </View>
+      )}
       <View
         ref={track}
         testID={testID}
@@ -276,6 +279,26 @@ export function GearIcon({ size = 24 }: { size?: number }) {
       ))}
       <Circle cx={12} cy={12} r={7} fill={colors.ink} />
       <Circle cx={12} cy={12} r={3} fill={colors.white} />
+    </Svg>
+  );
+}
+
+/** A loudspeaker: with sound waves while sound is on, with a cross while it is off. */
+export function SpeakerIcon({ on, size = 24 }: { on: boolean; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" pointerEvents="none">
+      <Path d="M3 9.5h3.6L12 5v14l-5.4-4.5H3z" fill={colors.ink} strokeLinejoin="round" stroke={colors.ink} strokeWidth={1.4} />
+      {on ? (
+        <>
+          <Path d="M15.2 9.2a4 4 0 0 1 0 5.6" stroke={colors.ink} strokeWidth={2.2} strokeLinecap="round" fill="none" />
+          <Path d="M17.8 6.6a7.6 7.6 0 0 1 0 10.8" stroke={colors.ink} strokeWidth={2.2} strokeLinecap="round" fill="none" />
+        </>
+      ) : (
+        <>
+          <Line x1={15.5} y1={9.5} x2={20.5} y2={14.5} stroke={colors.ink} strokeWidth={2.4} strokeLinecap="round" />
+          <Line x1={20.5} y1={9.5} x2={15.5} y2={14.5} stroke={colors.ink} strokeWidth={2.4} strokeLinecap="round" />
+        </>
+      )}
     </Svg>
   );
 }

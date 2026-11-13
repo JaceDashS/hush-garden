@@ -148,7 +148,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  * receives a checked name, or "" to go back to the account name; `nameError` is the server's refusal, if any.
  * `open` is false while the card is kept prepared but not shown.
  */
-export function SettingsCard({ open = true, settings, user, online, playing, shownName, nameError, onChange, onName, onToggleSound, onPresets, onLogin, onLogout, onExit, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; playing: boolean; shownName: string; nameError: string; onChange: (settings: Settings) => void; onName: (name: string) => void; onToggleSound: () => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
+export function SettingsCard({ open = true, settings, user, online, shownName, nameError, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
   const t = useT();
   const [name, setName] = useState(settings.name);
   // The card is prepared before it is opened, so each opening starts from the saved name with no error shown.
@@ -175,7 +175,6 @@ export function SettingsCard({ open = true, settings, user, online, playing, sho
       <DragLockContext.Provider value={setDragging}>
         <ScrollView scrollEnabled={!dragging} style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 14 }} keyboardShouldPersistTaps="handled">
           <Group title={t("settings.sound")}>
-            <Btn variant={playing ? "mint" : "primary"} title={t(playing ? "settings.soundOff" : "settings.soundOn")} onPress={onToggleSound} testID="toggle-sound" />
             <Slider label={t("settings.volume")} value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
           </Group>
           <Group title={t("settings.character")}>

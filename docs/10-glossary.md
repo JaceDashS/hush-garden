@@ -28,6 +28,11 @@
 - Code: `softClip()`, `limiterCurve()` in `src/audio/limiter.ts`
 - Avoid: "compressor" (there is no compressor node; the limiter is a wave shaper)
 
+## Sound Button
+- Definition: The loudspeaker icon left of the settings button that turns sound on and off (also the M key); hovering it with a mouse shows the master volume.
+- Code: `SoundButton`, `SOUND_KEY_CODE`, `SpeakerIcon`
+- Avoid: "speaker button" (that is the make or discard button for speakers in the garden), "mute" in code (it pauses the audio like sound off)
+
 ## Reach
 - Definition: How far a speaker is heard, in tiles. It follows from the volume (2 tiles when silent up to 11 at full volume); there is no setting for it.
 - Code: `reachOf()`, `REACH`, `loudnessAt()`
