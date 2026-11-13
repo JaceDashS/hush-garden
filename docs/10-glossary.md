@@ -23,6 +23,11 @@
 - Definition: The audio nodes that play one speaker while the listener is near it.
 - Code: `Voice` in `src/audio/engine.ts`
 
+## Limiter
+- Definition: The soft curve on the final output that leaves quiet sound unchanged and bends peaks below full scale instead of cutting them.
+- Code: `softClip()`, `limiterCurve()` in `src/audio/limiter.ts`
+- Avoid: "compressor" (there is no compressor node; the limiter is a wave shaper)
+
 ## Reach
 - Definition: How far a speaker is heard, in tiles. It follows from the volume (2 tiles when silent up to 11 at full volume); there is no setting for it.
 - Code: `reachOf()`, `REACH`, `loudnessAt()`

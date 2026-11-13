@@ -1,7 +1,8 @@
 /**
  * Synthesises what the listener hears. Each speaker in range is a voice (noise and oscillator tones through an
  * EQ and filters); voices are summed on a bus. A chat cue briefly swaps part of the bus for a darker copy leaning
- * toward the talker, so loudness and bass stay and only the brightness moves.
+ * toward the talker, so loudness and bass stay and only the brightness moves. A limiter after the master rounds
+ * off any peak that would clip.
  *
  * The same code runs in the browser (Web Audio) and in the native app (react-native-audio-api).
  */
@@ -10,6 +11,7 @@ import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
 import { bandCoefficients, peakBoost, type EqBand } from "../domain/equalizer";
 import { dbToGain, mixFor, reachOf, type NoiseColor, type Speaker } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
+import { LIMIT_RANGE, limiterCurve } from "./limiter";
 import { fillNoise, loopOffset } from "./noise";
 
 const NOISE_SECONDS = 6;
@@ -99,7 +101,15 @@ export class GardenAudio {
       dark.connect(this.wet);
       this.wet.connect(this.wetPan);
       this.wetPan.connect(this.master);
-      this.master.connect(context.destination);
+      // The shaper only accepts -1 to 1, so the signal is scaled down into it and the curve scales it back.
+      const intoLimiter = context.createGain();
+      intoLimiter.gain.value = 1 / LIMIT_RANGE;
+      const limiter = context.createWaveShaper();
+      limiter.curve = limiterCurve();
+      limiter.oversample = "4x";
+      this.master.connect(intoLimiter);
+      intoLimiter.connect(limiter);
+      limiter.connect(context.destination);
     }
     if (this.context.state !== "running") await this.context.resume();
     this.refresh();

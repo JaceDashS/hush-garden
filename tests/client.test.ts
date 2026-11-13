@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { LIMIT_KNEE, LIMIT_RANGE, limiterCurve, softClip } from "../src/audio/limiter.ts";
 import { fillNoise, loopOffset } from "../src/audio/noise.ts";
 import { parseServerMessage, socketUrl } from "../src/api/socket.ts";
 import { roundCoordinate } from "../src/coordinates.ts";
@@ -65,6 +66,18 @@ test("voices of one noise colour start at different points of the loop", () => {
   assert.ok(offsets.some((offset) => offset > 3) && offsets.some((offset) => offset < 3), "spread over the loop");
   assert.equal(loopOffset(6, () => 0.999999999), 6 * 0.999999999);
   assert.equal(loopOffset(6, () => 1), 0);
+});
+
+test("the limiter leaves quiet sound alone and keeps peaks below one", () => {
+  for (const value of [0, 0.3, -0.5, LIMIT_KNEE]) assert.equal(softClip(value), value);
+  assert.ok(softClip(1) < 1 && softClip(1) > 0.9, "a full-scale peak is only slightly rounded");
+  assert.ok(softClip(1.41) < 1 && softClip(1.41) > softClip(1), "two equal noises summed stay below one and louder than one");
+  assert.ok(softClip(LIMIT_RANGE) < 1);
+  assert.equal(softClip(-1.41), -softClip(1.41));
+  const curve = limiterCurve(1001);
+  assert.equal(curve[500], 0);
+  assert.ok(Math.abs(curve[1000] - softClip(LIMIT_RANGE)) < 1e-6);
+  assert.ok(curve.every((value, index) => index === 0 || value >= curve[index - 1]), "never folds back");
 });
 import { HushClient } from "../src/api/client.ts";
 import { createNativeTransport } from "../src/api/transport.ts";

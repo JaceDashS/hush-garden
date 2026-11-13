@@ -35,7 +35,7 @@
 
 - Input: speakers, listener position, master volume, chat cues.
 - Output: sound through Web Audio in the browser and react-native-audio-api in the apps, with the same code.
-- Code: `src/audio/engine.ts` → `GardenAudio` (`start()`, `pause()`, `setSpeakers()`, `setListener()`, `setVolume()`, `cue()`); `src/audio/noise.ts` → `fillNoise()`, `loopOffset()`.
+- Code: `src/audio/engine.ts` → `GardenAudio` (`start()`, `pause()`, `setSpeakers()`, `setListener()`, `setVolume()`, `cue()`); `src/audio/noise.ts` → `fillNoise()`, `loopOffset()`; `src/audio/limiter.ts` → `softClip()`, `limiterCurve()`, `LIMIT_KNEE`, `LIMIT_RANGE`.
 
 ```mermaid
 flowchart LR
@@ -47,7 +47,7 @@ flowchart LR
     BUS -.-> MA["Analyser of the mix"]
     BUS --> DRY["Dry gain"] --> M["Master"]
     BUS --> DARK["Low-pass 420 Hz"] --> WET["Wet gain"] --> WP["Cue pan"] --> M
-    M --> OUT["Output"]
+    M --> LIM["Limiter"] --> OUT["Output"]
 ```
 
 - Each speaker in range is a voice: sources into a filter chain, then distance gain and pan, into a shared bus.
@@ -56,6 +56,7 @@ flowchart LR
 - Noise is a 6 second mono loop per colour, generated once. Pink uses Paul Kellet's filter. Brown is an integrator with its drift removed so the loop point matches.
 - Voices of one colour share that loop, so each voice starts it at a random point (`loopOffset()`). Without this, two voices built in the same moment play the same samples: they add up in amplitude rather than in power, so the mix normalisation no longer holds and the output clips; voices built a few milliseconds apart sound metallic (comb filtering). Oscillators still start at their phase zero.
 - Boosted EQ bands are compensated by the trim gain, so a speaker cannot exceed its volume.
+- The limiter after the master is the safety net for peaks the rest cannot prevent: oscillators of equal frequency in phase, chat cue overlap, two noise voices that happened to start close together. react-native-audio-api has no compressor, so it is a wave shaper with 4x oversampling: the output equals the input up to 0.7 and is bent smoothly toward 1 above it (`softClip()`). The shaper only takes -1 to 1, so a gain of 1/4 feeds it and the curve covers inputs up to 4.
 - The chat cue in tone mode fades the dry gain down by the cue depth and the dark copy up, panned toward the talker; in dip mode it lowers the master gain. Both use 0.05 s fades and a 0.22 s hold.
 - Scenario: The listener walks from 10 to 7 tiles from a speaker at volume 0.7 (reach 8.3) → the voice is built at 9.8 tiles, silent until 8.3, then glides up.
 

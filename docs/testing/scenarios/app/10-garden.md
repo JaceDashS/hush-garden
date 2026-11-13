@@ -108,6 +108,12 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: no clipping and no metallic comb sound. Before the change both voices started at the same sample, summed to about 1.41 and clipped.
 - Test: "voices of one noise colour start at different points of the loop". Not yet checked by ear.
 
+## Peaks Are Rounded Off
+- Input: two speakers with the same 55 Hz sine oscillator in phase, plus a chat cue, so the mix reaches about 1.4 for a moment.
+- Steps: master → gain 1/4 → limiter curve → `softClip(1.4)`.
+- Result: output about 0.99, below 1, so nothing is cut; sound up to 0.7 passes unchanged.
+- Test: "the limiter leaves quiet sound alone and keeps peaks below one". Not yet checked by ear.
+
 ## Enter The Public Garden As A Guest
 - Input: public garden chosen, consent agreed, device location unavailable.
 - Result: the garden opens with the place above the character, a visitor count, and a "log in to chat" button instead of the chat box.
