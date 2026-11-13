@@ -144,6 +144,12 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: 0 dB in the middle of the flat one with the far ends cut; about +9, +4.5, -12 and +6 dB at 40 Hz, 200 Hz, 1 kHz and 12 kHz; -3 dB at each cut frequency.
 - Test: "a flat equalizer changes nothing in the middle and cuts the far ends", "each band shapes its own part of the curve".
 
+## Boost Does Not Lower The Rest
+- Input: the default speaker with its low shelf raised by 6 dB.
+- Steps: the equalizer chain plays the curve as drawn → nothing after it scales the speaker down → distance gain and pan as before.
+- Result: the low end is 6 dB louder and the middle and highs keep their level. Before the change a trim gain lowered the whole speaker by the highest boost, so the low end stayed and everything else dropped by 6 dB. A peak past full scale is rounded by the limiter.
+- Test: none; the engine runs only with a real audio context. Not yet checked by ear.
+
 ## Dragging Equalizer Bands
 - Input: the bell dragged far beyond the graph, the low shelf far below it, the high cut to 300 Hz and then the low cut to 1.5 kHz.
 - Result: every value stays inside its limits and the low cut never passes the high cut.

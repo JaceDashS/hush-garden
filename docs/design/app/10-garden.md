@@ -42,8 +42,8 @@ flowchart LR
     N["Noise loop"] --> S["Sum"]
     O["Oscillators 0..2"] --> S
     S --> HP["Low cut"] --> LS["Low shelf"] --> MID["Bell"] --> HS["High shelf"] --> LP["High cut"]
-    LP --> T["Trim"] --> G["Distance gain"] --> P["Pan"] --> BUS["Bus"]
-    T -.-> AN["Analyser of this speaker"]
+    LP --> G["Distance gain"] --> P["Pan"] --> BUS["Bus"]
+    LP -.-> AN["Analyser of this speaker"]
     BUS -.-> MA["Analyser of the mix"]
     BUS --> DRY["Dry gain"] --> M["Master"]
     BUS --> DARK["Low-pass 420 Hz"] --> WET["Wet gain"] --> WP["Cue pan"] --> M
@@ -55,8 +55,8 @@ flowchart LR
 - Changing a value retunes the existing nodes with a short glide, so dragging a slider does not click. Nodes are rebuilt only when the noise colour or the oscillator waves change.
 - Noise is a 6 second mono loop per colour, generated once. Pink uses Paul Kellet's filter. Brown is an integrator with its drift removed so the loop point matches.
 - Voices of one colour share that loop, so each voice starts it at a random point (`loopOffset()`). Without this, two voices built in the same moment play the same samples: they add up in amplitude rather than in power, so the mix normalisation no longer holds and the output clips; voices built a few milliseconds apart sound metallic (comb filtering). Oscillators still start at their phase zero.
-- Boosted EQ bands are compensated by the trim gain, so a speaker cannot exceed its volume.
-- The limiter after the master is the safety net for peaks the rest cannot prevent: oscillators of equal frequency in phase, chat cue overlap, two noise voices that happened to start close together. react-native-audio-api has no compressor, so it is a wave shaper with 4x oversampling: the output equals the input up to 0.7 and is bent smoothly toward 1 above it (`softClip()`). The shaper only takes -1 to 1, so a gain of 1/4 feeds it and the curve covers inputs up to 4.
+- Equalizer boosts are not compensated: a boosted band makes the speaker louder there and leaves the rest of the curve where it is. Peaks past full scale are left to the limiter.
+- The limiter after the master is the safety net for peaks the rest cannot prevent: equalizer boosts, oscillators of equal frequency in phase, chat cue overlap, two noise voices that happened to start close together. react-native-audio-api has no compressor, so it is a wave shaper with 4x oversampling: the output equals the input up to 0.7 and is bent smoothly toward 1 above it (`softClip()`). The shaper only takes -1 to 1, so a gain of 1/4 feeds it and the curve covers inputs up to 4.
 - The chat cue in tone mode fades the dry gain down by the cue depth and the dark copy up, panned toward the talker; in dip mode it lowers the master gain. Both use 0.05 s fades and a 0.22 s hold.
 - Scenario: The listener walks from 10 to 7 tiles from a speaker at volume 0.7 (reach 8.3) → the voice is built at 9.8 tiles, silent until 8.3, then glides up.
 
@@ -131,13 +131,13 @@ flowchart LR
 
 - Input: a stored or edited equalizer; drag positions on the graph; analyser data.
 - Output: a valid `Equalizer`, the response curve, and the drawn graph.
-- Code: `src/domain/equalizer.ts` → `normalizeEqualizer()`, `equalizerResponse()`, `moveBand()`, `handleOf()`, `hzToX()`, `xToHz()`, `dbToY()`, `yToDb()`, `graphFrequencies()`, `peakBoost()`, `EQ_LIMITS`; `src/components/EqGraph.tsx` → `EqGraph`; `src/audio/engine.ts` → `GardenAudio.spectrum()`, `tune()`.
+- Code: `src/domain/equalizer.ts` → `normalizeEqualizer()`, `equalizerResponse()`, `moveBand()`, `handleOf()`, `hzToX()`, `xToHz()`, `dbToY()`, `yToDb()`, `graphFrequencies()`, `EQ_LIMITS`; `src/components/EqGraph.tsx` → `EqGraph`; `src/audio/engine.ts` → `GardenAudio.spectrum()`, `tune()`.
 - The model is `{bands: [{type, frequency, gain, q}] × 3}` with `type` one of `bell`, `lowcut`, `lowshelf`, `highshelf`, `highcut`; frequency 20 Hz to 20 kHz, gain -24 to +12 dB, Q 0.3 to 8. Older formats are still read: the five-band format becomes low shelf (or the low cut when it was set and the shelf was flat), bell, high shelf (or the high cut likewise); the first format (`eq.low`, `eq.mid`, `eq.high` plus a separate `filter`) the same way.
 - `bandCoefficients()` computes each point's second-order filter with the Audio EQ Cookbook formulas, using its Q for every kind. The curve is the sum in dB of the three at 96 frequencies spread by octave, and the audio engine plays the same coefficients through `IIRFilterNode`s, so the curve and the sound match. Web Audio shelves have no Q, which is why biquad nodes are not used.
 - An IIR filter cannot glide, so a changed point builds a new filter beside the old one and crossfades in about 20 ms; swaps of one point are at most every 30 ms while dragging.
 - The graph maps 20 Hz to 20 kHz across its width by logarithm and +18 dB to -30 dB down its height. A press picks the nearest handle within 36 px; dragging calls `moveBand()`, which clamps every value. The kind chips call `setBandType()` and the Q knob `updateBand()`.
-- The analyser is read every 80 ms. `spectrum(speakerId)` attaches an analyser after that speaker's trim gain on first use; when the speaker has no voice (out of range) it uses an analyser on the bus. Levels from -100 dB to -10 dB fill the graph height.
-- The trim gain divides by the highest point of the curve (`peakBoost()`), so boosting a band, or the bump of a narrow shelf or resonant cut, reshapes the sound without raising its peak level.
+- The analyser is read every 80 ms. `spectrum(speakerId)` attaches an analyser at the end of that speaker's equalizer chain on first use; when the speaker has no voice (out of range) it uses an analyser on the bus. Levels from -100 dB to -10 dB fill the graph height.
+- Boosting a band raises that part of the sound and nothing else, as on any equalizer. The bump of a narrow shelf or a resonant cut is heard as drawn.
 - Scenario: Low shelf +9 dB at 200 Hz, bell -12 dB at 1 kHz with Q 2, high shelf +6 dB at 4 kHz → the curve reads about +9 dB at 40 Hz, +4.5 dB at 200 Hz, -12 dB at 1 kHz and +6 dB at 12 kHz.
 
 ## Characters

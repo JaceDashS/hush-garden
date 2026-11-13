@@ -5,7 +5,7 @@ import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharact
 import { LANGUAGES, TEXTS, languageForLocale, normalizeLanguage, translate, type TextKey } from "../src/domain/text.ts";
 import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
-import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, peakBoost, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
+import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { MAX_OSCILLATORS, MAX_SPEAKERS, REACH, WAVES, audibleCount, defaultSound, gainAt, loudnessAt, mixFor, normalizeSound, reachOf, waveShape, type Speaker } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
@@ -158,7 +158,6 @@ const near = (actual: number, expected: number, tolerance: number) => assert.ok(
 
 test("a flat equalizer changes nothing", () => {
   for (const gain of equalizerResponse(flatEqualizer(), [20, 200, 1000, 8000, 20000])) near(gain, 0, 0.01);
-  assert.equal(peakBoost(flatEqualizer()), 0);
 });
 
 test("each band shapes its own part of the curve", () => {
@@ -182,9 +181,6 @@ test("every point can be any filter kind and Q shapes every kind", () => {
     const [a, b] = [equalizerResponse(narrow, [700])[0], equalizerResponse(wide, [700])[0]];
     assert.ok(Math.abs(a - b) > 0.5, type + ": Q changed nothing");
   }
-  // A resonant cut rings above 0 dB, and the trim counts that bump.
-  const ringing = updateBand(setBandType(flatEqualizer(), 2, "highcut"), 2, { frequency: 2000, q: 6 });
-  assert.ok(peakBoost(ringing) > 10);
 });
 
 test("graph positions convert both ways and stay on the graph", () => {

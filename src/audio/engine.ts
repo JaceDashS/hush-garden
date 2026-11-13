@@ -8,8 +8,8 @@
  */
 import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type AudioNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
-import { bandCoefficients, peakBoost, type EqBand } from "../domain/equalizer";
-import { dbToGain, mixFor, reachOf, type NoiseColor, type Speaker } from "../domain/sound";
+import { bandCoefficients, type EqBand } from "../domain/equalizer";
+import { mixFor, reachOf, type NoiseColor, type Speaker } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { LIMIT_RANGE, limiterCurve } from "./limiter";
 import { fillNoise, loopOffset } from "./noise";
@@ -49,7 +49,8 @@ interface Voice {
   noiseGain: GainNode;
   tones: { oscillator: OscillatorNode; gain: GainNode }[];
   bands: BandSlot[];
-  trim: GainNode;
+  /** The end of the equalizer chain: what this speaker sounds like before distance and pan. */
+  shaped: AudioNode;
   /** Created on first use by spectrum(): shows this speaker alone, after its equalizer. */
   analyser?: AnalyserNode;
   level: GainNode;
@@ -57,8 +58,6 @@ interface Voice {
 }
 
 const shapeOf = (sound: Speaker["sound"]) => sound.noise.color + "|" + sound.oscillators.map((o) => o.wave).join(",");
-/** Boosted EQ bands are compensated so a speaker cannot get louder than its volume allows. */
-const trimFor = (sound: Speaker["sound"]) => 1 / dbToGain(peakBoost(sound.eq));
 
 export class GardenAudio {
   private context: AudioContext | null = null;
@@ -187,7 +186,7 @@ export class GardenAudio {
     if (voice) {
       if (!voice.analyser) {
         voice.analyser = this.makeAnalyser(context);
-        voice.trim.connect(voice.analyser);
+        voice.shaped.connect(voice.analyser);
         voice.nodes.push(voice.analyser);
       }
       analyser = voice.analyser;
@@ -274,7 +273,6 @@ export class GardenAudio {
       return { oscillator, gain: feed(oscillator) };
     });
     const bands: BandSlot[] = sound.eq.bands.map(() => ({ input: context.createGain(), output: context.createGain(), current: null, key: "", wanted: null, lastSwap: -1, timer: null }));
-    const trim = context.createGain();
     const level = context.createGain();
     // A new voice starts silent and glides in.
     level.gain.value = 0;
@@ -284,15 +282,14 @@ export class GardenAudio {
       tail.connect(band.input);
       tail = band.output;
     }
-    tail.connect(trim);
-    trim.connect(level);
+    tail.connect(level);
     level.connect(pan);
     pan.connect(this.bus);
-    nodes.push(sum, ...bands.flatMap((band) => [band.input, band.output]), trim, level, pan);
+    nodes.push(sum, ...bands.flatMap((band) => [band.input, band.output]), level, pan);
     const at = context.currentTime;
     noise.start(at, loopOffset(NOISE_SECONDS));
     for (const tone of tones) tone.oscillator.start(at);
-    return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, tones, bands, trim, level, pan };
+    return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, tones, bands, shaped: tail, level, pan };
   }
 
   /** Applies sound values to an existing voice. Values glide, so dragging a slider is heard without clicks. */
@@ -305,7 +302,6 @@ export class GardenAudio {
       set(tone.gain.gain, sound.oscillators[index].level * 0.3);
     });
     voice.bands.forEach((slot, index) => this.tuneBand(context, slot, sound.eq.bands[index]));
-    set(voice.trim.gain, trimFor(sound));
   }
 
   /** Puts a band's new filter in place, at most once every BAND_SWAP seconds. */

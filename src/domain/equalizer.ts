@@ -192,13 +192,3 @@ export function setBandType(eq: Equalizer, index: number, type: BandType): Equal
   if (band.type === type) return eq;
   return updateBand(eq, index, { type, q: type === "bell" ? (band.type === "bell" ? band.q : 1) : NEUTRAL_Q });
 }
-
-const PEAK_FREQUENCIES = graphFrequencies(160);
-/**
- * The loudest boost of the equalizer curve in dB, used to keep a boosted speaker from exceeding its volume.
- * It is read from the curve, so the bump of a narrow shelf or a resonant cut counts too.
- */
-export function peakBoost(eq: Equalizer): number {
-  const peak = Math.max(0, ...equalizerResponse(eq, PEAK_FREQUENCIES));
-  return peak < 1e-6 ? 0 : peak;
-}

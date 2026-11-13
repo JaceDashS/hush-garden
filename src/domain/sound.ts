@@ -165,7 +165,3 @@ export function waveShape(wave: Wave, points: number, phase = 0, cycles = 1): nu
     }
   });
 }
-
-export function dbToGain(db: number): number {
-  return Math.pow(10, db / 20);
-}
