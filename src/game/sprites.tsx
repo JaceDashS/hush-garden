@@ -4,6 +4,7 @@ import { Animated, Easing, Platform, View } from "react-native";
 import Svg, { Circle, Defs, Ellipse, G, Path, Polygon, RadialGradient, Rect, Stop } from "react-native-svg";
 import { reachOf, waveShape, type NoiseColor, type SpeakerSound, type Wave } from "../domain/sound";
 import { GARDEN_SIZE, TILE_HEIGHT, TILE_WIDTH, toScreen } from "../domain/world";
+import { RIPPLE_POOL, RIPPLE_SECONDS, firstRippleDelay, nextRippleInterval } from "./ripple";
 
 /** Screen size of the whole garden; x is shifted so the left corner starts at 0. */
 export const GROUND_WIDTH = GARDEN_SIZE * TILE_WIDTH;
@@ -97,9 +98,6 @@ export const SpeakerArt = React.memo(function SpeakerArt({ color, selected, play
 
 /** Colour of the sound waves a speaker sends out, by its noise colour: pink noise is pink, brown noise brown. */
 export const SHADOW_TINT: Record<NoiseColor, string> = { brown: "#8a5326", pink: "#ff4f98", white: "#ffffff" };
-/** Rings that spread from one speaker at a time, and the seconds one ring takes to reach the edge. */
-const RIPPLE_COUNT = 3;
-const RIPPLE_SECONDS = 2.7;
 const NATIVE_DRIVER = Platform.OS !== "web";
 
 /** How strong a speaker's sound waves look (0 to 1): louder is stronger, a silent speaker sends none. */
@@ -113,17 +111,33 @@ export function shadowSize(sound: Pick<SpeakerSound, "volume">): { width: number
   return { width: reach * TILE_WIDTH * Math.SQRT2, height: reach * TILE_HEIGHT * Math.SQRT2 };
 }
 
-/** One ring: it grows from the speaker to the edge of its reach and fades out on the way. */
-function Ripple({ index, width, height, color, strength }: { index: number; width: number; height: number; color: string; strength: number }) {
-  const progress = useRef(new Animated.Value(0)).current;
+/**
+ * Sends rings at an uneven pace: each one after a random wait, starting at a random moment. The rings are a fixed
+ * set of animated values used in turn; the set is large enough that a ring has finished before it is reused.
+ */
+function useRipples(): Animated.Value[] {
+  const rings = useRef(Array.from({ length: RIPPLE_POOL }, () => new Animated.Value(0))).current;
   useEffect(() => {
-    const loop = Animated.loop(Animated.timing(progress, { toValue: 1, duration: RIPPLE_SECONDS * 1000, easing: Easing.out(Easing.quad), useNativeDriver: NATIVE_DRIVER }));
-    const delay = setTimeout(() => loop.start(), (index * RIPPLE_SECONDS * 1000) / RIPPLE_COUNT);
-    return () => {
-      clearTimeout(delay);
-      loop.stop();
+    let next = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const send = () => {
+      const ring = rings[next];
+      next = (next + 1) % rings.length;
+      ring.setValue(0);
+      Animated.timing(ring, { toValue: 1, duration: RIPPLE_SECONDS * 1000, easing: Easing.out(Easing.quad), useNativeDriver: NATIVE_DRIVER }).start();
+      timer = setTimeout(send, nextRippleInterval() * 1000);
     };
-  }, [index, progress]);
+    timer = setTimeout(send, firstRippleDelay() * 1000);
+    return () => {
+      clearTimeout(timer);
+      for (const ring of rings) ring.stopAnimation();
+    };
+  }, [rings]);
+  return rings;
+}
+
+/** One ring: it grows from the speaker to the edge of its reach and fades out on the way. Hidden while at rest. */
+function Ripple({ progress, width, height, color, strength }: { progress: Animated.Value; width: number; height: number; color: string; strength: number }) {
   const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.06, 1] });
   const opacity = progress.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, strength, 0] });
   // A circle squashed to the quarter view; the border is thicker than it looks so it stays visible when small.
@@ -145,14 +159,15 @@ export const SoundShadow = React.memo(function SoundShadow({ sound }: { id: stri
   const { width, height } = shadowSize(sound);
   const strength = shadowStrength(sound);
   const color = SHADOW_TINT[sound.noise.color];
+  const rings = useRipples();
   if (strength <= 0) return null;
   return (
     <View pointerEvents="none" style={{ width, height }}>
       <Svg width={width} height={height} style={{ position: "absolute", left: 0, top: 0 }}>
         <Ellipse cx={width / 2} cy={height / 2} rx={width / 2} ry={height / 2} fill={color} fillOpacity={0.07 + 0.08 * sound.volume} />
       </Svg>
-      {Array.from({ length: RIPPLE_COUNT }, (_, index) => (
-        <Ripple key={index} index={index} width={width} height={height} color={color} strength={strength} />
+      {rings.map((progress, index) => (
+        <Ripple key={index} progress={progress} width={width} height={height} color={color} strength={strength} />
       ))}
     </View>
   );

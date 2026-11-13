@@ -195,6 +195,12 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: each speaker has a soft shadow in its noise colour without pressing anything; shadows fade outward and blend where they overlap; the held speaker's shadow follows the character.
 - Test: Browser check 2026-11-12.
 
+## Sound Waves At An Uneven Pace
+- Input: the starting private garden, three speakers shown at the same moment.
+- Steps: each `SoundShadow` waits `firstRippleDelay()` before its first ring, then `nextRippleInterval()` before each next one.
+- Result: the speakers start at different moments and the gaps between rings vary between 0.6 and 1.4 s, differently for each speaker; no speaker pulses at a fixed period.
+- Test: "speakers send their sound waves at an uneven pace". Browser check in Chrome 2026-11-14: first rings at 0.35, 0.45 and 0.9 s, gaps between 0.6 and 1.15 s.
+
 ## Oscillator Panels
 - Input: the oscillator tab of a new speaker; add pressed; the square wave picture pressed on OSC A; the OSC A level knob dragged up 57 px; the OSC B frequency knob dragged right 50 px.
 - Result: OSC A at 55 Hz and 55%; OSC B appears at 165 Hz and 20% and the add button goes away; the display of OSC A shows a square wave; the level reads 82%; the frequency of OSC B reads 676 Hz.

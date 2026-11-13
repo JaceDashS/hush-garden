@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LIMIT_KNEE, LIMIT_RANGE, limiterCurve, softClip } from "../src/audio/limiter.ts";
 import { fillNoise, loopOffset } from "../src/audio/noise.ts";
+import { RIPPLE_INTERVAL, RIPPLE_POOL, RIPPLE_SECONDS, firstRippleDelay, nextRippleInterval } from "../src/game/ripple.ts";
 import { parseServerMessage, socketUrl } from "../src/api/socket.ts";
 import { roundCoordinate } from "../src/coordinates.ts";
 import { DEFAULT_SETTINGS, deviceLanguage, normalizeSettings } from "../src/settings.ts";
@@ -66,6 +67,19 @@ test("voices of one noise colour start at different points of the loop", () => {
   assert.ok(offsets.some((offset) => offset > 3) && offsets.some((offset) => offset < 3), "spread over the loop");
   assert.equal(loopOffset(6, () => 0.999999999), 6 * 0.999999999);
   assert.equal(loopOffset(6, () => 1), 0);
+});
+
+test("speakers send their sound waves at an uneven pace", () => {
+  let seed = 3;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const waits = Array.from({ length: 40 }, () => nextRippleInterval(random));
+  assert.ok(waits.every((wait) => wait >= RIPPLE_INTERVAL[0] && wait <= RIPPLE_INTERVAL[1]), "within the range");
+  assert.ok(new Set(waits).size === waits.length, "not one fixed period");
+  assert.ok(Math.max(...waits) - Math.min(...waits) > 0.5, "spread over the range");
+  assert.equal(nextRippleInterval(() => 2), RIPPLE_INTERVAL[1]);
+  assert.ok(firstRippleDelay(() => 0.5) > 0 && firstRippleDelay(() => 1) === RIPPLE_INTERVAL[1]);
+  // A ring is reused only after it has reached the edge, even when every wait is the shortest.
+  assert.ok(RIPPLE_POOL * RIPPLE_INTERVAL[0] >= RIPPLE_SECONDS);
 });
 
 test("the limiter leaves quiet sound alone and keeps peaks below one", () => {

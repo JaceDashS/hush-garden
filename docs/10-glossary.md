@@ -40,7 +40,7 @@
 
 ## Sound Shadow
 - Definition: The soft round shadow a speaker casts on the ground in its noise colour, darker when louder and fading out at its reach.
-- Code: `SoundShadow`, `shadowStrength()`, `shadowSize()`
+- Code: `SoundShadow`, `shadowStrength()`, `shadowSize()`; ring timing `nextRippleInterval()`
 
 ## Oscillator
 - Definition: One synthesised tone of a speaker: a wave, a frequency and a level. A speaker has at most two, shown as the panels OSC A and OSC B.

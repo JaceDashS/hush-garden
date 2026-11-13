@@ -49,7 +49,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 
 ## Sound Shadows
 
-- Every speaker always shows its sound on the ground as concentric sound waves: rings that keep spreading from the speaker and fade out at the speaker's reach, over a faint fill of the area it is heard in. No mode has to be switched on to see it.
+- Every speaker always shows its sound on the ground as concentric sound waves: rings that keep spreading from the speaker and fade out at the speaker's reach, over a faint fill of the area it is heard in. Each speaker sends its rings at its own uneven pace, so the speakers never pulse in step. No mode has to be switched on to see it.
 - The waves have the colour of the noise: brown for brown noise, pink for pink noise, white for white noise.
 - A louder speaker is heard further away, so its waves spread wider, and they are brighter. A silent speaker sends none.
 - Where waves overlap, their colours blend.

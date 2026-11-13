@@ -72,7 +72,7 @@ flowchart LR
 
 - Input: player position, other characters, speakers, the held speaker, markers.
 - Output: the drawn garden and the joystick callback.
-- Code: `src/game/Scene.tsx` → `Scene`, `Actor`, `Marker`; `src/game/sprites.tsx` → `Ground`, `SpeakerArt`, `SoundShadow`, `Tree`; characters in [Characters](#characters).
+- Code: `src/game/Scene.tsx` → `Scene`, `Actor`, `Marker`; `src/game/sprites.tsx` → `Ground`, `SpeakerArt`, `SoundShadow`, `Tree`; `src/game/ripple.ts` → `nextRippleInterval()`, `firstRippleDelay()`, `RIPPLE_SECONDS`, `RIPPLE_INTERVAL`, `RIPPLE_POOL`; characters in [Characters](#characters).
 - The ground is one SVG drawn once. Sprites are positioned views sorted by `x + y`. The camera moves one container.
 - Markers are pressable things placed at a garden position with a screen offset: the lift button beside a speaker and the put down and edit buttons beside the character. They sit above everything and take the press before the joystick does.
 - All art is drawn in code with react-native-svg; `scripts/make-icon.mjs` draws the app icon.
@@ -82,7 +82,7 @@ flowchart LR
 - Input: a speaker's sound.
 - Output: concentric sound waves on the ground under the trees, speakers and characters.
 - Code: `src/game/sprites.tsx` → `SoundShadow`, `shadowSize()`, `shadowStrength()`, `SHADOW_TINT`; placed in `src/game/Scene.tsx`.
-- Three rings in the noise colour (brown `#8a5326`, pink `#ff4f98`, white `#ffffff`) grow from the speaker to the reach seen in quarter view (`reach × 72 × √2` wide and half that high) in 2.7 s each, a third of a cycle apart, and fade out as they grow. A faint ellipse fills the reach. `shadowStrength()` sets the ring brightness from the volume. The rings are `Animated` views, so they run on the native driver in the apps.
+- Rings in the noise colour (brown `#8a5326`, pink `#ff4f98`, white `#ffffff`) grow from the speaker to the reach seen in quarter view (`reach × 72 × √2` wide and half that high) in 2.7 s each and fade out as they grow. Each speaker sends a ring after a random wait of 0.6 to 1.4 s (`nextRippleInterval()`), the first one after 0 to 1.4 s (`firstRippleDelay()`), so speakers placed at the same time do not pulse together. The rings are a set of five animated values used in turn; five times the shortest wait is longer than one ring's travel, so a ring has always finished before it is sent again. A ring at rest is invisible. A faint ellipse fills the reach. `shadowStrength()` sets the ring brightness from the volume. The rings are `Animated` views, so they run on the native driver in the apps.
 - The centre opacity is `0.14 + 0.5 × volume`, and zero for a silent speaker. Outward the opacity falls to 62%, 32%, 10% and 0% of the centre at each quarter of the reach.
 - Shadows are drawn with ordinary transparency, so overlapping shadows blend their colours.
 - The scene draws the shadow from the same list the audio engine gets, in which a held speaker sits at the character's position.
