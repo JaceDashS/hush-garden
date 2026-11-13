@@ -35,6 +35,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - There is no hearing distance setting. A louder speaker is heard farther away: its reach grows evenly from 2 tiles at volume 0 to 11 tiles at full volume.
 - A speaker is loudest next to it and fades smoothly to silence at its reach.
 - Speakers in range are heard together. The mix is turned down as a whole only when it would be louder than one speaker at full volume.
+- Speakers with the same sound are heard as separate sources: standing between them never crackles or sounds metallic.
 - A speaker to the left on screen sounds from the left, and likewise for the right.
 - Low sound helps masking, so the default sound carries a low tone: oscillator A starts as a 55 Hz sine. There is no separate bass control.
 - Sound never starts before the player presses a button.

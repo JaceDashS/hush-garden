@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fillNoise } from "../src/audio/noise.ts";
+import { fillNoise, loopOffset } from "../src/audio/noise.ts";
 import { parseServerMessage, socketUrl } from "../src/api/socket.ts";
 import { roundCoordinate } from "../src/coordinates.ts";
 import { DEFAULT_SETTINGS, deviceLanguage, normalizeSettings } from "../src/settings.ts";
@@ -54,6 +54,17 @@ test("noise loops stay within range and brown noise loops without a jump", () =>
   const brown = new Float32Array(48000);
   fillNoise("brown", brown, random);
   assert.ok(Math.abs(brown[brown.length - 1] - brown[0]) < 0.02);
+});
+
+test("voices of one noise colour start at different points of the loop", () => {
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const offsets = Array.from({ length: 50 }, () => loopOffset(6, random));
+  assert.ok(offsets.every((offset) => offset >= 0 && offset < 6), "inside the loop");
+  assert.ok(new Set(offsets).size === offsets.length, "no two alike");
+  assert.ok(offsets.some((offset) => offset > 3) && offsets.some((offset) => offset < 3), "spread over the loop");
+  assert.equal(loopOffset(6, () => 0.999999999), 6 * 0.999999999);
+  assert.equal(loopOffset(6, () => 1), 0);
 });
 import { HushClient } from "../src/api/client.ts";
 import { createNativeTransport } from "../src/api/transport.ts";

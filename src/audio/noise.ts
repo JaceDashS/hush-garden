@@ -37,3 +37,13 @@ export function fillNoise(color: NoiseColor, data: Float32Array, random: () => n
   const scale = peak > 0 ? 0.6 / peak : 1;
   for (let i = 0; i < n; i++) data[i] *= scale;
 }
+
+/**
+ * Where in a noise loop a new voice starts, in seconds. Voices of one colour share a loop, so each starts at a
+ * random point: otherwise two of them play the same samples, which add up to clipping or, when slightly apart,
+ * a metallic comb sound.
+ */
+export function loopOffset(seconds: number, random: () => number = Math.random): number {
+  const offset = (random() * seconds) % seconds;
+  return offset < 0 ? offset + seconds : offset;
+}

@@ -10,7 +10,7 @@ import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
 import { bandCoefficients, peakBoost, type EqBand } from "../domain/equalizer";
 import { dbToGain, mixFor, reachOf, type NoiseColor, type Speaker } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
-import { fillNoise } from "./noise";
+import { fillNoise, loopOffset } from "./noise";
 
 const NOISE_SECONDS = 6;
 /** Gain changes glide with this time constant so walking never clicks. */
@@ -280,7 +280,8 @@ export class GardenAudio {
     pan.connect(this.bus);
     nodes.push(sum, ...bands.flatMap((band) => [band.input, band.output]), trim, level, pan);
     const at = context.currentTime;
-    for (const source of sources) source.start(at);
+    noise.start(at, loopOffset(NOISE_SECONDS));
+    for (const tone of tones) tone.oscillator.start(at);
     return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, tones, bands, trim, level, pan };
   }
 

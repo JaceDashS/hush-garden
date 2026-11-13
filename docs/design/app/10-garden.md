@@ -35,7 +35,7 @@
 
 - Input: speakers, listener position, master volume, chat cues.
 - Output: sound through Web Audio in the browser and react-native-audio-api in the apps, with the same code.
-- Code: `src/audio/engine.ts` → `GardenAudio` (`start()`, `pause()`, `setSpeakers()`, `setListener()`, `setVolume()`, `cue()`); `src/audio/noise.ts` → `fillNoise()`.
+- Code: `src/audio/engine.ts` → `GardenAudio` (`start()`, `pause()`, `setSpeakers()`, `setListener()`, `setVolume()`, `cue()`); `src/audio/noise.ts` → `fillNoise()`, `loopOffset()`.
 
 ```mermaid
 flowchart LR
@@ -54,6 +54,7 @@ flowchart LR
 - A voice exists only while the listener is within the speaker reach plus 1.5 tiles. It starts silent and glides in.
 - Changing a value retunes the existing nodes with a short glide, so dragging a slider does not click. Nodes are rebuilt only when the noise colour or the oscillator waves change.
 - Noise is a 6 second mono loop per colour, generated once. Pink uses Paul Kellet's filter. Brown is an integrator with its drift removed so the loop point matches.
+- Voices of one colour share that loop, so each voice starts it at a random point (`loopOffset()`). Without this, two voices built in the same moment play the same samples: they add up in amplitude rather than in power, so the mix normalisation no longer holds and the output clips; voices built a few milliseconds apart sound metallic (comb filtering). Oscillators still start at their phase zero.
 - Boosted EQ bands are compensated by the trim gain, so a speaker cannot exceed its volume.
 - The chat cue in tone mode fades the dry gain down by the cue depth and the dark copy up, panned toward the talker; in dip mode it lowers the master gain. Both use 0.05 s fades and a 0.22 s hold.
 - Scenario: The listener walks from 10 to 7 tiles from a speaker at volume 0.7 (reach 8.3) → the voice is built at 9.8 tiles, silent until 8.3, then glides up.

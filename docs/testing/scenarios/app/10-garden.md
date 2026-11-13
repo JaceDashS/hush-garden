@@ -102,6 +102,12 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: all samples within ±1, none silent; brown noise ends where it starts.
 - Test: "noise loops stay within range and brown noise loops without a jump".
 
+## Same Sound Does Not Crackle
+- Input: two speakers with the same pink noise sound; the listener stands between them, so both voices are built in the same refresh.
+- Steps: each voice starts the shared pink loop at its own random point (`loopOffset()`) → the two noises are unrelated → they add in power, which the mix normalisation expects.
+- Result: no clipping and no metallic comb sound. Before the change both voices started at the same sample, summed to about 1.41 and clipped.
+- Test: "voices of one noise colour start at different points of the loop". Not yet checked by ear.
+
 ## Enter The Public Garden As A Guest
 - Input: public garden chosen, consent agreed, device location unavailable.
 - Result: the garden opens with the place above the character, a visitor count, and a "log in to chat" button instead of the chat box.
