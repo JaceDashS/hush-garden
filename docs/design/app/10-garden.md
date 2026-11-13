@@ -112,7 +112,7 @@ flowchart LR
 ## Account Transport
 
 - Code: `src/api/transport.web.ts` (browser cookie and CSRF token from responses; in the desktop app requests go through the Tauri HTTP plugin), `src/api/transport.ts` (apps: session kept in encrypted storage and sent explicitly).
-- The browser build signs in with a password or Google; the apps with a password.
+- Web and Android sign in with a password or Google; iOS retains password login. The existing Chat and Settings entry points open the same login card: [Account Login](20-account-login.md).
 
 ## Background Playback
 

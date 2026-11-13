@@ -35,3 +35,11 @@ Development happens on `dev`. `main` changes only by merging `dev`. Releases are
 - Input: A new built-in preset is ready on `dev`.
 - Steps: Checks pass → merge `dev` into `main` → Vercel deploys the web app → run the Android and Windows workflows from the new commit for the apps.
 - Result: The web app shows the preset at once; app users get it with the next installed build.
+
+## Android Google Sign In
+- Rebuild the native app after installing react-native-nitro-google-signin and react-native-nitro-modules. Expo Go cannot load this native integration.
+- The button uses the configured platform web Client ID explicitly, so it does not require a checked-in Google services configuration file.
+- Before testing a signed APK, verify the Android OAuth client for package com.jaces.hushgarden and that APK signing certificate SHA1 in the same Google project as the platform web Client ID. A different signing key needs its own registration.
+- Example input: An APK signed with the test key. Steps: Verify package and SHA1 registration, install the rebuilt APK and use Google in the Chat login card. Expected result: Account selection returns to the existing garden session.
+- Source: [SDK setup](https://github.com/react-native-nitro-google-sign-in/google-signin#expo).
+- Design: [Account Login](../design/app/20-account-login.md).

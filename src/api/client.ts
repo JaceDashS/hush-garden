@@ -55,7 +55,7 @@ export class HushClient {
     });
   }
 
-  /** Public Google configuration for the browser button. */
+  /** Public Google configuration for browser and native buttons. */
   googleConfig(): Promise<{ enabled: boolean; clientId: string | null }> {
     return this.serialize(() => this.call("/auth/google/config"));
   }
@@ -71,6 +71,24 @@ export class HushClient {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       this.user = (await this.call<{ user: User }>("/auth/google", { credential, remember, timeZone })).user;
       return this.user;
+    });
+  }
+
+  /** Native nonce for an explicit Android Google account selection. */
+  nativeGoogleChallenge(): Promise<string> {
+    return this.serialize(async () => (await this.call<{ nonce: string }>("/auth/google/native/challenge", {})).nonce);
+  }
+
+  /** Verifies the native credential and stores the existing account session through the native transport. */
+  nativeGoogleLogin(credential: string, nonce: string, remember: boolean): Promise<User> {
+    return this.serialize(async () => {
+      this.user = null;
+      await this.transport.forget();
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const result = await this.call<{ user: User }>("/auth/google/native", { credential, nonce, remember, timeZone });
+      if (!await this.transport.hasCredentials()) throw new ApiError(401, "SESSION_NOT_SAVED");
+      this.user = result.user;
+      return result.user;
     });
   }
 

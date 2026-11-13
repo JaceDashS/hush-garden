@@ -56,3 +56,6 @@ The server side is part of the jace-s platform API (`services/api` in the jace-s
 - Input: A player walks toward a speaker in the public garden while another player chats nearby.
 - Steps: `Game` steps the position each frame → `GardenAudio.setListener()` updates gains → `GardenSocket.move()` reports the position → a `chat` message arrives → `cueFor()` computes depth and side → `GardenAudio.cue()` darkens the tone briefly and the bubble is drawn.
 - Result: The noise grows louder on approach and its tone shifts for a moment when the other player speaks.
+
+## Account Authentication
+- The existing account client and platform-specific transports remain the session owners. Android adds native Google account selection and the platform native credential exchange; web keeps GIS. See [Account Login](../design/app/20-account-login.md).

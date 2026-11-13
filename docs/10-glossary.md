@@ -104,3 +104,8 @@
 ## Marker
 - Definition: A pressable button placed in the garden beside a speaker or the character.
 - Code: `Marker` in `src/game/Scene.tsx`
+
+## Native Google Challenge
+- Definition: A single-use nonce returned by the platform before Android Google account selection, bound to the subsequent ID token exchange. This is distinct from the garden socket ticket.
+- Code: HushClient.nativeGoogleChallenge, signInWithNativeGoogle.
+- Design: [Account Login](design/app/20-account-login.md).
