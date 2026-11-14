@@ -1,21 +1,22 @@
 /**
- * The sound button of the top bar. Pressing it turns sound on and off. With a mouse, hovering it shows the master
- * volume slider growing to the left and a hint naming the M shortcut; touch screens get only the press.
+ * The sound button of the top bar. Pressing it turns sound on and off. With a mouse, hovering it makes the button
+ * itself grow to the left, uncovering the master volume slider inside the same container, and shows a hint naming
+ * the M shortcut; touch screens get only the press.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Easing, View } from "react-native";
+import { Animated, Easing, Pressable, View } from "react-native";
 import { useT } from "../i18n";
-import { DragLockContext, IconBtn, Slider, SpeakerIcon, T, colors } from "../ui";
+import { DragLockContext, Slider, SpeakerIcon, T, colors } from "../ui";
 
 /** The key that turns sound on and off, matched by its physical position so other keyboard layouts work too. */
 export const SOUND_KEY_CODE = "KeyM";
 const SIZE = 44;
-/** Moving the pointer from the button to the slider crosses a small gap; closing waits this long. */
+/** Closing waits this long after the pointer leaves, so a slip off the edge does not fold it at once. */
 const CLOSE_DELAY_MS = 250;
-/** The slider pill grows out of the button to the left in this time, and folds back the same way. */
+/** The button grows to the left in this time, and folds back the same way. */
 const UNFOLD_MS = 180;
-/** Full width of the slider pill: padding, slider, gap, percentage and border. */
-const PILL_WIDTH = 12 + 112 + 6 + 34 + 14 + 4;
+/** Width the button gains: padding, slider, gap and percentage. */
+const EXTRA_WIDTH = 12 + 112 + 6 + 34 + 4;
 
 type PointerEvent = { nativeEvent: { pointerType?: string } };
 
@@ -40,38 +41,35 @@ export function SoundButton({ playing, volume, onToggle, onVolume }: { playing: 
     closing.current = setTimeout(() => setHover(false), CLOSE_DELAY_MS);
   };
   const open = hover || dragging;
-  // The pill stays drawn while it folds back, and is removed once folded.
-  const [shown, setShown] = useState(open);
   const unfold = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (open) setShown(true);
     const animation = Animated.timing(unfold, { toValue: open ? 1 : 0, duration: UNFOLD_MS, easing: Easing.out(Easing.cubic), useNativeDriver: false });
-    animation.start(({ finished }) => {
-      if (finished && !open) setShown(false);
-    });
+    animation.start();
     return () => animation.stop();
   }, [open, unfold]);
   const label = t(playing ? "top.soundOff" : "top.soundOn");
   const hoverProps = { onPointerEnter: enter, onPointerLeave: leave } as object;
   return (
-    <View style={{ width: SIZE, height: SIZE }} {...hoverProps}>
-      {shown && (
-        // The outer box grows from the button's edge; the content keeps its full width, anchored at the button, so
-        // it is uncovered from right to left instead of being squeezed.
-        <Animated.View testID="sound-volume-popup" style={{ position: "absolute", right: SIZE - 4, top: 0, height: SIZE, width: unfold.interpolate({ inputRange: [0, 1], outputRange: [0, PILL_WIDTH] }), opacity: unfold.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] }), overflow: "hidden", alignItems: "flex-end", borderRadius: SIZE / 2, backgroundColor: "rgba(255,250,242,0.96)", borderWidth: 2, borderColor: colors.panelEdge }}>
-          <View style={{ width: PILL_WIDTH - 4, height: SIZE - 4, flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 12, paddingRight: 14 }}>
-            <View style={{ width: 112 }}>
-              <DragLockContext.Provider value={setDragging}>
-                <Slider bare label={t("settings.volume")} value={volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={onVolume} testID="top-volume" />
-              </DragLockContext.Provider>
-            </View>
-            <T size={12} weight="800" style={{ width: 34, textAlign: "right" }}>{Math.round(volume * 100) + "%"}</T>
+    // The layout keeps the round button's footprint; the one container grows over the bar to its left.
+    <View style={{ width: SIZE, height: SIZE }}>
+      <Animated.View
+        testID="sound-button"
+        {...hoverProps}
+        style={{ position: "absolute", right: 0, top: 0, height: SIZE, width: unfold.interpolate({ inputRange: [0, 1], outputRange: [SIZE, SIZE + EXTRA_WIDTH] }), flexDirection: "row", justifyContent: "flex-end", overflow: "hidden", borderRadius: SIZE / 2, backgroundColor: colors.white, borderWidth: 2, borderBottomWidth: 4, borderColor: colors.panelEdge }}
+      >
+        {/* The slider keeps its full width, anchored at the icon, so it is uncovered from right to left. */}
+        <Animated.View testID="sound-volume-popup" pointerEvents={open ? "auto" : "none"} style={{ width: EXTRA_WIDTH, flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 12, opacity: unfold.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0.6, 1] }) }}>
+          <View style={{ width: 112 }}>
+            <DragLockContext.Provider value={setDragging}>
+              <Slider bare label={t("settings.volume")} value={volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={onVolume} testID="top-volume" />
+            </DragLockContext.Provider>
           </View>
+          <T size={12} weight="800" style={{ width: 34, textAlign: "right" }}>{Math.round(volume * 100) + "%"}</T>
         </Animated.View>
-      )}
-      <IconBtn label={label + " (M)"} onPress={onToggle} testID="toggle-sound">
-        <SpeakerIcon on={playing} />
-      </IconBtn>
+        <Pressable accessibilityRole="button" accessibilityLabel={label + " (M)"} testID="toggle-sound" onPress={onToggle} style={({ pressed }) => ({ width: SIZE - 4, alignItems: "center", justifyContent: "center", transform: [{ translateY: pressed ? 1 : 0 }] })}>
+          <SpeakerIcon on={playing} />
+        </Pressable>
+      </Animated.View>
       {open && (
         <View pointerEvents="none" testID="sound-shortcut-hint" style={{ position: "absolute", right: 0, top: SIZE + 6, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: colors.ink }}>
           <T size={12} weight="700" tone="white" lines={1}>{label}</T>
