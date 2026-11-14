@@ -220,15 +220,22 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Design: [Test Garden And Developer Options](../../../design/app/10-garden.md#test-garden-and-developer-options)
 - Input: the dev server; the exported web build.
 - Steps: open the first screen in both; in the dev server enter the test garden and use each developer option; then open the private garden's settings.
-- Result: the dev server shows "Test garden", the export does not; the alert shows and closes with OK; the temporary notice slides down as a toast and closes on a tap; the private garden has no developer options.
+- Result: the dev server shows "Test garden", the export does not; the temporary notice slides down as a toast and closes on a tap; the private garden has no developer options.
 - Test: Browser check in Chrome 2026-11-14.
 
 ## Notices As Toasts
-- Design: [Platform Notices](../../../design/app/10-garden.md#platform-notices)
+- Design: [Platform Notices](../../../design/app/10-garden.md#toasts-and-platform-notices)
 - Input: `{schemaVersion: 1, announcements: [{id: 7, title: " Maintenance tonight "}, {id: "x"}, null, {title: "no id"}]}`, schema 2, a 503, a network error; two notices queued, one queued twice, one queued again after it was shown.
-- Steps: `parseNotices()`, `fetchNotices()`, `showNotices()`, `dismissNotice()`.
+- Steps: `parseNotices()`, `fetchNotices()`, `showNotices()`, `dismissToast()`.
 - Result: only `{id: "7", title: "Maintenance tonight"}` is kept; schema 2, the 503 and the error give no notices; the queue holds each notice once, the next follows a dismissed one, a shown notice is not queued again unless asked.
 - Test: "platform notices are read defensively", "each notice is queued once per app run unless asked again".
+
+## Messages Share The Toast
+- Design: [Toasts And Platform Notices](../../../design/app/10-garden.md#toasts-and-platform-notices)
+- Input: a lasting connection toast; then a short message; then the connection text changes; in the browser a full test garden (24 speakers) and the developer option for a temporary notice.
+- Steps: `showToast()`, `showMessage()`, `dismissToast()`; in Chrome press "New speaker", wait, then show the temporary notice.
+- Result: the lasting toast shows, the message takes its place for 3.5 s and the lasting one comes back; the same id replaces the text rather than queueing twice. In the browser "A garden holds up to 24 speakers." slides down without a label and is gone after 3.5 s, the notice slides down with the "Notice" label, no strip under the top bar remains, and there is no alert option.
+- Test: "messages and notices share one toast; a lasting one waits for passing ones". Browser check in Chrome 2026-11-14.
 
 ## Recordings And Heartbeat Tempo
 - Design: [Nature Sources](../../../design/app/10-garden.md#nature-sources)

@@ -128,11 +128,14 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 
 - Only when the app runs from the development server, the first screen also offers a test garden. The Vercel site and release apps never show it.
 - It works like the private garden but keeps its own speakers, so testing never changes the private garden.
-- Its settings add developer options: download the nature sounds again from scratch (asking again), show an alert, show a temporary notice, fetch the platform notices again (showing them again), and show a short message.
+- Its settings add developer options: download the nature sounds again from scratch (asking again), show a temporary notice, fetch the platform notices again (showing them again), and show a short message.
 
-## Notices
+## Notices And Messages
 
-- Notices published on the platform for Hush Garden (or for every app) are fetched on entering a garden. Each slides down from the top as a toast, stays about seven seconds or until tapped, and is shown once per app run; several follow one another.
+- Everything the app tells the player appears as one kind of toast that slides down from the top of the screen; there are no other alerts or message strips.
+- Notices published on the platform for Hush Garden (or for every app) are fetched on entering a garden. They carry a "Notice" label, stay about seven seconds or until tapped, and each is shown once per app run; several follow one another.
+- The app's own short messages (a refused action such as a full garden, sound that could not start, a failed delete or logout) have no label and stay about three and a half seconds.
+- While the public garden's connection is lost or taken over by another window, a toast says so and stays until that is over; other toasts show before it and it comes back after them.
 - Failing to fetch notices never disturbs the garden.
 
 ## Public Garden

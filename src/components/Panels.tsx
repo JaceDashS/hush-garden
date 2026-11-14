@@ -39,19 +39,6 @@ export function NatureDownloadCard({ megabytes, onDownload, onLater }: { megabyt
   );
 }
 
-/** A plain message with an OK button (developer option: preview of an alert). */
-export function MessageCard({ title, body, onClose }: { title: string; body: string; onClose: () => void }) {
-  const t = useT();
-  return (
-    <Card title={title}>
-      <View testID="message-card" style={{ gap: 12 }}>
-        <T size={14}>{body}</T>
-        <Btn variant="primary" title={t("common.ok")} onPress={onClose} testID="message-ok" />
-      </View>
-    </Card>
-  );
-}
-
 /** Explains what location is used for before the public garden opens. Nothing is requested until the user agrees. */
 export function ConsentCard({ busy, error, onAgree, onCancel }: { busy: boolean; error: string; onAgree: () => void; onCancel: () => void }) {
   const t = useT();

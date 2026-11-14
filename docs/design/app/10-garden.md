@@ -132,18 +132,19 @@ flowchart LR
 
 - Input: development builds only.
 - Output: a third garden on the first screen and developer options in its settings.
-- Code: `src/config.ts` → `TEST_GARDEN` (`__DEV__`); `src/App.tsx` (mode `test`, its own garden state); `src/storage.ts` → `loadTestGarden()`, `saveTestGarden()` (key `hush-garden.test-garden.v1`); `src/screens/Game.tsx` → `developer`; `src/components/Panels.tsx` → `SettingsCard` (`developer`), `MessageCard`.
+- Code: `src/config.ts` → `TEST_GARDEN` (`__DEV__`); `src/App.tsx` (mode `test`, its own garden state); `src/storage.ts` → `loadTestGarden()`, `saveTestGarden()` (key `hush-garden.test-garden.v1`); `src/screens/Game.tsx` → `developer`; `src/components/Panels.tsx` → `SettingsCard` (`developer`).
 - `__DEV__` is true only when Metro serves a development bundle (`npm run web`, `npx expo start`); `npm run export:web` and release builds set it false, so the button and the options are not rendered there.
-- The test garden is a private garden (`online` false) with its own stored speakers and the title "Test garden". Its settings card shows a dashed developer group: download again (resets `natureSounds` to "ask", `clearPatch()` empties the store and the engine's files, then `startPatch()` asks and downloads), alert (`MessageCard`), temporary notice (`showNotices()` with a local notice, shown even if one was shown before), fetch notices again (`loadNotices(true)`), short message (the existing flash).
+- The test garden is a private garden (`online` false) with its own stored speakers and the title "Test garden". Its settings card shows a dashed developer group: download again (resets `natureSounds` to "ask", `clearPatch()` empties the store and the engine's files, then `startPatch()` asks and downloads), temporary notice (`showNotices()` with a local notice, shown even if one was shown before), fetch notices again (`loadNotices(true)`), short message (`showMessage()`).
 - Scenario: In the dev server choose the test garden → settings → "Show a temporary notice" → a toast slides down from the top; the private garden's settings show no developer options. Checked in Chrome 2026-11-14, and the exported web build shows no test garden.
 
-## Platform Notices
+## Toasts And Platform Notices
 
 - Input: `GET <API_ORIGIN>/notices?app=<APP_ID>` (`EXPO_PUBLIC_HG_APP_ID`, default 12, Hush Garden's id in the platform catalog), credentials omitted, 10 s timeout.
-- Output: toasts.
-- Code: `src/api/notices.ts` → `fetchNotices()`, `parseNotices()`, `showNotices()`, `loadNotices()`, `dismissNotice()`, `noticeQueue()`, `useCurrentNotice()`; `src/components/NoticeToast.tsx` → `NoticeToast`, `NOTICE_SECONDS`; mounted once in `src/App.tsx`; loaded in `src/screens/Game.tsx` on entering.
+- Output: toasts, the one way the app tells the player something.
+- Code: `src/toasts.ts` → `showToast()`, `showMessage()`, `dismissToast()`, `currentToast()`, `toastQueue()`, `useCurrentToast()`, `NOTICE_SECONDS`, `MESSAGE_SECONDS`; `src/components/Toast.tsx` → `Toast`, mounted once in `src/App.tsx`; `src/api/notices.ts` → `fetchNotices()`, `parseNotices()`, `showNotices()`, `loadNotices()`, loaded in `src/screens/Game.tsx` on entering; `Game`'s `flash()` (short messages) and its lasting `connection` toast.
 - Only schema version 1 with `{id, title}` entries is read; anything else, a non-200 answer or a network error is "no notices".
-- A notice id is queued once per app run; the toast shows the first in the queue, slides in over 280 ms from above (native driver), closes after 7 s or on a tap, and the next follows.
+- One queue holds every toast `{id, text, kind, seconds}`. A notice (`kind: "notice"`, labelled, 7 s) is queued once per app run by its id; a short message (`kind: "message"`, no label, 3.5 s) gets a fresh id each time; the connection toast has `seconds: null` and stays until `dismissToast("connection")` when the link is back. The screen shows the first toast with a time, else the first lasting one, so messages and notices pass in front of the lasting one. Showing an existing id replaces its text.
+- The toast slides in over 280 ms from above (native driver), closes after its time or on a tap (a lasting one ignores taps), and the next follows.
 - Scenario: A notice "Maintenance tonight" is published for Hush Garden → the player enters a garden → the toast "Notice | Maintenance tonight" slides down and goes away after 7 s; entering again in the same run shows nothing.
 - Platform contract: the platform's `docs/api/20-application-apis.md` (Public Health and notices).
 
@@ -283,7 +284,7 @@ stateDiagram-v2
 ## Top Bar And Settings
 
 - Code: `src/screens/Game.tsx` (top bar, M key), `src/components/SoundButton.tsx` → `SoundButton`, `SOUND_KEY_CODE`; `src/components/Panels.tsx` → `SettingsCard`; `src/ui.tsx` → `IconBtn`, `GearIcon`, `SpeakerIcon`, `Slider` (`bare`).
-- The top bar is one row: the make or discard button on the left for players who may edit, the status pill in the centre (garden, visitors when online, speakers heard), the sound button and the gear button on the right. Notices appear centred under it.
+- The top bar is one row: the make or discard button on the left for players who may edit, the status pill in the centre (garden, visitors when online, speakers heard), the sound button and the gear button on the right. Messages and notices are toasts from the top of the screen ([Toasts And Platform Notices](#toasts-and-platform-notices)).
 - The sound button calls the same `togglePlay()` as the lock screen controls: it starts or pauses the audio context, so on and off always match the media notification. The M key is matched by `event.code` (`KeyM`), so it works with a Korean or other keyboard layout; it is ignored while typing, with Ctrl, Alt or Meta, and on key repeat. The key handler is set up once and reaches the current toggle through a ref.
 - Hover uses pointer enter and leave on the button's own container and only counts a mouse pointer, so a tap on a phone browser never opens it. The button keeps the round 44 px footprint in the layout; its container is drawn absolutely, anchored on the right, and grows over the bar to its left, so the pointer never crosses a gap. Closing waits 250 ms and is held while the slider is dragged (through `DragLockContext`). The hint is drawn below.
 - The container (`sound-button`, white with the round button's border) grows from 44 px to 44 + 168 px in 180 ms (ease out) and shrinks back the same way, with `overflow: hidden`. Inside, the slider part keeps its full width beside the icon and fades in, so it is uncovered from right to left rather than squeezed; the icon stays at the right end. Width cannot use the native driver; this runs only with a mouse, on the web and desktop.

@@ -14,7 +14,7 @@ import { Character } from "./game/characters";
 import { SpeakerArt } from "./game/sprites";
 import { LanguageProvider, useT } from "./i18n";
 import { Game } from "./screens/Game";
-import { NoticeToast } from "./components/NoticeToast";
+import { Toast } from "./components/Toast";
 import { translate } from "./domain/text";
 import { DEFAULT_SETTINGS, type Settings } from "./settings";
 import { loadGarden, loadSettings, loadTestGarden, saveGarden, saveSettings, saveTestGarden } from "./storage";
@@ -111,7 +111,7 @@ export default function App() {
       ) : (
         <Game key={mode} mode={mode} client={client} audio={audio} settings={settings} onSettings={changeSettings} garden={mode === "test" ? testGarden : garden} onGarden={mode === "test" ? changeTestGarden : changeGarden} onExit={exit} />
       )}
-      <NoticeToast label={noticeLabel(settings.language)} />
+      <Toast noticeLabel={noticeLabel(settings.language)} />
       </LanguageProvider>
     </SafeAreaProvider>
   );

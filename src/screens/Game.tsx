@@ -15,7 +15,8 @@ import { getDeviceId } from "../deviceId";
 import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User } from "../api/types";
 import type { GardenAudio } from "../audio/engine";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
-import { ConsentCard, LoginCard, MessageCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
+import { ConsentCard, LoginCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
+import { dismissToast, showMessage, showToast } from "../toasts";
 import { loadNotices, showNotices } from "../api/notices";
 import { GardenStatus } from "../components/GardenStatus";
 import { SOUND_KEY_CODE, SoundButton } from "../components/SoundButton";
@@ -38,11 +39,9 @@ import { Btn, GearIcon, IconBtn, Input, Modal, T, colors } from "../ui";
 type Panel = null | "settings" | "presets" | "login";
 /** `replaced`: a newer visit from this device took over; this one does not reconnect by itself. */
 type Link = "consent" | "entering" | "online" | "lost" | "replaced";
-type Notice = { key: TextKey; values?: Record<string, string | number> };
 
 const SAVE_DELAY_MS = 400;
 const RETRY_MS = 3000;
-const NOTICE_MS = 3500;
 
 const newId = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -83,7 +82,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   /** The editor of the held speaker is open. */
   const [editing, setEditing] = useState(false);
   const [nameError, setNameError] = useState<TextKey | "">("");
-  const [notice, setNotice] = useState<Notice | null>(null);
 
   const [link, setLink] = useState<Link>(online ? (settings.consent ? "entering" : "consent") : "online");
   const [enterError, setEnterError] = useState<TextKey | "">("");
@@ -125,11 +123,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const targets = useRef<Record<string, Point>>({});
   const alive = useRef(true);
 
-  const flash = useCallback((key: TextKey, values?: Notice["values"]) => {
-    const next = { key, values };
-    setNotice(next);
-    setTimeout(() => alive.current && setNotice((current) => (current === next ? null : current)), NOTICE_MS);
-  }, []);
+  /** A short message for the player, as a toast from the top. */
+  const flash = useCallback((key: TextKey, values?: Record<string, string | number>) => showMessage(t(key, values)), [t]);
 
   // --- sound -------------------------------------------------------------------------------------------------
   useEffect(() => audio.setSpeakers(speakers), [audio, speakers]);
@@ -144,7 +139,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   useEffect(() => startPatch(audio, askDownload), [audio, askDownload]);
   // Platform notices are fetched on entering a garden and shown as toasts, each once per app run.
   useEffect(() => void loadNotices(), []);
-  const [devMessage, setDevMessage] = useState(false);
   const patch = usePatchState();
   const natureLock = patch?.phase === "ready" ? null : patch?.phase === "failed" ? "failed" : patch?.phase === "declined" ? "declined" : "loading";
   const answerNature = (yes: boolean, dontAsk = false) => {
@@ -168,10 +162,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       settingsRef.current = { ...settingsRef.current, natureSounds: "ask" };
       onSettings(settingsRef.current);
       void clearPatch(audio).then(() => startPatch(audio, askDownload, true));
-    },
-    alert: () => {
-      setPanel(null);
-      setDevMessage(true);
     },
     notice: () => {
       setPanel(null);
@@ -639,7 +629,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             <View testID="developer-options" style={{ gap: 6, padding: 10, borderRadius: 14, borderWidth: 2, borderColor: colors.butter, borderStyle: "dashed" }}>
               <T size={12.5} tone="muted" weight="700">{t("dev.title")}</T>
               <Btn small title={t("dev.redownload")} onPress={() => settingsHandlers.current.developer.redownload()} testID="dev-redownload" />
-              <Btn small title={t("dev.alert")} onPress={() => settingsHandlers.current.developer.alert()} testID="dev-alert" />
               <Btn small title={t("dev.notice")} onPress={() => settingsHandlers.current.developer.notice()} testID="dev-notice" />
               <Btn small title={t("dev.notices")} onPress={() => settingsHandlers.current.developer.notices()} testID="dev-notices" />
               <Btn small title={t("dev.flash")} onPress={() => settingsHandlers.current.developer.flash()} testID="dev-flash" />
@@ -658,7 +647,12 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     [settingsOpen, settings, entry?.user, online, myName, nameError, t, patch?.phase],
   );
   const lostText = online && link === "lost" ? t(enterError || "notice.lost") : online && link === "replaced" ? t("notice.replaced") : "";
-  const pill = { backgroundColor: "rgba(255,250,242,0.92)", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 4, alignItems: "center" } as const;
+  // While the connection is lost (or taken over), a lasting toast says so; it goes when the cause is gone.
+  useEffect(() => {
+    if (lostText) showToast({ id: "connection", text: lostText, kind: "message", seconds: null });
+    else dismissToast("connection");
+  }, [lostText]);
+  useEffect(() => () => dismissToast("connection"), []);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: wide ? "row" : "column" }}>
@@ -683,16 +677,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               </IconBtn>
             </View>
           </View>
-          {!!notice && (
-            <View pointerEvents="none" style={[pill, { alignSelf: "center", backgroundColor: colors.butter }]}>
-              <T size={12.5} weight="700">{t(notice.key, notice.values)}</T>
-            </View>
-          )}
-          {!!lostText && (
-            <View pointerEvents="none" style={[pill, { alignSelf: "center", backgroundColor: colors.butter }]}>
-              <T size={12.5} weight="700">{lostText}</T>
-            </View>
-          )}
         </View>
 
         {online && link === "online" && !showEditor && (
@@ -742,11 +726,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               <Btn title={t("common.back")} onPress={onExit} />
             </View>
           )}
-        </Modal>
-      )}
-      {devMessage && (
-        <Modal onClose={() => setDevMessage(false)}>
-          <MessageCard title={t("dev.alertTitle")} body={t("dev.alertBody")} onClose={() => setDevMessage(false)} />
         </Modal>
       )}
       {askNature && !(online && (link === "consent" || link === "entering")) && (

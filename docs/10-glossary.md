@@ -31,8 +31,13 @@
 
 ## Notice
 - Definition: A title published on the platform for this app or all apps, shown as a toast from the top once per app run.
-- Code: `Notice`, `fetchNotices()`, `NoticeToast`
-- Avoid: "message" or "flash" (the short in-garden messages under the top bar)
+- Code: `Notice`, `fetchNotices()`, `showNotices()`
+- Avoid: "message" (the app's own short messages)
+
+## Toast
+- Definition: The one way the app tells the player something: a strip that slides down from the top. It shows platform notices (labelled) and the app's short messages; the connection-lost message stays until the connection is back.
+- Code: `Toast`, `showToast()`, `showMessage()`, `dismissToast()` in `src/toasts.ts` and `src/components/Toast.tsx`
+- Avoid: "alert" (there is no alert dialog), "banner"
 
 ## Sound Patch
 - Definition: The download of all nature recordings onto the device after entering a garden, once the player agreed (asked while files are missing, unless they agreed before or chose not to be asked). Nature sources can be chosen and heard only once it is complete.

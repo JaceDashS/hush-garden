@@ -28,7 +28,7 @@ Build-time values, inlined by Expo:
 
 ## Test Garden
 
-- In a development bundle (`npm run web`) the first screen shows "Test garden". It keeps its own speakers and its settings have developer options: download the nature sounds again, show an alert, show a temporary notice, fetch notices again and show a short message.
+- In a development bundle (`npm run web`) the first screen shows "Test garden". It keeps its own speakers and its settings have developer options: download the nature sounds again, show a temporary notice, fetch notices again and show a short message.
 - Example: test the download question again → test garden → settings → "Download nature sounds again from scratch" → the question appears and the whole download runs.
 
 ## Trying The Public Garden Locally

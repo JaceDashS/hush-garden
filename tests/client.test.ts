@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LIMIT_KNEE, LIMIT_RANGE, limiterCurve, softClip } from "../src/audio/limiter.ts";
 import { fillNoise, loopOffset } from "../src/audio/noise.ts";
-import { dismissNotice, fetchNotices, noticeQueue, parseNotices, showNotices } from "../src/api/notices.ts";
+import { fetchNotices, parseNotices, showNotices } from "../src/api/notices.ts";
+import { MESSAGE_SECONDS, NOTICE_SECONDS, currentToast, dismissToast, showMessage, showToast, toastQueue } from "../src/toasts.ts";
 import { runPatch, type PatchState, type SoundStore } from "../src/audio/patch.ts";
 import type { SoundManifest } from "../src/audio/library.ts";
 import { BEAT_JITTER, CHUNK_SECONDS, EXTRA_PEAK, FADE_SECONDS, LAYER_SECONDS, layerGain, nextBeat, nextLayers, type Layer } from "../src/audio/bed.ts";
@@ -322,17 +323,36 @@ test("platform notices are read defensively", async () => {
 });
 
 test("each notice is queued once per app run unless asked again", () => {
-  const ids = () => noticeQueue().map((notice) => notice.id);
+  const ids = () => toastQueue().map((toast) => toast.id);
   showNotices([{ id: "n1", title: "One" }, { id: "n2", title: "Two" }]);
   showNotices([{ id: "n1", title: "One" }]);
-  assert.deepEqual(ids(), ["n1", "n2"], "no duplicate while queued");
-  dismissNotice("n1");
-  assert.deepEqual(ids(), ["n2"], "the next one follows");
-  dismissNotice("n2");
+  assert.deepEqual(ids(), ["notice-n1", "notice-n2"], "no duplicate while queued");
+  assert.deepEqual(currentToast(), { id: "notice-n1", text: "One", kind: "notice", seconds: NOTICE_SECONDS });
+  dismissToast("notice-n1");
+  assert.equal(currentToast()?.id, "notice-n2", "the next one follows");
+  dismissToast("notice-n2");
   // Already shown in this run: not queued again, unless the developer option asks for it.
   showNotices([{ id: "n1", title: "One" }]);
   assert.deepEqual(ids(), []);
   showNotices([{ id: "n1", title: "One" }], true);
-  assert.deepEqual(ids(), ["n1"]);
-  dismissNotice("n1");
+  assert.deepEqual(ids(), ["notice-n1"]);
+  dismissToast("notice-n1");
+});
+
+test("messages and notices share one toast; a lasting one waits for passing ones", () => {
+  // The connection is lost: a lasting toast with no time.
+  showToast({ id: "connection", text: "Connection lost", kind: "message", seconds: null });
+  assert.equal(currentToast()?.id, "connection");
+  // A short message takes the screen, then the lasting one comes back.
+  showMessage("A garden holds up to 24 speakers.");
+  const message = currentToast()!;
+  assert.deepEqual({ kind: message.kind, seconds: message.seconds, text: message.text }, { kind: "message", seconds: MESSAGE_SECONDS, text: "A garden holds up to 24 speakers." });
+  dismissToast(message.id);
+  assert.equal(currentToast()?.id, "connection");
+  // The same id replaces its text instead of queueing twice.
+  showToast({ id: "connection", text: "Reconnecting", kind: "message", seconds: null });
+  assert.equal(toastQueue().length, 1);
+  assert.equal(currentToast()?.text, "Reconnecting");
+  dismissToast("connection");
+  assert.equal(currentToast(), null);
 });

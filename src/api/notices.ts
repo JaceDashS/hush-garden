@@ -1,10 +1,11 @@
 /**
  * Platform notices for Hush Garden: GET <API_ORIGIN>/notices?app=<APP_ID> (docs/api/20-application-apis.md of the
  * platform). A notice is a title shown from publication until an administrator ends it. Any failure, a non-200
- * answer, broken JSON or an unknown schema means "no notices"; it never blocks the garden.
+ * answer, broken JSON or an unknown schema means "no notices"; it never blocks the garden. Notices are shown as
+ * toasts (src/toasts.ts).
  */
-import { useEffect, useState } from "react";
 import { API_ORIGIN, APP_ID } from "../config";
+import { NOTICE_SECONDS, showToast } from "../toasts";
 
 export interface Notice {
   id: string;
@@ -40,44 +41,17 @@ export async function fetchNotices(fetcher: typeof fetch = fetch): Promise<Notic
 
 /** Notices already shown in this app run; each is shown once per run. */
 const shown = new Set<string>();
-let queue: Notice[] = [];
-const listeners = new Set<(queue: Notice[]) => void>();
-const publish = () => {
-  for (const listener of listeners) listener(queue);
-};
 
-/** Adds notices to the toast queue, skipping those already shown in this run (unless `again`). */
+/** Queues notices as toasts, skipping those already shown in this run (unless `again`). */
 export function showNotices(notices: Notice[], again = false): void {
-  const fresh = notices.filter((notice) => (again || !shown.has(notice.id)) && !queue.some((item) => item.id === notice.id));
-  if (!fresh.length) return;
-  for (const notice of fresh) shown.add(notice.id);
-  queue = [...queue, ...fresh];
-  publish();
-}
-
-/** The notices waiting to be shown, the first one on screen. */
-export const noticeQueue = (): readonly Notice[] => queue;
-
-/** Removes the notice on screen; the next one in the queue follows. */
-export function dismissNotice(id: string): void {
-  queue = queue.filter((item) => item.id !== id);
-  publish();
+  for (const notice of notices) {
+    if (!again && shown.has(notice.id)) continue;
+    shown.add(notice.id);
+    showToast({ id: "notice-" + notice.id, text: notice.title, kind: "notice", seconds: NOTICE_SECONDS });
+  }
 }
 
 /** Fetches the notices and queues the new ones. */
 export async function loadNotices(again = false): Promise<void> {
   showNotices(await fetchNotices(), again);
-}
-
-/** The notice to show now, or null. */
-export function useCurrentNotice(): Notice | null {
-  const [current, setCurrent] = useState<Notice[]>(queue);
-  useEffect(() => {
-    listeners.add(setCurrent);
-    setCurrent(queue);
-    return () => {
-      listeners.delete(setCurrent);
-    };
-  }, []);
-  return current[0] ?? null;
 }
