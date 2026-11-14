@@ -124,6 +124,17 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Reset returns the garden and the own presets to the first-run state after a confirmation.
 - Everything is kept on the device only.
 
+## Test Garden
+
+- Only when the app runs from the development server, the first screen also offers a test garden. The Vercel site and release apps never show it.
+- It works like the private garden but keeps its own speakers, so testing never changes the private garden.
+- Its settings add developer options: download the nature sounds again from scratch (asking again), show an alert, show a temporary notice, fetch the platform notices again (showing them again), and show a short message.
+
+## Notices
+
+- Notices published on the platform for Hush Garden (or for every app) are fetched on entering a garden. Each slides down from the top as a toast, stays about seven seconds or until tapped, and is shown once per app run; several follow one another.
+- Failing to fetch notices never disturbs the garden.
+
 ## Public Garden
 
 - One garden shared by everyone, served by the jace-s API.

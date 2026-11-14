@@ -15,11 +15,12 @@ import { getDeviceId } from "../deviceId";
 import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User } from "../api/types";
 import type { GardenAudio } from "../audio/engine";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
-import { ConsentCard, LoginCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
+import { ConsentCard, LoginCard, MessageCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
+import { loadNotices, showNotices } from "../api/notices";
 import { GardenStatus } from "../components/GardenStatus";
 import { SOUND_KEY_CODE, SoundButton } from "../components/SoundButton";
 import { SpeakerEditor } from "../components/SpeakerEditor";
-import { startPatch, usePatchState } from "../audio/patchSession";
+import { clearPatch, startPatch, usePatchState } from "../audio/patchSession";
 import { API_ORIGIN } from "../config";
 import { actionDuration, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
 import { PICK_UP_TILES } from "../domain/characters";
@@ -55,7 +56,7 @@ const NAME_ERRORS: Record<string, TextKey> = {
   NAME_RATE_LIMITED: "name.rateLimited",
 };
 
-export function Game({ mode, client, audio, settings, onSettings, garden, onGarden, onExit }: { mode: "mine" | "public"; client: HushClient; audio: GardenAudio; settings: Settings; onSettings: (settings: Settings) => void; garden: MyGarden; onGarden: (garden: MyGarden) => void; onExit: () => void }) {
+export function Game({ mode, client, audio, settings, onSettings, garden, onGarden, onExit }: { mode: "mine" | "public" | "test"; client: HushClient; audio: GardenAudio; settings: Settings; onSettings: (settings: Settings) => void; garden: MyGarden; onGarden: (garden: MyGarden) => void; onExit: () => void }) {
   const t = useT();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -141,6 +142,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     return new Promise<boolean>((answer) => setAskNature({ bytes, answer }));
   }, []);
   useEffect(() => startPatch(audio, askDownload), [audio, askDownload]);
+  // Platform notices are fetched on entering a garden and shown as toasts, each once per app run.
+  useEffect(() => void loadNotices(), []);
+  const [devMessage, setDevMessage] = useState(false);
   const patch = usePatchState();
   const natureLock = patch?.phase === "ready" ? null : patch?.phase === "failed" ? "failed" : patch?.phase === "declined" ? "declined" : "loading";
   const answerNature = (yes: boolean, dontAsk = false) => {
@@ -156,6 +160,31 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     settingsRef.current = { ...settingsRef.current, natureSounds: "yes" };
     onSettings(settingsRef.current);
     startPatch(audio, async () => true, true);
+  };
+  /** Developer options of the test garden. */
+  const developer = {
+    // Forget the stored files and the earlier answer, so the question and the whole download happen again.
+    redownload: () => {
+      settingsRef.current = { ...settingsRef.current, natureSounds: "ask" };
+      onSettings(settingsRef.current);
+      void clearPatch(audio).then(() => startPatch(audio, askDownload, true));
+    },
+    alert: () => {
+      setPanel(null);
+      setDevMessage(true);
+    },
+    notice: () => {
+      setPanel(null);
+      showNotices([{ id: "dev-" + Date.now(), title: t("dev.sampleNotice") }], true);
+    },
+    notices: () => {
+      setPanel(null);
+      void loadNotices(true);
+    },
+    flash: () => {
+      setPanel(null);
+      flash("dev.sampleFlash");
+    },
   };
   useEffect(() => audio.setListener(me), [audio, me]);
   useEffect(() => audio.setVolume(settings.volume), [audio, settings.volume]);
@@ -591,8 +620,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const showEditor = editing && !!carried && !action;
 
   // The settings card is prepared once and only redrawn when what it shows changes, not on every step.
-  const settingsHandlers = useRef({ onSettings, changeName, togglePlay, logout, onExit, downloadNature });
-  settingsHandlers.current = { onSettings, changeName, togglePlay, logout, onExit, downloadNature };
+  const settingsHandlers = useRef({ onSettings, changeName, togglePlay, logout, onExit, downloadNature, developer });
+  settingsHandlers.current = { onSettings, changeName, togglePlay, logout, onExit, downloadNature, developer };
   const settingsOpen = panel === "settings";
   const settingsCard = useMemo(
     () => (
@@ -605,6 +634,18 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         nameError={nameError ? t(nameError) : ""}
         nature={patch?.phase ?? null}
         onDownloadNature={() => settingsHandlers.current.downloadNature()}
+        developer={
+          mode === "test" ? (
+            <View testID="developer-options" style={{ gap: 6, padding: 10, borderRadius: 14, borderWidth: 2, borderColor: colors.butter, borderStyle: "dashed" }}>
+              <T size={12.5} tone="muted" weight="700">{t("dev.title")}</T>
+              <Btn small title={t("dev.redownload")} onPress={() => settingsHandlers.current.developer.redownload()} testID="dev-redownload" />
+              <Btn small title={t("dev.alert")} onPress={() => settingsHandlers.current.developer.alert()} testID="dev-alert" />
+              <Btn small title={t("dev.notice")} onPress={() => settingsHandlers.current.developer.notice()} testID="dev-notice" />
+              <Btn small title={t("dev.notices")} onPress={() => settingsHandlers.current.developer.notices()} testID="dev-notices" />
+              <Btn small title={t("dev.flash")} onPress={() => settingsHandlers.current.developer.flash()} testID="dev-flash" />
+            </View>
+          ) : undefined
+        }
         onChange={(next) => settingsHandlers.current.onSettings(next)}
         onName={(name) => settingsHandlers.current.changeName(name)}
         onPresets={() => setPanel("presets")}
@@ -630,7 +671,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               {canEdit && link === "online" && (carried ? <Btn small variant="danger" title={t("top.discard")} disabled={!!action} onPress={discard} testID="speaker-discard" /> : <Btn small variant="primary" title={t("top.create")} disabled={!!action || !!carryId} onPress={create} testID="speaker-create" />)}
             </View>
             <GardenStatus
-              title={t(online ? "status.public" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}
+              title={t(online ? "status.public" : mode === "test" ? "status.test" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}
               detail={patch?.phase === "failed" ? t("patch.failed") : t("status.heard", { n: heard })}
               progress={patch?.phase === "downloading" ? (patch.totalBytes ? patch.doneBytes / patch.totalBytes : 0) : null}
               gaugeLabel={t("status.downloading")}
@@ -701,6 +742,11 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               <Btn title={t("common.back")} onPress={onExit} />
             </View>
           )}
+        </Modal>
+      )}
+      {devMessage && (
+        <Modal onClose={() => setDevMessage(false)}>
+          <MessageCard title={t("dev.alertTitle")} body={t("dev.alertBody")} onClose={() => setDevMessage(false)} />
         </Modal>
       )}
       {askNature && !(online && (link === "consent" || link === "entering")) && (

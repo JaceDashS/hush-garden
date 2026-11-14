@@ -5,6 +5,8 @@ import { normalizeSettings, type Settings } from "./settings";
 
 const GARDEN_KEY = "hush-garden.my-garden.v1";
 const SETTINGS_KEY = "hush-garden.settings.v1";
+/** The test garden (development only) is kept apart, so testing never changes the private garden. */
+const TEST_GARDEN_KEY = "hush-garden.test-garden.v1";
 
 async function read(key: string): Promise<unknown> {
   try {
@@ -25,5 +27,7 @@ async function write(key: string, value: unknown): Promise<void> {
 
 export const loadGarden = async (): Promise<MyGarden> => normalizeMyGarden(await read(GARDEN_KEY));
 export const saveGarden = (garden: MyGarden): Promise<void> => write(GARDEN_KEY, garden);
+export const loadTestGarden = async (): Promise<MyGarden> => normalizeMyGarden(await read(TEST_GARDEN_KEY));
+export const saveTestGarden = (garden: MyGarden): Promise<void> => write(TEST_GARDEN_KEY, garden);
 export const loadSettings = async (): Promise<Settings> => normalizeSettings(await read(SETTINGS_KEY));
 export const saveSettings = (settings: Settings): Promise<void> => write(SETTINGS_KEY, settings);

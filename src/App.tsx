@@ -6,7 +6,7 @@ import { HushClient } from "./api/client";
 import { createTransport } from "./api/transport";
 import { GardenAudio } from "./audio/engine";
 import { configureSession } from "./audio/session";
-import { API_ORIGIN } from "./config";
+import { API_ORIGIN, TEST_GARDEN } from "./config";
 import { initialGarden, type MyGarden } from "./domain/garden";
 import type { CharacterKind } from "./domain/characters";
 import { CharacterPicker } from "./components/CharacterPicker";
@@ -14,14 +14,16 @@ import { Character } from "./game/characters";
 import { SpeakerArt } from "./game/sprites";
 import { LanguageProvider, useT } from "./i18n";
 import { Game } from "./screens/Game";
+import { NoticeToast } from "./components/NoticeToast";
+import { translate } from "./domain/text";
 import { DEFAULT_SETTINGS, type Settings } from "./settings";
-import { loadGarden, loadSettings, saveGarden, saveSettings } from "./storage";
+import { loadGarden, loadSettings, loadTestGarden, saveGarden, saveSettings, saveTestGarden } from "./storage";
 import { Btn, Card, Prepared, T, colors } from "./ui";
 
-type Mode = "home" | "mine" | "public";
+type Mode = "home" | "mine" | "public" | "test";
 
-/** Title screen: choose the private offline garden or the shared public garden. */
-function Home({ character, onCharacter, onPick }: { character: CharacterKind; onCharacter: (kind: CharacterKind) => void; onPick: (mode: "mine" | "public") => void }) {
+/** Title screen: choose the private offline garden or the shared public garden; in development also the test garden. */
+function Home({ character, onCharacter, onPick }: { character: CharacterKind; onCharacter: (kind: CharacterKind) => void; onPick: (mode: "mine" | "public" | "test") => void }) {
   const t = useT();
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -38,6 +40,7 @@ function Home({ character, onCharacter, onPick }: { character: CharacterKind; on
           <CharacterPicker value={character} onChange={onCharacter} arrowKeys />
           <Btn variant="primary" title={t("home.mine")} onPress={() => onPick("mine")} testID="pick-mine" />
           <Btn variant="mint" title={t("home.public")} onPress={() => onPick("public")} testID="pick-public" />
+          {TEST_GARDEN && <Btn title={t("home.test")} onPress={() => onPick("test")} testID="pick-test" />}
           <T size={12} tone="muted" style={{ textAlign: "center" }}>{t("home.controls")}</T>
         </Card>
       </Prepared>
@@ -45,21 +48,25 @@ function Home({ character, onCharacter, onPick }: { character: CharacterKind; on
   );
 }
 
+const noticeLabel = (language: Settings["language"]) => translate(language, "notice.label");
+
 export default function App() {
   const client = useMemo(() => new HushClient(createTransport(API_ORIGIN)), []);
   const audio = useRef(new GardenAudio()).current;
   const [mode, setMode] = useState<Mode>("home");
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [garden, setGarden] = useState<MyGarden>(initialGarden);
+  const [testGarden, setTestGarden] = useState<MyGarden>(initialGarden);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let active = true;
     configureSession();
-    void Promise.all([loadSettings(), loadGarden()]).then(([storedSettings, storedGarden]) => {
+    void Promise.all([loadSettings(), loadGarden(), TEST_GARDEN ? loadTestGarden() : Promise.resolve(initialGarden())]).then(([storedSettings, storedGarden, storedTest]) => {
       if (!active) return;
       setSettings(storedSettings);
       setGarden(storedGarden);
+      setTestGarden(storedTest);
       setReady(true);
     });
     // A stored session is restored quietly; being signed out or offline is fine here.
@@ -77,9 +84,13 @@ export default function App() {
     setGarden(next);
     void saveGarden(next);
   };
+  const changeTestGarden = (next: MyGarden) => {
+    setTestGarden(next);
+    void saveTestGarden(next);
+  };
 
   /** Runs inside the button press, which browsers require before any sound may start. */
-  const pick = (next: "mine" | "public") => {
+  const pick = (next: "mine" | "public" | "test") => {
     audio.setVolume(settings.volume);
     void audio.start().catch(() => undefined);
     setMode(next);
@@ -98,8 +109,9 @@ export default function App() {
       ) : mode === "home" ? (
         <Home character={settings.character} onCharacter={(character) => changeSettings({ ...settings, character })} onPick={pick} />
       ) : (
-        <Game key={mode} mode={mode} client={client} audio={audio} settings={settings} onSettings={changeSettings} garden={garden} onGarden={changeGarden} onExit={exit} />
+        <Game key={mode} mode={mode} client={client} audio={audio} settings={settings} onSettings={changeSettings} garden={mode === "test" ? testGarden : garden} onGarden={mode === "test" ? changeTestGarden : changeGarden} onExit={exit} />
       )}
+      <NoticeToast label={noticeLabel(settings.language)} />
       </LanguageProvider>
     </SafeAreaProvider>
   );

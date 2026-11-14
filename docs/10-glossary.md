@@ -24,6 +24,16 @@
 - Code: `NATURE_SOURCES`, `NatureSound`, `NatureArt`, `NATURE_TINT`, `withSource()`
 - Avoid: "nature speaker" in code (use source); "ambience" (too broad)
 
+## Test Garden
+- Definition: A garden that exists only in development builds, with its own stored speakers and developer options in its settings.
+- Code: `TEST_GARDEN`, mode `test`, `loadTestGarden()`, `developer` in `Game`
+- Avoid: "dev mode" (it is a garden, not a mode of the app)
+
+## Notice
+- Definition: A title published on the platform for this app or all apps, shown as a toast from the top once per app run.
+- Code: `Notice`, `fetchNotices()`, `NoticeToast`
+- Avoid: "message" or "flash" (the short in-garden messages under the top bar)
+
 ## Sound Patch
 - Definition: The download of all nature recordings onto the device after entering a garden, once the player agreed (asked while files are missing, unless they agreed before or chose not to be asked). Nature sources can be chosen and heard only once it is complete.
 - Code: `runPatch()`, `startPatch()`, `usePatchState()`, `PatchState`, `SoundStore`; files at `/hush-garden/sounds/` of the platform API

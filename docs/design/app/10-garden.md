@@ -128,6 +128,25 @@ flowchart LR
 - The scene draws the shadow from the same list the audio engine gets, in which a held speaker sits at the character's position.
 - Scenario: A pink speaker whose loudest part is at volume 1 next to a brown one whose loudest part is at 0.4 → a wide, strong pink shadow of 11 tiles and a small faint brown one of 5.6 tiles; where they overlap the ground looks brownish pink.
 
+## Test Garden And Developer Options
+
+- Input: development builds only.
+- Output: a third garden on the first screen and developer options in its settings.
+- Code: `src/config.ts` → `TEST_GARDEN` (`__DEV__`); `src/App.tsx` (mode `test`, its own garden state); `src/storage.ts` → `loadTestGarden()`, `saveTestGarden()` (key `hush-garden.test-garden.v1`); `src/screens/Game.tsx` → `developer`; `src/components/Panels.tsx` → `SettingsCard` (`developer`), `MessageCard`.
+- `__DEV__` is true only when Metro serves a development bundle (`npm run web`, `npx expo start`); `npm run export:web` and release builds set it false, so the button and the options are not rendered there.
+- The test garden is a private garden (`online` false) with its own stored speakers and the title "Test garden". Its settings card shows a dashed developer group: download again (resets `natureSounds` to "ask", `clearPatch()` empties the store and the engine's files, then `startPatch()` asks and downloads), alert (`MessageCard`), temporary notice (`showNotices()` with a local notice, shown even if one was shown before), fetch notices again (`loadNotices(true)`), short message (the existing flash).
+- Scenario: In the dev server choose the test garden → settings → "Show a temporary notice" → a toast slides down from the top; the private garden's settings show no developer options. Checked in Chrome 2026-11-14, and the exported web build shows no test garden.
+
+## Platform Notices
+
+- Input: `GET <API_ORIGIN>/notices?app=<APP_ID>` (`EXPO_PUBLIC_HG_APP_ID`, default 12, Hush Garden's id in the platform catalog), credentials omitted, 10 s timeout.
+- Output: toasts.
+- Code: `src/api/notices.ts` → `fetchNotices()`, `parseNotices()`, `showNotices()`, `loadNotices()`, `dismissNotice()`, `noticeQueue()`, `useCurrentNotice()`; `src/components/NoticeToast.tsx` → `NoticeToast`, `NOTICE_SECONDS`; mounted once in `src/App.tsx`; loaded in `src/screens/Game.tsx` on entering.
+- Only schema version 1 with `{id, title}` entries is read; anything else, a non-200 answer or a network error is "no notices".
+- A notice id is queued once per app run; the toast shows the first in the queue, slides in over 280 ms from above (native driver), closes after 7 s or on a tap, and the next follows.
+- Scenario: A notice "Maintenance tonight" is published for Hush Garden → the player enters a garden → the toast "Notice | Maintenance tonight" slides down and goes away after 7 s; entering again in the same run shows nothing.
+- Platform contract: the platform's `docs/api/20-application-apis.md` (Public Health and notices).
+
 ## Private Garden And Presets
 
 - Input: edit actions.

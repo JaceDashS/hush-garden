@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LIMIT_KNEE, LIMIT_RANGE, limiterCurve, softClip } from "../src/audio/limiter.ts";
 import { fillNoise, loopOffset } from "../src/audio/noise.ts";
+import { dismissNotice, fetchNotices, noticeQueue, parseNotices, showNotices } from "../src/api/notices.ts";
 import { runPatch, type PatchState, type SoundStore } from "../src/audio/patch.ts";
 import type { SoundManifest } from "../src/audio/library.ts";
 import { BEAT_JITTER, CHUNK_SECONDS, EXTRA_PEAK, FADE_SECONDS, LAYER_SECONDS, layerGain, nextBeat, nextLayers, type Layer } from "../src/audio/bed.ts";
@@ -308,4 +309,30 @@ test("the sound patch asks before downloading and does nothing when declined", a
   let questions = 0;
   assert.ok(await runPatch("https://x/", complete.store, () => undefined, async () => { questions++; return true; }, async () => sample));
   assert.equal(questions, 0);
+});
+
+test("platform notices are read defensively", async () => {
+  assert.deepEqual(parseNotices({ schemaVersion: 1, announcements: [{ id: 7, title: " Maintenance tonight " }, { id: "x" }, null, { title: "no id" }] }), [{ id: "7", title: "Maintenance tonight" }]);
+  assert.deepEqual(parseNotices({ schemaVersion: 2, announcements: [{ id: 1, title: "future" }] }), []);
+  assert.deepEqual(parseNotices("oops"), []);
+  const ok = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+  assert.deepEqual(await fetchNotices(ok({ schemaVersion: 1, announcements: [{ id: "a", title: "Hello" }] })), [{ id: "a", title: "Hello" }]);
+  assert.deepEqual(await fetchNotices(ok({}, 503)), []);
+  assert.deepEqual(await fetchNotices((async () => { throw new Error("offline"); }) as unknown as typeof fetch), []);
+});
+
+test("each notice is queued once per app run unless asked again", () => {
+  const ids = () => noticeQueue().map((notice) => notice.id);
+  showNotices([{ id: "n1", title: "One" }, { id: "n2", title: "Two" }]);
+  showNotices([{ id: "n1", title: "One" }]);
+  assert.deepEqual(ids(), ["n1", "n2"], "no duplicate while queued");
+  dismissNotice("n1");
+  assert.deepEqual(ids(), ["n2"], "the next one follows");
+  dismissNotice("n2");
+  // Already shown in this run: not queued again, unless the developer option asks for it.
+  showNotices([{ id: "n1", title: "One" }]);
+  assert.deepEqual(ids(), []);
+  showNotices([{ id: "n1", title: "One" }], true);
+  assert.deepEqual(ids(), ["n1"]);
+  dismissNotice("n1");
 });

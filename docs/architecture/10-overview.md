@@ -27,7 +27,7 @@ Key points in text: `App` owns the audio engine and stored data and switches bet
 | Audio | `src/audio/` | Synthesis graph, noise generation, nature recording playback, the nature sound patch, background playback session |
 | Game view | `src/game/` | Quarter-view scene, joystick, markers, the ten animated characters, props and effects of actions, speaker, sound shadow and garden art |
 | Screens and panels | `src/screens/`, `src/components/`, `src/ui.tsx` | Top bar, speaker editor with oscillator panels and the equalizer graph, consent, login, presets, settings; `src/i18n.tsx` gives screens the chosen language |
-| Server access | `src/api/` | Account and garden HTTP client, garden socket, per-platform transport |
+| Server access | `src/api/` | Account and garden HTTP client, garden socket, per-platform transport, platform notices |
 | Device data | `src/storage.ts`, `src/settings.ts`, `src/location.ts`, `src/coordinates.ts` | Private garden, settings, device location |
 | Desktop wrapper | `src-tauri/` | Tauri window around the web export |
 

@@ -5,5 +5,12 @@ const trim = (value: string | undefined, fallback: string) => (value?.trim() || 
 export const API_ORIGIN = trim(process.env.EXPO_PUBLIC_HG_API_ORIGIN, "https://api.jace-s.com");
 /** Main site used for the "main page" link. */
 export const SITE_ORIGIN = trim(process.env.EXPO_PUBLIC_HG_SITE_ORIGIN, "https://jace-s.com");
+/** This app's id in the platform app catalog; notices are fetched for it. */
+export const APP_ID = trim(process.env.EXPO_PUBLIC_HG_APP_ID, "12");
+/**
+ * Whether the test garden and its developer options exist: only in development (the dev server, `__DEV__`), never
+ * in the Vercel build or a release app.
+ */
+export const TEST_GARDEN = typeof __DEV__ !== "undefined" && __DEV__;
 /** Where the nature sound files and their manifest are downloaded from (the platform server; see scripts/build-sounds.ts). */
 export const SOUNDS_URL = trim(process.env.EXPO_PUBLIC_HG_SOUNDS_URL, API_ORIGIN + "/hush-garden/sounds");
