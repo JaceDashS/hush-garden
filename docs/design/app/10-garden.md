@@ -55,7 +55,8 @@ flowchart LR
     M --> LIM["Limiter"] --> OUT["Output"]
 ```
 
-- `setSpeakers()` keeps the speakers that make sound now (`playable()`): every synthesiser, and a nature source with at least one oscillator. A nature voice has no noise source (its recording will take that place), only its oscillators into the same equalizer chain. A nature source without oscillators gets no voice and is not part of the mix normalisation.
+- Every voice has a base gain, the Sound tab volume: the synthesiser's noise loop or a nature source's recording feeds it, the oscillators feed the sum beside it. A nature voice's recording is played by a `NaturePlayer` ([Nature Recording Playback](#nature-recording-playback)).
+- Only speakers that make sound now take part (`playable()`): every synthesiser, and a nature source whose recording is on the device (`setSoundFiles()` gave the files and the manifest lists the recording). Before that a nature source gets no voice, oscillators included, and is not part of the mix normalisation. Whether the recording is there is part of the voice's shape, so the voice is rebuilt when the files arrive.
 - Each speaker in range is a voice: sources into a filter chain, then distance gain and pan, into a shared bus.
 - A voice exists only while the listener is within the speaker reach plus 1.5 tiles. It starts silent and glides in.
 - Changing a value retunes the existing nodes with a short glide, so dragging a slider does not click. Nodes are rebuilt only when the noise colour or the oscillator waves change.
@@ -93,6 +94,28 @@ flowchart LR
 - Movements: rain drops fall and fade; ripples slide across the stream (clipped to the water); white streaks fall down the waterfall and its foam swells; five reeds sway around their base at different periods; the airplane bobs and tilts while its propeller flickers; the campfire's outer and inner flames stretch at different speeds while two sparks rise; the wave grows and leans; two steam wisps rise from the cup; the train rocks in a short double beat, its wheels turn and two smoke puffs rise; the heart beats twice per second (lub-dub).
 - Scenario: The player holds a new speaker, opens edit and taps the waterfall picture → the speaker in the hands becomes the waterfall with falling streaks, the stored sound is `{source: "waterfall", level: 0.7, oscillators: [], eq}` with the noise volume and equalizer it had, the noise controls disappear while the Oscillators and Equalizer tabs stay, and its waves turn blue (`#3a86cf`).
 - Spec: [Nature Sources](../../specs/app/10-garden.md#nature-sources). All scenarios: [Nature Source Scenarios](../../testing/scenarios/app/10-garden.md#nature-sources-have-oscillators-and-equalizer).
+
+## Nature Recording Playback
+
+- Input: a recording id, its decoded chunks or beats from the `SoundLibrary`, and for the heartbeat its tempo.
+- Output: the recording, without audible repetition, into the voice's base gain.
+- Code: `src/audio/bed.ts` → `nextLayers()`, `layerGain()`, `fadeCurve()`, `nextBeat()`, `CHUNK_SECONDS`, `LAYER_SECONDS`, `FADE_SECONDS`, `EXTRA_CHANCE`; `src/audio/naturePlayer.ts` → `NaturePlayer`; `src/audio/library.ts` → `SoundLibrary`, `SoundFiles`, `SoundManifest`, `MAX_DECODED_CHUNKS`.
+- A long recording is a chain of layers. Each layer is a random section of a random chunk: 20 to 45 s long, starting anywhere it still fits in its 60 s chunk. The next layer starts when the previous one begins to fade out and fades in over the same 3 to 9 s with quarter-sine curves, so the summed power stays exactly 1. With a 30 % chance a quiet extra layer (10 to 25 s, at half gain) lies on top of a chained layer, so the number of overlapping sections varies too.
+- The player plans 15 s ahead on the audio clock (checked every second) and decodes chunks on demand. Decoded chunks are about 21 MB each, so the library keeps only the 4 most recently used. A chunk that arrives late starts late at the right place in its section rather than out of time; one that fails leaves a quieter moment and the chain goes on.
+- The heartbeat plays one of its 8 beats, chosen at random, at every beat: the spacing is 60 / tempo seconds, each beat moved by up to ±3 % so it does not sound mechanical; it is scheduled 1.5 s ahead and follows a tempo change from the next beat.
+- On the phone the files are decoded straight from their path; on the web from the bytes in the Cache API.
+- Scenario: A stream with recording 2 → layer 1 plays chunk 6 from 12.4 s for 31 s, fading in over 5 s; 26 s later layer 2 (chunk 2, 38 s) fades in over the 5 s in which layer 1 fades out; sometimes a quiet 15 s extra layer from chunk 9 joins in between.
+- All scenarios: [Nature Recording Playback Scenarios](../../testing/scenarios/app/10-garden.md#nature-recording-chain).
+
+## Nature Sound Patch
+
+- Input: the platform server's `manifest.json` and files at `SOUNDS_URL` (`EXPO_PUBLIC_HG_SOUNDS_URL`, default `<API_ORIGIN>/hush-garden/sounds`); what is already on the device.
+- Output: progress for the screen, then the files for the engine (`GardenAudio.setSoundFiles()`), or nothing when they cannot all be there.
+- Code: `src/audio/patch.ts` → `runPatch()`, `PatchState`, `SoundStore`, `PATCH_PARALLEL`; `src/audio/soundStore.ts` (phone, `expo-file-system`) and `src/audio/soundStore.web.ts` (web, Cache API `hush-garden-sounds`) → `createSoundStore()`; `src/audio/patchSession.ts` → `startPatch()`, `usePatchState()`; `src/screens/Game.tsx` (start, status, lock); `src/components/SpeakerEditor.tsx` → `SourcePicker` (`locked`), `natureLock`.
+- Entering a garden calls `startPatch()`; it runs once per app run and again only after a failure. It reads the manifest (falling back to the stored one when offline), counts the files already stored with the right size, downloads the missing ones three at a time, then saves the manifest and removes files the manifest no longer lists. File names carry a content hash, so a changed file is a new file.
+- While it runs or after it failed, the status pill's second line shows the progress or the failure, the editor's nature pictures are disabled with a note, and the engine plays no nature source. The status animation is to be replaced by the approved island design.
+- Scenario: First visit on the web → "Getting nature sounds 0 %" … "85 %" → the files are in the Cache API → the status shows the speakers heard again and nature sources can be chosen and are heard. A later visit only reads the manifest.
+- Guide: [Nature Sounds](../../guides/30-nature-sounds.md). All scenarios: [Nature Sound Patch Scenarios](../../testing/scenarios/app/10-garden.md#nature-sound-patch).
 
 ## Sound Shadows
 
@@ -230,7 +253,7 @@ stateDiagram-v2
 - Output: the edited speaker.
 - Code: `src/components/SpeakerEditor.tsx` → `SpeakerEditor`, `SourcePicker`, `OscillatorPanel`; `src/ui.tsx` → `Knob`, `Slider`, `Tabs`, `DragLockContext`, `NO_TOUCH_SCROLL`; `src/game/sprites.tsx` → `WavePicture`; `src/domain/sound.ts` → `waveShape()`.
 - `Prepared` (`src/ui.tsx`) lays its children out invisibly (`HIDDEN_READY`) and reveals them three frames after its first layout, when measured children have applied their sizes; with `hidden` it stays invisible but mounted. `Modal` uses it, the settings modal is always mounted with `hidden` while closed, and its card is memoised so walking does not redraw it. The speaker editor keeps the inactive tabs absolutely placed and hidden; the equalizer reads the spectrum only while its tab is shown.
-- The Sound tab starts with the source picker: thirteen picture buttons (a brown speaker for the synthesiser, then each nature source drawn `still` at 62%), with the chosen name above. A choice goes through `withSource()`. Volume, oscillators and equalizer are edited the same way for every source; for a nature source the Sound tab shows, in the place of the noise colour chips, its recordings as chips Recording 1, 2, 3 (only when it has more than one), or for the heartbeat a tempo slider (`heartbeat-tempo`), and a note that the recording is not ready yet.
+- The Sound tab starts with the source picker: eleven picture buttons (a brown speaker for the synthesiser, then each nature source drawn `still` at 62%; nature pictures are disabled until the sound patch is complete, with a note), with the chosen name above. A choice goes through `withSource()`. Volume, oscillators and equalizer are edited the same way for every source; for a nature source the Sound tab shows, in the place of the noise colour chips, its recordings as chips Recording 1, 2, 3 (only when it has more than one), or for the heartbeat a tempo slider (`heartbeat-tempo`).
 - Three tabs: Sound (source, noise colour for the synthesiser, the noise or recording volume as one slider (`baseLevel()`), and the reach of the loudest part), Oscillators (OSC A and OSC B panels, each with its own volume knob, an add button while fewer than two), Equalizer ([Equalizer](#equalizer)).
 - An oscillator panel has a dark display with two cycles of the wave, drawn taller as the level rises; four wave buttons that show the wave as a picture; and a frequency knob (logarithmic) and a level knob.
 - A knob turns by `(right − up) / 170 px` of drag, so vertical and horizontal drags both work.

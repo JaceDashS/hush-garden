@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LIMIT_KNEE, LIMIT_RANGE, limiterCurve, softClip } from "../src/audio/limiter.ts";
 import { fillNoise, loopOffset } from "../src/audio/noise.ts";
+import { runPatch, type PatchState, type SoundStore } from "../src/audio/patch.ts";
+import type { SoundManifest } from "../src/audio/library.ts";
+import { BEAT_JITTER, CHUNK_SECONDS, EXTRA_PEAK, FADE_SECONDS, LAYER_SECONDS, layerGain, nextBeat, nextLayers, type Layer } from "../src/audio/bed.ts";
 import { lookOf } from "../src/domain/sound.ts";
 import { RIPPLE_INTERVAL, RIPPLE_POOL, RIPPLE_SECONDS, firstRippleDelay, nextRippleInterval } from "../src/game/ripple.ts";
 import { parseServerMessage, socketUrl } from "../src/api/socket.ts";
@@ -178,4 +181,115 @@ test("disabled native Google sign in never opens the account picker", async () =
     googleConfig: async () => ({ enabled: false, clientId: null }),
     nativeGoogleChallenge: forbidden, nativeGoogleLogin: forbidden,
   }, { checkPlayServices: forbidden, configure: () => { throw Error("must not configure"); }, pickAccount: forbidden }, true), /GOOGLE_NOT_CONFIGURED/);
+});
+
+test("a nature recording plays as a chain of random sections that never leaves a gap", () => {
+  let seed = 11;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const chain: Layer[] = [];
+  const extras: Layer[] = [];
+  let previous: Layer | null = null;
+  while (!previous || previous.start < 3600) {
+    const [next, extra] = nextLayers(previous, 10, random);
+    chain.push(next);
+    if (extra) extras.push(extra);
+    previous = next;
+  }
+  for (const layer of [...chain, ...extras]) {
+    assert.ok(layer.chunk >= 0 && layer.chunk < 10 && Number.isInteger(layer.chunk));
+    assert.ok(layer.offset >= 0 && layer.offset + layer.length <= CHUNK_SECONDS + 1e-9, "inside its chunk");
+    assert.ok(layer.fadeIn > 0 && layer.fadeOut > 0 && layer.fadeIn + layer.fadeOut <= layer.length + 1e-9);
+  }
+  for (const layer of chain) assert.ok(layer.length >= LAYER_SECONDS[0] && layer.length <= LAYER_SECONDS[1]);
+  // The chained layers keep a constant power: every moment after the first fade-in sums to 1.
+  for (let t = FADE_SECONDS[1]; t < 3500; t += 0.37) {
+    const power = chain.reduce((sum, layer) => sum + layerGain(layer, t) ** 2, 0);
+    assert.ok(Math.abs(power - 1) < 1e-6, "power " + power + " at " + t);
+  }
+  // Sections differ and extra layers come now and then, quieter.
+  assert.ok(new Set(chain.map((l) => l.chunk)).size >= 8);
+  assert.ok(extras.length > chain.length * 0.15 && extras.length < chain.length * 0.45);
+  assert.ok(extras.every((l) => l.peak === EXTRA_PEAK));
+});
+
+test("heartbeat beats follow the tempo with a little wander", () => {
+  let seed = 5;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  let t = 0;
+  for (let i = 0; i < 200; i++) {
+    const next = nextBeat(t, 60, random);
+    assert.ok(Math.abs(next - t - 1) <= BEAT_JITTER + 1e-9);
+    t = next;
+  }
+  assert.ok(Math.abs(t - 200) < 2, "the average stays on tempo");
+  assert.ok(Math.abs(nextBeat(0, 120, () => 0.5) - 0.5) < 1e-9);
+});
+
+/** A store in memory, with a switchable network, for the patch tests. */
+function memoryStore(initial: Record<string, number> = {}, manifest: unknown = null) {
+  const files = new Map(Object.entries(initial));
+  const downloaded: string[] = [];
+  let kept: Set<string> | null = null;
+  let saved: unknown = manifest;
+  const store: SoundStore = {
+    has: async (path, bytes) => files.get(path) === bytes,
+    download: async (url, path) => {
+      if (url.includes("broken")) throw new Error("HTTP 500");
+      downloaded.push(path);
+      files.set(path, Number(url.split("#")[1] ?? 0));
+    },
+    source: async (path) => "file://" + path,
+    prune: async (keep) => {
+      kept = keep;
+      for (const path of [...files.keys()]) if (!keep.has(path)) files.delete(path);
+    },
+    readManifest: async () => saved,
+    writeManifest: async (m) => { saved = m; },
+  };
+  return { store, files, downloaded, kept: () => kept, saved: () => saved };
+}
+
+const sample: SoundManifest = { version: "v2", totalBytes: 600, recordings: [
+  { id: "fs-1", source: "rain", kind: "chunks", chunkSeconds: 60, files: [{ path: "fs-1/00.mp3", bytes: 100 }, { path: "fs-1/01.mp3", bytes: 200 }] },
+  { id: "fs-9", source: "heartbeat", kind: "beats", files: [{ path: "fs-9/beat-0.wav", bytes: 300 }] },
+] };
+
+test("the sound patch downloads what is missing, reports progress and removes old files", async () => {
+  const mem = memoryStore({ "fs-1/00.mp3": 100, "old/00.mp3": 50 });
+  // The fake download stores the size the manifest expects, as a real download would.
+  mem.store.download = async (url, path) => { mem.downloaded.push(path); mem.files.set(path, sample.recordings.flatMap((r) => r.files).find((f) => f.path === path)!.bytes); };
+  const states: PatchState[] = [];
+  const files = await runPatch("https://api.example/hush-garden/sounds/", mem.store, (s) => states.push(s), async () => sample);
+  assert.ok(files);
+  assert.deepEqual(mem.downloaded.sort(), ["fs-1/01.mp3", "fs-9/beat-0.wav"]);
+  assert.equal(states[0].phase, "checking");
+  assert.deepEqual(states.at(-1), { phase: "ready", doneBytes: 600, totalBytes: 600, doneFiles: 3, totalFiles: 3 });
+  // Progress only grows, and starts with the file already there.
+  const downloading = states.filter((s) => s.phase === "downloading");
+  assert.equal(downloading[0].doneBytes, 100);
+  assert.ok(downloading.every((s, i) => i === 0 || s.doneBytes >= downloading[i - 1].doneBytes));
+  assert.equal(mem.files.has("old/00.mp3"), false);
+  assert.equal((mem.saved() as SoundManifest).version, "v2");
+  assert.equal(await files!.source("fs-1/00.mp3"), "file://fs-1/00.mp3");
+});
+
+test("the sound patch works offline from a complete earlier download and fails without one", async () => {
+  const offline = async () => { throw new Error("offline"); };
+  const complete = memoryStore({ "fs-1/00.mp3": 100, "fs-1/01.mp3": 200, "fs-9/beat-0.wav": 300 }, sample);
+  const states: PatchState[] = [];
+  assert.ok(await runPatch("https://x/", complete.store, (s) => states.push(s), offline));
+  assert.equal(states.at(-1)!.phase, "ready");
+  assert.equal(complete.downloaded.length, 0);
+  const nothing = memoryStore();
+  const failed: PatchState[] = [];
+  assert.equal(await runPatch("https://x/", nothing.store, (s) => failed.push(s), offline), null);
+  assert.equal(failed.at(-1)!.phase, "failed");
+});
+
+test("a failed download leaves nature sources unavailable", async () => {
+  const mem = memoryStore();
+  const states: PatchState[] = [];
+  assert.equal(await runPatch("https://broken/", mem.store, (s) => states.push(s), async () => sample), null);
+  assert.equal(states.at(-1)!.phase, "failed");
+  assert.equal(mem.saved(), null, "no manifest is saved for an incomplete download");
 });

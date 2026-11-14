@@ -1,7 +1,8 @@
 /**
  * Synthesises what the listener hears. Each speaker in range is a voice (noise and oscillator tones through an
- * EQ and filters); voices are summed on a bus. A nature source has no recording yet: its voice holds only its
- * oscillators, and one without oscillators gets no voice. A chat cue briefly swaps part of the bus for a darker copy leaning
+ * EQ and filters); voices are summed on a bus. A nature source plays its recording through a NaturePlayer in the
+ * place of the noise, once the sound files are on the device (setSoundFiles()); before that it is not heard at
+ * all, oscillators included. A chat cue briefly swaps part of the bus for a darker copy leaning
  * toward the talker, so loudness and bass stay and only the brightness moves. A limiter after the master rounds
  * off any peak that would clip.
  *
@@ -10,9 +11,11 @@
 import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type AudioNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
 import { bandCoefficients, type EqBand } from "../domain/equalizer";
-import { isSynth, loudnessOf, mixFor, reachOf, type NoiseColor, type Speaker, type SpeakerSound } from "../domain/sound";
+import { baseLevel, isSynth, loudnessOf, mixFor, reachOf, type NoiseColor, type Speaker, type SpeakerSound } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { LIMIT_RANGE, limiterCurve } from "./limiter";
+import { SoundLibrary, type SoundFiles } from "./library";
+import { NaturePlayer } from "./naturePlayer";
 import { fillNoise, loopOffset } from "./noise";
 
 const NOISE_SECONDS = 6;
@@ -47,8 +50,10 @@ interface Voice {
   key: string;
   sources: (AudioBufferSourceNode | OscillatorNode)[];
   nodes: { disconnect(): void }[];
-  /** The noise of a synthesiser sound; a nature source has none. */
-  noiseGain: GainNode | null;
+  /** Volume of the noise (synthesiser) or of the recording (nature source). */
+  baseGain: GainNode;
+  /** Plays a nature source's recording into baseGain. */
+  player: NaturePlayer | null;
   tones: { oscillator: OscillatorNode; gain: GainNode }[];
   bands: BandSlot[];
   /** The end of the equalizer chain: what this speaker sounds like before distance and pan. */
@@ -59,15 +64,14 @@ interface Voice {
   pan: StereoPannerNode;
 }
 
-const shapeOf = (sound: SpeakerSound) => (isSynth(sound) ? sound.noise.color : "nature:" + sound.source) + "|" + sound.oscillators.map((o) => o.wave).join(",");
-/** Whether a speaker makes any sound now: the synthesiser always; a nature source only through its oscillators. */
-const playable = (sound: SpeakerSound) => isSynth(sound) || sound.oscillators.length > 0;
+const waves = (sound: SpeakerSound) => sound.oscillators.map((o) => o.wave).join(",");
 
 export class GardenAudio {
   private context: AudioContext | null = null;
   private buffers = new Map<NoiseColor, AudioBuffer>();
   private voices = new Map<string, Voice>();
   private speakers: Speaker[] = [];
+  private library: SoundLibrary | null = null;
   private listener: Point = { x: 0, y: 0 };
   private bus!: GainNode;
   private dry!: GainNode;
@@ -134,12 +138,33 @@ export class GardenAudio {
   }
 
   /**
-   * Replaces the speaker layout. A voice is rebuilt only when its sound settings changed. A nature source without
-   * oscillators makes no sound yet, so it is left out and does not turn the mix down.
+   * Replaces the speaker layout. A voice is rebuilt only when its sound settings changed. A speaker that makes
+   * no sound yet (a nature source before its recording is here) is left out and does not turn the mix down.
    */
   setSpeakers(speakers: readonly Speaker[]): void {
-    this.speakers = speakers.filter((speaker) => playable(speaker.sound));
+    this.speakers = [...speakers];
     this.refresh();
+  }
+
+  /** The nature sound files on the device, or null while they are not all there. Nature voices are rebuilt. */
+  setSoundFiles(files: SoundFiles | null): void {
+    this.library = files ? new SoundLibrary(files) : null;
+    this.refresh();
+  }
+
+  /** Whether a nature source's recording can play now. */
+  private hasRecording(sound: SpeakerSound): boolean {
+    return !isSynth(sound) && !!this.library?.has(sound.recording);
+  }
+
+  /** The synthesiser always; a nature source only once its recording is on the device (oscillators included). */
+  private playable(sound: SpeakerSound): boolean {
+    return isSynth(sound) || this.hasRecording(sound);
+  }
+
+  /** Changes when the nodes must be rebuilt: noise colour or recording (and whether it is here), oscillator waves. */
+  private shapeOf(sound: SpeakerSound): string {
+    return (isSynth(sound) ? sound.noise.color : sound.source + ":" + sound.recording + ":" + this.hasRecording(sound)) + "|" + waves(sound);
   }
 
   /** Moves the listener; speaker levels and balance follow. */
@@ -220,14 +245,15 @@ export class GardenAudio {
     const context = this.context;
     if (!context) return;
     const wanted = new Set<string>();
-    const levels = mixFor(this.listener, this.speakers);
-    this.speakers.forEach((speaker, index) => {
+    const speakers = this.speakers.filter((speaker) => this.playable(speaker.sound));
+    const levels = mixFor(this.listener, speakers);
+    speakers.forEach((speaker, index) => {
       const awake = distance(this.listener, speaker) < reachOf(speaker.sound) + WAKE_MARGIN && loudnessOf(speaker.sound) > 0;
       if (!awake) return;
       wanted.add(speaker.id);
       const key = JSON.stringify(speaker.sound);
       let voice = this.voices.get(speaker.id);
-      if (voice && voice.shape !== shapeOf(speaker.sound)) {
+      if (voice && voice.shape !== this.shapeOf(speaker.sound)) {
         this.drop(speaker.id);
         voice = undefined;
       }
@@ -270,13 +296,20 @@ export class GardenAudio {
       nodes.push(source, gain);
       return gain;
     };
-    // The recording of a nature source will take this place.
+    // The noise of the synthesiser, or the recording of a nature source, through one gain: the Sound tab volume.
+    const baseGain = context.createGain();
+    baseGain.gain.value = 0;
+    baseGain.connect(sum);
+    nodes.push(baseGain);
     const noise = isSynth(sound) ? context.createBufferSource() : null;
     if (noise && isSynth(sound)) {
       noise.buffer = this.noise(context, sound.noise.color);
       noise.loop = true;
+      noise.connect(baseGain);
+      sources.push(noise);
+      nodes.push(noise);
     }
-    const noiseGain = noise ? feed(noise) : null;
+    const player = !isSynth(sound) && this.library && this.hasRecording(sound) ? new NaturePlayer(context, this.library, sound.recording, baseGain, sound.tempo ?? null) : null;
     const tones = sound.oscillators.map((item) => {
       const oscillator = context.createOscillator();
       oscillator.type = item.wave;
@@ -299,14 +332,16 @@ export class GardenAudio {
     const at = context.currentTime;
     noise?.start(at, loopOffset(NOISE_SECONDS));
     for (const tone of tones) tone.oscillator.start(at);
-    return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, tones, bands, shaped: tail, level, pan };
+    player?.start();
+    return { shape: this.shapeOf(sound), key: "", sources, nodes, baseGain, player, tones, bands, shaped: tail, level, pan };
   }
 
   /** Applies sound values to an existing voice. Values glide, so dragging a slider is heard without clicks. */
   private tune(context: AudioContext, voice: Voice, sound: SpeakerSound): void {
     const now = context.currentTime;
     const set = (param: { setTargetAtTime(value: number, start: number, constant: number): unknown }, value: number) => param.setTargetAtTime(value, now, GLIDE / 2);
-    if (voice.noiseGain && isSynth(sound)) set(voice.noiseGain.gain, sound.noise.level);
+    set(voice.baseGain.gain, baseLevel(sound));
+    if (!isSynth(sound) && sound.tempo != null) voice.player?.setTempo(sound.tempo);
     voice.tones.forEach((tone, index) => {
       set(tone.oscillator.frequency, sound.oscillators[index].frequency);
       set(tone.gain.gain, sound.oscillators[index].level * 0.3);
@@ -360,6 +395,7 @@ export class GardenAudio {
     const voice = this.voices.get(id);
     if (!voice) return;
     this.voices.delete(id);
+    voice.player?.stop();
     for (const slot of voice.bands) {
       if (slot.timer) clearTimeout(slot.timer);
       slot.timer = null;

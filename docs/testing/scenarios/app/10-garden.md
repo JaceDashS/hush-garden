@@ -189,6 +189,26 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: each source is drawn as its own object with its own movement, in its own wave colour; without oscillators no audio plays for them; no errors.
 - Test: Browser check in Chrome 2026-11-14 (screenshots of all of them; thunder and wind chime were removed the same day).
 
+## Nature Recording Chain
+- Design: [Nature Recording Playback](../../../design/app/10-garden.md#nature-recording-playback)
+- Input: an hour of layers planned for a 10-chunk recording from a fixed random source.
+- Steps: `nextLayers()` repeatedly; sum the squared `layerGain()` of the chained layers every 0.37 s.
+- Result: every section stays inside its chunk, chained layers are 20 to 45 s, the chained power is 1 at every moment after the first fade-in, at least 8 different chunks are used, and between 15 % and 45 % of the layers get a quieter extra layer.
+- Test: "a nature recording plays as a chain of random sections that never leaves a gap". Browser check in Chrome 2026-11-14: choosing a stream started a 35 s section of a 60 s chunk.
+
+## Heartbeat At A Tempo
+- Input: 200 beats at 60 BPM; one beat at 120 BPM with no wander.
+- Steps: `nextBeat()`.
+- Result: every spacing is within ±3 % of 1 s and 200 beats take about 200 s; at 120 BPM the next beat is 0.5 s later.
+- Test: "heartbeat beats follow the tempo with a little wander". Browser check in Chrome 2026-11-14: beats started about 1 s apart.
+
+## Nature Sound Patch
+- Design: [Nature Sound Patch](../../../design/app/10-garden.md#nature-sound-patch)
+- Input: a manifest of three files with one already stored and an old file; then offline with a complete earlier download; offline with nothing; a server that fails every download.
+- Steps: `runPatch()` with an in-memory store.
+- Result: only the two missing files are downloaded, progress starts at the stored file's size and only grows, it ends ready with 600 of 600 bytes, the old file is removed and the manifest saved; offline with an earlier download it is ready without downloading; offline with nothing and with failing downloads it ends failed and saves no manifest.
+- Test: "the sound patch downloads what is missing, reports progress and removes old files", "the sound patch works offline from a complete earlier download and fails without one", "a failed download leaves nature sources unavailable". Browser check in Chrome 2026-11-14: 231 MB from a local server in 2.4 s with the status counting up; with the sound files blocked the status said the download failed and the nature pictures were disabled.
+
 ## Recordings And Heartbeat Tempo
 - Design: [Nature Sources](../../../design/app/10-garden.md#nature-sources)
 - Input: a stream with its second recording; a stream naming a rain recording; a heartbeat without tempo, with 300 and with 71.6; a stored `thunder` and a stored `windchime`; the editor with a stream and then a heartbeat.

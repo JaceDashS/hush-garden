@@ -74,7 +74,8 @@ function OscillatorPanel({ index, oscillator, onChange, onRemove }: { index: num
 }
 
 /** The pictures to choose what a speaker plays: the synthesiser speaker and each nature source. */
-function SourcePicker({ value, onChange }: { value: SoundSource; onChange: (source: SoundSource) => void }) {
+/** `locked` keeps nature sources from being chosen while their recordings are still downloading. */
+function SourcePicker({ value, onChange, locked }: { value: SoundSource; onChange: (source: SoundSource) => void; locked: boolean }) {
   const t = useT();
   const sources: SoundSource[] = ["synth", ...NATURE_SOURCES];
   return (
@@ -83,8 +84,9 @@ function SourcePicker({ value, onChange }: { value: SoundSource; onChange: (sour
       <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
         {sources.map((source) => {
           const selected = source === value;
+          const disabled = locked && source !== "synth" && !selected;
           return (
-            <Pressable key={source} accessibilityRole="radio" accessibilityLabel={t(("source." + source) as "source.synth")} accessibilityState={{ selected }} testID={"source-" + source} onPress={() => onChange(source)} style={{ width: 50, height: 56, borderRadius: 12, borderWidth: 2, borderColor: selected ? colors.mintDeep : colors.panelEdge, backgroundColor: selected ? colors.mint : colors.white, alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+            <Pressable key={source} accessibilityRole="radio" accessibilityLabel={t(("source." + source) as "source.synth")} accessibilityState={{ selected, disabled }} disabled={disabled} testID={"source-" + source} onPress={() => onChange(source)} style={{ opacity: disabled ? 0.35 : 1, width: 50, height: 56, borderRadius: 12, borderWidth: 2, borderColor: selected ? colors.mintDeep : colors.panelEdge, backgroundColor: selected ? colors.mint : colors.white, alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
               <View pointerEvents="none" style={{ width: 60, height: 76, transform: [{ scale: 0.62 }] }}>
                 <SourceArt look={source === "synth" ? "brown" : source} shadow={false} still />
               </View>
@@ -97,7 +99,8 @@ function SourcePicker({ value, onChange }: { value: SoundSource; onChange: (sour
 }
 
 /** `onChange` receives the whole edited speaker. `readSpectrum` feeds the analyser behind the equalizer curve. */
-export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { speaker: Speaker; onChange: (speaker: Speaker) => void; onClose: () => void; readSpectrum: () => Spectrum | null }) {
+export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, natureLock = null }: { speaker: Speaker; onChange: (speaker: Speaker) => void; onClose: () => void; readSpectrum: () => Spectrum | null; natureLock?: "loading" | "failed" | null }) {
+  const natureReady = natureLock === null;
   const t = useT();
   const [tab, setTab] = useState<Tab>("sound");
   const [dragging, setDragging] = useState(false);
@@ -127,7 +130,8 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
         </View>
         <ScrollView style={{ flex: 1 }} scrollEnabled={!dragging} contentContainerStyle={{ padding: 12, gap: 10 }} keyboardShouldPersistTaps="handled">
           <View style={pane(shown === "sound")} pointerEvents={shown === "sound" ? "auto" : "none"}>
-              <SourcePicker value={sound.source} onChange={(source) => onChange({ ...speaker, sound: withSource(sound, source) })} />
+              <SourcePicker value={sound.source} locked={!natureReady} onChange={(source) => onChange({ ...speaker, sound: withSource(sound, source) })} />
+              {!natureReady && <T size={12} tone="muted">{t(natureLock === "failed" ? "patch.lockedFailed" : "patch.locked")}</T>}
               {/* Where the synthesiser chooses its noise colour, a nature source chooses its recording, and the heartbeat its tempo. */}
               {(synth || recordings.length > 1) && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, borderTopWidth: 2, borderTopColor: colors.track }}>
@@ -144,7 +148,6 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
               )}
               <Slider label={t(synth ? "noise.level" : "source.level")} value={baseLevel(sound)} min={0} max={1} format={percent} onChange={setBaseLevel} testID="base-level" />
               <T size={12} tone="muted">{t("editor.reach", { n: reachOf(sound).toFixed(1) })}</T>
-              {!synth && <T size={12} tone="muted">{t("source.coming")}</T>}
           </View>
           <View style={pane(shown === "osc")} pointerEvents={shown === "osc" ? "auto" : "none"}>
               {sound.oscillators.length === 0 && <T size={12.5} tone="muted">{t("osc.empty")}</T>}

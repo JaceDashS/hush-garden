@@ -24,6 +24,15 @@
 - Code: `NATURE_SOURCES`, `NatureSound`, `NatureArt`, `NATURE_TINT`, `withSource()`
 - Avoid: "nature speaker" in code (use source); "ambience" (too broad)
 
+## Sound Patch
+- Definition: The download of all nature recordings onto the device after entering a garden. Nature sources can be chosen and heard only once it is complete.
+- Code: `runPatch()`, `startPatch()`, `usePatchState()`, `PatchState`, `SoundStore`; files at `/hush-garden/sounds/` of the platform API
+- Avoid: "update" (the app itself does not change), "asset download"
+
+## Layer
+- Definition: One random section of a recording chunk played with fades; a chain of crossfading layers makes a nature recording without audible repetition.
+- Code: `Layer`, `nextLayers()`, `layerGain()` in `src/audio/bed.ts`; `NaturePlayer`
+
 ## Recording
 - Definition: One of the recordings a nature source can play, chosen in the Sound tab like a noise colour; identified by its Freesound sound id. The heartbeat has one recording played beat by beat at a tempo.
 - Code: `RECORDINGS`, `Recording`, `NatureSound.recording`, `recordingOf()`; tempo: `NatureSound.tempo`, `TEMPO`

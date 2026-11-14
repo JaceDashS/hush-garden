@@ -43,3 +43,7 @@ dist-android/
 # Tauri build output
 src-tauri/target/
 src-tauri/gen/
+
+# Nature sound sources (kept locally, never pushed) and the processed files served by the platform server
+sound-sources/
+dist-sounds/

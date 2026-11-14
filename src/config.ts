@@ -5,3 +5,5 @@ const trim = (value: string | undefined, fallback: string) => (value?.trim() || 
 export const API_ORIGIN = trim(process.env.EXPO_PUBLIC_HG_API_ORIGIN, "https://api.jace-s.com");
 /** Main site used for the "main page" link. */
 export const SITE_ORIGIN = trim(process.env.EXPO_PUBLIC_HG_SITE_ORIGIN, "https://jace-s.com");
+/** Where the nature sound files and their manifest are downloaded from (the platform server; see scripts/build-sounds.ts). */
+export const SOUNDS_URL = trim(process.env.EXPO_PUBLIC_HG_SOUNDS_URL, API_ORIGIN + "/hush-garden/sounds");

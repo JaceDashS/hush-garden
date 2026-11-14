@@ -18,6 +18,7 @@ import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session"
 import { ConsentCard, LoginCard, PresetCard, SettingsCard } from "../components/Panels";
 import { SOUND_KEY_CODE, SoundButton } from "../components/SoundButton";
 import { SpeakerEditor } from "../components/SpeakerEditor";
+import { startPatch, usePatchState } from "../audio/patchSession";
 import { API_ORIGIN } from "../config";
 import { actionDuration, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
 import { PICK_UP_TILES } from "../domain/characters";
@@ -130,6 +131,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   // --- sound -------------------------------------------------------------------------------------------------
   useEffect(() => audio.setSpeakers(speakers), [audio, speakers]);
+  // Entering a garden starts the nature sound download; nature sources stay silent and unchoosable until it ends.
+  useEffect(() => startPatch(audio), [audio]);
+  const patch = usePatchState();
+  const natureLock = patch?.phase === "ready" ? null : patch?.phase === "failed" ? "failed" : "loading";
   useEffect(() => audio.setListener(me), [audio, me]);
   useEffect(() => audio.setVolume(settings.volume), [audio, settings.volume]);
 
@@ -602,7 +607,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             </View>
             <View pointerEvents="none" testID="garden-status" style={[pill, { flexShrink: 1 }]}>
               <T size={12} weight="800" lines={1}>{t(online ? "status.public" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}</T>
-              <T size={11.5} weight="700" tone="muted" lines={1}>{t("status.heard", { n: heard })}</T>
+              <T size={11.5} weight="700" tone="muted" lines={1}>{patch && patch.phase !== "ready" ? (patch.phase === "failed" ? t("patch.failed") : t("patch.loading", { n: patch.totalBytes ? Math.floor((100 * patch.doneBytes) / patch.totalBytes) : 0 })) : t("status.heard", { n: heard })}</T>
             </View>
             <View pointerEvents="box-none" style={{ flex: 1, flexDirection: "row", justifyContent: "flex-end", gap: 6 }}>
               <SoundButton playing={playing} volume={settings.volume} onToggle={() => void togglePlay()} onVolume={(volume) => onSettings({ ...settings, volume })} />
@@ -646,6 +651,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             onChange={(speaker) => changeSpeakers(updateSpeaker(placedRef.current, speaker.id, { name: speaker.name, sound: speaker.sound }), speaker.id)}
             onClose={() => setEditing(false)}
             readSpectrum={() => audio.spectrum(carried.id)}
+            natureLock={natureLock}
           />
         </View>
       )}
