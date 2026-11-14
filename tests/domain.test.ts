@@ -7,10 +7,17 @@ import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
 import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
-import { MAX_OSCILLATORS, MAX_SPEAKERS, REACH, WAVES, audibleCount, defaultSound, gainAt, loudnessAt, mixFor, normalizeSound, reachOf, waveShape, type Speaker } from "../src/domain/sound.ts";
+import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, defaultSound, gainAt, isSynth, lookOf, loudnessAt, mixFor, normalizeSound, reachOf, waveShape, withSource, type Speaker, type SynthSound } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
 
 const speaker = (id: string, x: number, y: number, patch = {}): Speaker => ({ id, name: id, x, y, sound: { ...defaultSound(), ...patch } });
+
+/** Normalises a value that must come out as a synthesiser sound. */
+const synthOf = (value: unknown): SynthSound => {
+  const sound = normalizeSound(value);
+  assert.ok(isSynth(sound), "expected a synthesiser sound");
+  return sound;
+};
 
 test("screen projection round-trips", () => {
   const point = toGarden(toScreen({ x: 3.5, y: 9.25 }));
@@ -65,8 +72,44 @@ test("a speaker to the right on screen pans right", () => {
   assert.ok(level.pan > 0);
 });
 
+test("a nature source has oscillators and an equalizer but no noise and no default oscillator", () => {
+  const flat = flatEqualizer();
+  assert.deepEqual(normalizeSound({ source: "waterfall", volume: 0.4, noise: { color: "pink", level: 1 }, oscillators: [] }), { source: "waterfall", volume: 0.4, oscillators: [], eq: flat });
+  assert.deepEqual(normalizeSound({ source: "rain", volume: 7 }), { source: "rain", volume: 1, oscillators: [], eq: flat });
+  assert.deepEqual(normalizeSound({ source: "train" }), { source: "train", volume: defaultSound().volume, oscillators: [], eq: flat });
+  const tuned = normalizeSound({ source: "cafe", volume: 0.5, oscillators: [{ wave: "triangle", frequency: 99999, level: 0.4 }, {}, {}], eq: { bands: [{ type: "lowshelf", frequency: 120, gain: 6, q: 0.7 }] }, bass: { level: 1 } });
+  assert.equal(tuned.source, "cafe");
+  assert.equal(tuned.oscillators.length, MAX_OSCILLATORS);
+  assert.deepEqual(tuned.oscillators[0], { wave: "triangle", frequency: 8000, level: 0.4 });
+  assert.equal(tuned.eq.bands[0].gain, 6);
+  assert.equal("noise" in tuned, false);
+  assert.deepEqual(normalizeSound(tuned), tuned);
+  // A sound saved before nature sources existed has no source; an unknown source is the synthesiser.
+  assert.equal(normalizeSound({ volume: 0.5, noise: { color: "pink", level: 0.5 } }).source, "synth");
+  assert.equal(normalizeSound({ source: "dragon", volume: 0.5 }).source, "synth");
+  assert.equal(NATURE_SOURCES.length, 12);
+  for (const source of NATURE_SOURCES) assert.equal(normalizeSound({ source, volume: 0.3 }).source, source);
+  assert.equal(lookOf(defaultSound()), "brown");
+  assert.equal(lookOf({ source: "campfire", volume: 1, oscillators: [], eq: flat }), "campfire");
+});
+
+test("choosing a source keeps volume and equalizer; a nature source starts without oscillators", () => {
+  const eq = { bands: [{ type: "lowshelf", frequency: 200, gain: 3, q: NEUTRAL_Q }, ...flatEqualizer().bands.slice(1)] } as SynthSound["eq"];
+  const tuned: SynthSound = { ...defaultSound(), volume: 0.35, noise: { color: "white", level: 0.2 }, eq };
+  // The default synthesiser carries a 55 Hz sine; the waterfall starts without it but keeps the equalizer.
+  const fall = withSource(tuned, "waterfall");
+  assert.deepEqual(fall, { source: "waterfall", volume: 0.35, oscillators: [], eq });
+  const withTone = { ...fall, oscillators: [{ wave: "sine" as const, frequency: 80, level: 0.5 }] };
+  // Between nature sources the added oscillator and the equalizer stay.
+  const rain = withSource(withTone, "rain");
+  assert.deepEqual(rain, { ...withTone, source: "rain" });
+  // Back to the synthesiser: oscillators and equalizer stay, the noise is the default one.
+  assert.deepEqual(withSource(rain, "synth"), { source: "synth", volume: 0.35, noise: defaultSound().noise, oscillators: withTone.oscillators, eq });
+  assert.equal(withSource(tuned, "synth"), tuned);
+});
+
 test("sound values are clamped and broken input falls back to defaults", () => {
-  const sound = normalizeSound({ volume: 9, radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], eq: { bands: [{ type: "lowcut", frequency: 99999, q: 99 }, { type: "nope" }] } });
+  const sound = synthOf({ volume: 9, radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], eq: { bands: [{ type: "lowcut", frequency: 99999, q: 99 }, { type: "nope" }] } });
   assert.equal(sound.volume, 1);
   assert.equal("radius" in sound, false);
   assert.equal(sound.noise.color, "brown");
@@ -74,7 +117,7 @@ test("sound values are clamped and broken input falls back to defaults", () => {
   assert.deepEqual(sound.eq.bands[0], { type: "lowcut", frequency: 20000, gain: 0, q: EQ_LIMITS.q[1] });
   assert.equal(sound.eq.bands[1].type, "bell");
   assert.equal(sound.eq.bands.length, BAND_COUNT);
-  assert.deepEqual(normalizeSound(null), defaultSound());
+  assert.deepEqual(synthOf(null), defaultSound());
 });
 
 test("speakers can be added, moved, edited and removed", () => {
@@ -211,7 +254,7 @@ test("older sound formats are still read", () => {
   assert.deepEqual(eq.bands.map((band) => [band.type, band.frequency, band.gain]), [["lowshelf", 200, 3], ["bell", 2500, -4], ["highshelf", 4000, -3]]);
   const five = normalizeEqualizer({ highpass: 80, lowShelf: { frequency: 200, gain: 0 }, bell: { frequency: 900, gain: 2, q: 3 }, highShelf: { frequency: 4000, gain: 0 }, lowpass: 7000 });
   assert.deepEqual(five.bands.map((band) => [band.type, band.frequency]), [["lowcut", 80], ["bell", 900], ["highcut", 7000]]);
-  assert.equal(normalizeSound({ filter: { highpass: 100, lowpass: 5000 } }).eq.bands[2].frequency, 5000);
+  assert.equal(synthOf({ filter: { highpass: 100, lowpass: 5000 } }).eq.bands[2].frequency, 5000);
   assert.deepEqual(normalizeEqualizer(null), flatEqualizer());
 });
 
@@ -306,21 +349,21 @@ test("the default sound gets its low end from oscillator A and holds at most two
   assert.equal("bass" in sound, false);
   assert.equal(MAX_OSCILLATORS, 2);
   // An explicit empty list stays empty: the player removed the oscillators.
-  assert.equal(normalizeSound({ oscillators: [] }).oscillators.length, 0);
+  assert.equal(synthOf({ oscillators: [] }).oscillators.length, 0);
 });
 
 test("a stored bass drone becomes a sine oscillator of the same loudness", () => {
-  const sound = normalizeSound({ bass: { frequency: 60, level: 0.3 }, oscillators: [{ wave: "square", frequency: 300, level: 0.4 }, { wave: "triangle", frequency: 500, level: 0.1 }] });
+  const sound = synthOf({ bass: { frequency: 60, level: 0.3 }, oscillators: [{ wave: "square", frequency: 300, level: 0.4 }, { wave: "triangle", frequency: 500, level: 0.1 }] });
   assert.equal(sound.oscillators.length, 2);
   assert.deepEqual(sound.oscillators[0].wave, "sine");
   assert.equal(sound.oscillators[0].frequency, 60);
   // The drone played at 0.5 of its level and an oscillator plays at 0.3 of its level.
   near(sound.oscillators[0].level * 0.3, 0.3 * 0.5, 1e-9);
   assert.equal(sound.oscillators[1].wave, "square");
-  assert.equal(normalizeSound({ bass: { frequency: 60, level: 0 } }).oscillators.length, 0);
-  assert.equal(normalizeSound({ bass: { frequency: 60, level: 1 } }).oscillators[0].level, 1);
+  assert.equal(synthOf({ bass: { frequency: 60, level: 0 } }).oscillators.length, 0);
+  assert.equal(synthOf({ bass: { frequency: 60, level: 1 } }).oscillators[0].level, 1);
   // Normalising again changes nothing.
-  assert.deepEqual(normalizeSound(sound), sound);
+  assert.deepEqual(synthOf(sound), sound);
 });
 
 test("wave pictures stay in range and differ by wave", () => {

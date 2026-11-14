@@ -3,8 +3,8 @@ import React from "react";
 import { View } from "react-native";
 import Svg, { Circle, Ellipse, G, Path, Rect } from "react-native-svg";
 import type { FxKind, PropForm, PropState } from "../domain/actions";
-import type { NoiseColor } from "../domain/sound";
-import { SPEAKER_SIZE, SpeakerArt } from "./sprites";
+import type { SourceLook } from "../domain/sound";
+import { SPEAKER_SIZE, SourceArt } from "./sprites";
 
 const INK = "#4a4038";
 /** The point of the prop picture that stands on the ground. */
@@ -44,12 +44,12 @@ function LeafArt() {
  * The prop at its place for one moment of an action. `origin` is where the character's feet are inside the
  * parent view; `facing` mirrors sideways offsets and rotation.
  */
-export function PropView({ prop, form, color, facing, origin }: { prop: PropState; form: PropForm; color: NoiseColor; facing: 1 | -1; origin: { x: number; y: number } }) {
+export function PropView({ prop, form, look, facing, origin }: { prop: PropState; form: PropForm; look: SourceLook; facing: 1 | -1; origin: { x: number; y: number } }) {
   if (prop.opacity <= 0.01 || prop.scale <= 0.01) return null;
   return (
     <View pointerEvents="none" style={{ position: "absolute", left: origin.x + prop.x * facing - FOOT.x, top: origin.y - prop.y - FOOT.y, opacity: Math.min(1, prop.opacity), transformOrigin: `${FOOT.x}px ${FOOT.y}px`, transform: [{ scaleX: prop.scale }, { scaleY: prop.scale * prop.squash }] }}>
       <View style={{ transform: [{ rotate: `${prop.spin * facing}deg` }] }}>
-        {form === "egg" ? <EggArt /> : form === "yarn" ? <YarnArt /> : form === "leaf" ? <LeafArt /> : <SpeakerArt color={color} shadow={false} />}
+        {form === "egg" ? <EggArt /> : form === "yarn" ? <YarnArt /> : form === "leaf" ? <LeafArt /> : <SourceArt look={look} shadow={false} />}
       </View>
     </View>
   );

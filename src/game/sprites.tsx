@@ -2,7 +2,8 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Easing, Platform, View } from "react-native";
 import Svg, { Circle, Defs, Ellipse, G, Path, Polygon, RadialGradient, Rect, Stop } from "react-native-svg";
-import { reachOf, waveShape, type NoiseColor, type SpeakerSound, type Wave } from "../domain/sound";
+import { NOISE_COLORS, lookOf, reachOf, waveShape, type NoiseColor, type SourceLook, type SpeakerSound, type Wave } from "../domain/sound";
+import { NATURE_TINT, NatureArt } from "./nature";
 import { GARDEN_SIZE, TILE_HEIGHT, TILE_WIDTH, toScreen } from "../domain/world";
 import { RIPPLE_POOL, RIPPLE_SECONDS, firstRippleDelay, nextRippleInterval } from "./ripple";
 
@@ -69,7 +70,7 @@ export const SPEAKER_SIZE = { width: 60, height: 76 };
 
 const SPEAKER_TINT = { brown: "#d9a877", pink: "#ffb3c6", white: "#f4f1ea" } as const;
 
-/** The one kind of speaker: a smiling cabinet on little feet, tinted by its noise colour. `shadow` false leaves out the ground shadow for a speaker held in the air. */
+/** The synthesiser speaker: a smiling cabinet on little feet, tinted by its noise colour. `shadow` false leaves out the ground shadow for a speaker held in the air. */
 export const SpeakerArt = React.memo(function SpeakerArt({ color, selected, playing, shadow = true }: { color: keyof typeof SPEAKER_TINT; selected?: boolean; playing?: boolean; shadow?: boolean }) {
   const tint = SPEAKER_TINT[color];
   return (
@@ -96,8 +97,16 @@ export const SpeakerArt = React.memo(function SpeakerArt({ color, selected, play
   );
 });
 
-/** Colour of the sound waves a speaker sends out, by its noise colour: pink noise is pink, brown noise brown. */
-export const SHADOW_TINT: Record<NoiseColor, string> = { brown: "#8a5326", pink: "#ff4f98", white: "#ffffff" };
+/**
+ * Colour of the sound waves a speaker sends out: by its noise colour for the synthesiser (pink noise is pink,
+ * brown noise brown), and a colour of its own for each nature source.
+ */
+export const SHADOW_TINT: Record<SourceLook, string> = { brown: "#8a5326", pink: "#ff4f98", white: "#ffffff", ...NATURE_TINT };
+
+/** What stands in the garden for a speaker: the cabinet in its noise colour, or the object of its nature source. */
+export function SourceArt({ look, playing, shadow = true, still }: { look: SourceLook; playing?: boolean; shadow?: boolean; still?: boolean }) {
+  return NOISE_COLORS.includes(look as NoiseColor) ? <SpeakerArt color={look as NoiseColor} playing={playing} shadow={shadow} /> : <NatureArt source={look as Exclude<SourceLook, NoiseColor>} shadow={shadow} still={still} />;
+}
 const NATIVE_DRIVER = Platform.OS !== "web";
 
 /** How strong a speaker's sound waves look (0 to 1): louder is stronger, a silent speaker sends none. */
@@ -158,7 +167,7 @@ function Ripple({ progress, width, height, color, strength }: { progress: Animat
 export const SoundShadow = React.memo(function SoundShadow({ sound }: { id: string; sound: SpeakerSound }) {
   const { width, height } = shadowSize(sound);
   const strength = shadowStrength(sound);
-  const color = SHADOW_TINT[sound.noise.color];
+  const color = SHADOW_TINT[lookOf(sound)];
   const rings = useRipples();
   if (strength <= 0) return null;
   return (

@@ -1,6 +1,6 @@
 /** Speaker layout editing and presets. Used by the public garden editor and by the private offline garden. */
 import { NEUTRAL_Q, flatEqualizer, type EqBand } from "./equalizer";
-import { MAX_SPEAKERS, defaultSound, normalizeSound, type Speaker, type SpeakerSound } from "./sound";
+import { MAX_SPEAKERS, defaultSound, normalizeSound, type Speaker, type SpeakerSound, type SynthSound } from "./sound";
 import { GARDEN_SIZE, clampToGarden, type Point } from "./world";
 
 export interface Preset {
@@ -16,11 +16,11 @@ export interface MyGarden {
   presets: Preset[];
 }
 
-const sound = (patch: Partial<SpeakerSound>): SpeakerSound => normalizeSound({ ...defaultSound(), ...patch });
+const sound = (patch: Partial<SynthSound>): SpeakerSound => normalizeSound({ ...defaultSound(), ...patch });
 /** An equalizer with some of its three points changed. */
-const eq = (...patches: (Partial<EqBand> | null)[]): SpeakerSound["eq"] => {
+const eq = (...patches: (Partial<EqBand> | null)[]): SynthSound["eq"] => {
   const flat = flatEqualizer();
-  return { bands: flat.bands.map((band, index) => ({ ...band, ...patches[index] })) as SpeakerSound["eq"]["bands"] };
+  return { bands: flat.bands.map((band, index) => ({ ...band, ...patches[index] })) as SynthSound["eq"]["bands"] };
 };
 const highCut = (frequency: number): Partial<EqBand> => ({ type: "highcut", frequency, q: NEUTRAL_Q });
 const mid = GARDEN_SIZE / 2;

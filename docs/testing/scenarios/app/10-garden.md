@@ -170,6 +170,25 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: a lift button appears beside the speaker only within 1.6 tiles and only with free hands; after lifting, the speaker is overhead with the arms up while the feet keep stepping, and put down and edit buttons appear beside the character; after putting down the speaker stands one step in front and the lift button is back.
 - Test: "a carrying character keeps its arms up while its feet keep stepping", "a lifted speaker rises from the ground in front to overhead". Browser check 2026-11-12 at phone size: lift button beside the speaker, then put down and edit under the character.
 
+## Nature Sources Have Oscillators And Equalizer
+- Design: [Nature Sources](../../../design/app/10-garden.md#nature-sources)
+- Input: stored sounds `{source: "waterfall", volume: 0.4, noise: {...}, oscillators: []}`, `{source: "rain", volume: 7}`, `{source: "train"}`, a cafe with three oscillators (one at 99999 Hz), a low shelf of +6 dB and a bass drone, `{source: "dragon", volume: 0.5}` and an old sound without a source.
+- Steps: `normalizeSound()` on each.
+- Result: the waterfall keeps volume 0.4 with no oscillators and a flat equalizer; rain gets volume 1; the train volume 0.7 with no oscillator; the cafe keeps two oscillators (the first at 8000 Hz) and its +6 dB shelf, has no noise and ignores the drone; the unknown source and the old sound are synthesiser sounds.
+- Test: "a nature source has oscillators and an equalizer but no noise and no default oscillator".
+
+## Choose A Nature Source
+- Input: a held default synthesiser speaker (OSC A a 55 Hz sine) at volume 0.35 with a +3 dB low shelf.
+- Steps: choose the waterfall → add OSC A at 80 Hz → choose rain → choose the synthesiser.
+- Result: waterfall with no oscillators and the +3 dB shelf → rain keeps the 80 Hz oscillator and the shelf → the synthesiser keeps them with the default noise. In the browser all three tabs stay for a nature source, the noise controls give way to the note about the recording, the oscillator added to the waterfall shows in its own spectrum, the held speaker turns into the chosen object, and putting it down leaves that object on the ground with its own waves.
+- Test: "choosing a source keeps volume and equalizer; a nature source starts without oscillators". Browser check in Chrome 2026-11-14.
+
+## Twelve Nature Objects
+- Input: a stored private garden with one of each nature source at volume 0.25.
+- Steps: enter the private garden and look at the objects over time.
+- Result: each source is drawn as its own object with its own movement, in its own wave colour; without oscillators no audio plays for them; no errors.
+- Test: Browser check in Chrome 2026-11-14 (screenshots of all twelve).
+
 ## Edit Only While Holding
 - Input: a speaker on the ground; then the same speaker held.
 - Result: no way to open the sound controls for a speaker on the ground; while held, edit opens the three tabs; putting down or discarding closes them.

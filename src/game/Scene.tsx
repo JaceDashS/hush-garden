@@ -3,12 +3,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, View } from "react-native";
 import { CARRY, NEUTRAL, actionAt, type ActionMoment, type ActionName, type GroundSpot } from "../domain/actions";
 import type { CharacterKind } from "../domain/characters";
-import { loudnessAt, type NoiseColor, type Speaker } from "../domain/sound";
+import { lookOf, loudnessAt, type SourceLook, type Speaker } from "../domain/sound";
 import { distance, joystickToInput, toScreen, type Point } from "../domain/world";
 import { T, colors } from "../ui";
 import { CHARACTER_FEET, CHARACTER_SIZE, Character } from "./characters";
 import { FxView, PropView } from "./props";
-import { GROUND_OFFSET_X, Ground, SPEAKER_SIZE, SoundShadow, SpeakerArt, TREES, TREE_SIZE, Tree, shadowSize } from "./sprites";
+import { GROUND_OFFSET_X, Ground, SPEAKER_SIZE, SoundShadow, SourceArt, TREES, TREE_SIZE, Tree, shadowSize } from "./sprites";
 
 export interface Actor {
   id: string;
@@ -19,9 +19,9 @@ export interface Actor {
   /** Shown under the name: the place the player connected from. */
   label: string;
   /** Noise colour of the speaker the character holds overhead, if it carries one. */
-  carrying?: NoiseColor;
+  carrying?: SourceLook;
   /** The action the character is playing: making, discarding or lifting a speaker of the given colour. */
-  action?: { name: ActionName; startedAt: number; color: NoiseColor; ground?: GroundSpot };
+  action?: { name: ActionName; startedAt: number; look: SourceLook; ground?: GroundSpot };
   bubble?: string;
   /** Which of the ten characters to draw. */
   kind: CharacterKind;
@@ -77,14 +77,14 @@ function ActorBody({ actor, moment }: { actor: Actor; moment: ActionMoment | nul
     return (
       <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
         <Character kind={actor.kind} facing={facing} walking={actor.walking} carrying={!!actor.carrying} />
-        {!!actor.carrying && <PropView prop={CARRY} form="speaker" color={actor.carrying} facing={facing} origin={CHARACTER_FEET} />}
+        {!!actor.carrying && <PropView prop={CARRY} form="speaker" look={actor.carrying} facing={facing} origin={CHARACTER_FEET} />}
       </View>
     );
   }
   return (
     <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
       <Character kind={actor.kind} facing={facing} turn={moment.turn} walking={moment.walk} carrying={moment.arms === "up"} stance={moment.stance ?? NEUTRAL} />
-      <PropView prop={moment.prop} form={moment.form} color={action!.color} facing={facing} origin={CHARACTER_FEET} />
+      <PropView prop={moment.prop} form={moment.form} look={action!.look} facing={facing} origin={CHARACTER_FEET} />
       {moment.effects.map((effect, index) => (
         <FxView key={effect.kind + index + effect.x} kind={effect.kind} x={effect.x} y={effect.y} progress={effect.progress} facing={facing} origin={CHARACTER_FEET} />
       ))}
@@ -212,7 +212,7 @@ export function Scene({ me, actors, speakers, carriedId, markers, onInput }: { m
               <View style={{ height: 18, backgroundColor: "rgba(255,250,242,0.88)", borderRadius: 9, paddingHorizontal: 7, justifyContent: "center" }}>
                 <T size={10.5} weight="700" tone="muted" lines={1}>{speaker.name}</T>
               </View>
-              <SpeakerArt color={speaker.sound.noise.color} playing={playing} />
+              <SourceArt look={lookOf(speaker.sound)} playing={playing} />
             </View>
           );
         })}

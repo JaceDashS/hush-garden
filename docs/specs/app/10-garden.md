@@ -30,8 +30,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 
 ## Speakers And Sound
 
-- There is one kind of speaker. Every speaker has the same controls:
-  volume, noise (white, pink or brown) with its level, up to two oscillators and one equalizer.
+- A speaker plays either the synthesiser or one nature source. Both have a volume, up to two oscillators and one equalizer. The synthesiser also has noise (white, pink or brown) with its level; for a nature source its recording takes that place.
 - There is no hearing distance setting. A louder speaker is heard farther away: its reach grows evenly from 2 tiles at volume 0 to 11 tiles at full volume.
 - A speaker is loudest next to it and fades smoothly to silence at its reach.
 - Speakers in range are heard together. The mix is turned down as a whole only when it would be louder than one speaker at full volume.
@@ -39,6 +38,16 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - A speaker to the left on screen sounds from the left, and likewise for the right.
 - Low sound helps masking, so the default sound carries a low tone: oscillator A starts as a 55 Hz sine. There is no separate bass control.
 - Sound never starts before the player presses a button.
+
+## Nature Sources
+
+- Twelve nature sources, in the order the picker shows them: rain, stream, waterfall, reeds in the wind, airplane, campfire, waves, thunder, cafe, wind chime, train and heartbeat.
+- A new speaker is made as before. While it is held, the Sound tab of its controls chooses what it plays: the synthesiser or one nature source, shown as pictures. The held speaker turns into the chosen object at once.
+- Each nature source stands in the garden as its own object with its own movement, not as a speaker cabinet: drops fall from the rain cloud, the stream flows, water falls, reeds sway, the airplane bobs with a spinning propeller, the campfire flickers and sparks, the wave rises and falls, lightning flashes under the thunder cloud, steam rises from the cafe cup, the wind chime and its strip swing, the train rocks with turning wheels and smoke puffs, and the heart beats. Equal objects do not move in step.
+- A nature source has no oscillator by default. Changing the source always keeps the volume and the equalizer. Going from the synthesiser to a nature source empties the oscillators; between nature sources they stay; going back to the synthesiser keeps them and uses the default noise.
+- Like speakers, nature sources are lifted, carried, put down and discarded, and send sound waves in a colour of their own over the area they reach.
+- Their recordings come later. Until then only the oscillators added to a nature source are heard, through its equalizer; one without oscillators is silent and does not turn the mix down. They always show their waves and reach, and the controls say the recording is not ready yet.
+- The public garden accepts nature sources too.
 
 ## Oscillators
 
@@ -50,7 +59,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 ## Sound Shadows
 
 - Every speaker always shows its sound on the ground as concentric sound waves: rings that keep spreading from the speaker and fade out at the speaker's reach, over a faint fill of the area it is heard in. Each speaker sends its rings at its own uneven pace, so the speakers never pulse in step. No mode has to be switched on to see it.
-- The waves have the colour of the noise: brown for brown noise, pink for pink noise, white for white noise.
+- The waves have the colour of the noise: brown for brown noise, pink for pink noise, white for white noise. A nature source has a colour of its own, such as blue for rain and orange for the campfire.
 - A louder speaker is heard further away, so its waves spread wider, and they are brighter. A silent speaker sends none.
 - Where waves overlap, their colours blend.
 - A held speaker's shadow moves with the character.
@@ -82,7 +91,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 ## Speaker Controls On A Phone
 
 - Every speaker control works with a thumb on a phone as well as with a mouse.
-- The controls are three tabs so each fits a phone screen: Sound (volume, noise), Oscillators, Equalizer.
+- The controls are three tabs so each fits a phone screen: Sound (source, volume, and noise for the synthesiser), Oscillators, Equalizer. A nature source has the same three tabs.
 - While a slider, a knob or an equalizer point is dragged, the page does not scroll.
 
 ## Top Bar And Settings

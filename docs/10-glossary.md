@@ -16,8 +16,17 @@
 - UI text: 모두의 정원
 
 ## Speaker
-- Definition: The single kind of sound source: a position, a name and one sound. There are no speaker types.
-- Code: `Speaker`, `SpeakerSound` in `src/domain/sound.ts`
+- Definition: A placed sound source: a position, a name and one sound. Its sound is either the synthesiser or a nature source; a nature source is drawn as its own object instead of a cabinet.
+- Code: `Speaker`, `SpeakerSound`, `SynthSound` in `src/domain/sound.ts`
+
+## Nature Source
+- Definition: One of the twelve recorded-style sounds a speaker can play instead of the synthesiser (rain, stream, waterfall, reeds, airplane, campfire, waves, thunder, cafe, wind chime, train, heartbeat). It has a volume, oscillators and an equalizer like the synthesiser, its recording in place of the noise, and its own garden object.
+- Code: `NATURE_SOURCES`, `NatureSound`, `NatureArt`, `NATURE_TINT`, `withSource()`
+- Avoid: "nature speaker" in code (use source); "ambience" (too broad)
+
+## Source Look
+- Definition: How a speaker is drawn: its noise colour for the synthesiser, or its nature source.
+- Code: `SourceLook`, `lookOf()`, `SourceArt`
 
 ## Voice
 - Definition: The audio nodes that play one speaker while the listener is near it.

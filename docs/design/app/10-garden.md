@@ -24,12 +24,15 @@
 ## Sound Model
 
 - Input: any stored or received value.
-- Output: a valid `SpeakerSound`: `{volume, noise: {color, level}, oscillators: [{wave, frequency, level}], eq}`.
-- Code: `src/domain/sound.ts` → `normalizeSound()`, `defaultSound()`, `defaultOscillator()`, `LIMITS`, `MAX_OSCILLATORS`, `WAVES`, `NOISE_COLORS`.
+- Output: a valid `SpeakerSound`, one of two shapes: a synthesiser sound `{source: "synth", volume, noise: {color, level}, oscillators: [{wave, frequency, level}], eq}` or a nature sound `{source, volume, oscillators, eq}` with `source` one of `NATURE_SOURCES`.
+- Code: `src/domain/sound.ts` → `normalizeSound()`, `defaultSound()`, `defaultOscillator()`, `withSource()`, `isSynth()`, `isNatureSource()`, `lookOf()`, `LIMITS`, `MAX_OSCILLATORS`, `WAVES`, `NOISE_COLORS`, `NATURE_SOURCES`; types `SynthSound`, `NatureSound`, `SoundSource`, `SourceLook`.
+- A value whose `source` is a nature source keeps its volume, oscillators (at most two, no default) and equalizer; noise and a bass drone are dropped. Any other value, including every sound saved before nature sources existed (no `source`) and an unknown source, is a synthesiser sound with `source: "synth"`.
+- `withSource()` applies a choice in the editor: the volume and the equalizer always stay; synthesiser to nature empties the oscillators; nature to nature keeps them; nature to synthesiser keeps them and takes the noise of `defaultSound()`.
+- `lookOf()` names how a speaker is drawn: its noise colour for the synthesiser, its source otherwise. The scene, carrying, the speaker actions and the wave colour all take this one value.
 - Missing fields get defaults; numbers are clamped; at most two oscillators. The equalizer part is described in [Equalizer](#equalizer). The server enforces the same limits.
 - The default sound is brown noise with oscillator A as a 55 Hz sine at level 0.55. A value that says nothing about oscillators gets that oscillator; an explicit empty list stays empty.
 - Sounds stored before the bass drone was removed carry `bass: {frequency, level}`. It is read as a sine oscillator at `level × 0.5 / 0.3` (the drone played at half its level, an oscillator plays at 0.3 of its level), placed before the stored oscillators, and the list is cut to two. A stored `radius` is ignored.
-- Scenario: `{volume: 9, noise: {color: "purple"}}` → volume 1, brown noise. `{bass: {frequency: 60, level: 0.3}, oscillators: [square 300 Hz]}` → oscillators sine 60 Hz at level 0.5, then the square.
+- Scenario: `{source: "waterfall", volume: 0.4, noise: {...}}` → `{source: "waterfall", volume: 0.4}`. `{volume: 9, noise: {color: "purple"}}` → a synthesiser sound with volume 1 and brown noise. `{bass: {frequency: 60, level: 0.3}, oscillators: [square 300 Hz]}` → oscillators sine 60 Hz at level 0.5, then the square.
 
 ## Audio Engine
 
@@ -50,6 +53,7 @@ flowchart LR
     M --> LIM["Limiter"] --> OUT["Output"]
 ```
 
+- `setSpeakers()` keeps the speakers that make sound now (`playable()`): every synthesiser, and a nature source with at least one oscillator. A nature voice has no noise source (its recording will take that place), only its oscillators into the same equalizer chain. A nature source without oscillators gets no voice and is not part of the mix normalisation.
 - Each speaker in range is a voice: sources into a filter chain, then distance gain and pan, into a shared bus.
 - A voice exists only while the listener is within the speaker reach plus 1.5 tiles. It starts silent and glides in.
 - Changing a value retunes the existing nodes with a short glide, so dragging a slider does not click. Nodes are rebuilt only when the noise colour or the oscillator waves change.
@@ -77,12 +81,23 @@ flowchart LR
 - Markers are pressable things placed at a garden position with a screen offset: the lift button beside a speaker and the put down and edit buttons beside the character. They sit above everything and take the press before the joystick does.
 - All art is drawn in code with react-native-svg; `scripts/make-icon.mjs` draws the app icon.
 
+## Nature Sources
+
+- Input: a nature source and whether it moves (`still` for the picker) and has a ground shadow (none while held).
+- Output: the object in the speaker's 60 × 76 box, standing on the same point, so `Scene`, carrying (`PropView`) and the make and discard animations draw it in place of the cabinet.
+- Code: `src/game/nature.tsx` → `NatureArt`, `NATURE_TINT`; `src/game/sprites.tsx` → `SourceArt`; `src/game/props.tsx` → `PropView` (`look`); `src/game/Scene.tsx` (`carrying` and `action.look` are a `SourceLook`).
+- `SourceArt` draws the cabinet for a noise colour and `NatureArt` for a nature source.
+- Each object is a still SVG with its moving parts laid over it as `Animated` views (native driver in the apps). `useLoop()` runs a value from 0 to 1 repeatedly and `useSwing()` swings it smoothly around a rest pose; both start after a random part of their period, so equal objects never move together. With `still` no loop starts and every part shows its rest pose.
+- Movements: rain drops fall and fade; ripples slide across the stream (clipped to the water); white streaks fall down the waterfall and its foam swells; five reeds sway around their base at different periods; the airplane bobs and tilts while its propeller flickers; the campfire's outer and inner flames stretch at different speeds while two sparks rise; the wave grows and leans; lightning flashes twice in each 3.4 s; two steam wisps rise from the cup; the chime swings from its hook and its strip swings faster; the train rocks in a short double beat, its wheels turn and two smoke puffs rise; the heart beats twice per second (lub-dub).
+- Scenario: The player holds a new speaker, opens edit and taps the waterfall picture → the speaker in the hands becomes the waterfall with falling streaks, the stored sound is `{source: "waterfall", volume: 0.7, oscillators: [], eq}` with the equalizer it had, the noise controls disappear while the Oscillators and Equalizer tabs stay, and its waves turn blue (`#3a86cf`).
+- Spec: [Nature Sources](../../specs/app/10-garden.md#nature-sources). All scenarios: [Nature Source Scenarios](../../testing/scenarios/app/10-garden.md#nature-sources-have-oscillators-and-equalizer).
+
 ## Sound Shadows
 
 - Input: a speaker's sound.
 - Output: concentric sound waves on the ground under the trees, speakers and characters.
-- Code: `src/game/sprites.tsx` → `SoundShadow`, `shadowSize()`, `shadowStrength()`, `SHADOW_TINT`; placed in `src/game/Scene.tsx`.
-- Rings in the noise colour (brown `#8a5326`, pink `#ff4f98`, white `#ffffff`) grow from the speaker to the reach seen in quarter view (`reach × 72 × √2` wide and half that high) in 2.7 s each and fade out as they grow. Each speaker sends a ring after a random wait of 0.6 to 1.4 s (`nextRippleInterval()`), the first one after 0 to 1.4 s (`firstRippleDelay()`), so speakers placed at the same time do not pulse together. The rings are a set of five animated values used in turn; five times the shortest wait is longer than one ring's travel, so a ring has always finished before it is sent again. A ring at rest is invisible. A faint ellipse fills the reach. `shadowStrength()` sets the ring brightness from the volume. The rings are `Animated` views, so they run on the native driver in the apps.
+- Code: `src/game/sprites.tsx` → `SoundShadow`, `shadowSize()`, `shadowStrength()`, `SHADOW_TINT`; `src/game/nature.tsx` → `NATURE_TINT`; placed in `src/game/Scene.tsx`.
+- Rings in the colour of `lookOf()` (noise colours brown `#8a5326`, pink `#ff4f98`, white `#ffffff`; each nature source its own, from `NATURE_TINT`) grow from the speaker to the reach seen in quarter view (`reach × 72 × √2` wide and half that high) in 2.7 s each and fade out as they grow. Each speaker sends a ring after a random wait of 0.6 to 1.4 s (`nextRippleInterval()`), the first one after 0 to 1.4 s (`firstRippleDelay()`), so speakers placed at the same time do not pulse together. The rings are a set of five animated values used in turn; five times the shortest wait is longer than one ring's travel, so a ring has always finished before it is sent again. A ring at rest is invisible. A faint ellipse fills the reach. `shadowStrength()` sets the ring brightness from the volume. The rings are `Animated` views, so they run on the native driver in the apps.
 - The centre opacity is `0.14 + 0.5 × volume`, and zero for a silent speaker. Outward the opacity falls to 62%, 32%, 10% and 0% of the centre at each quarter of the reach.
 - Shadows are drawn with ordinary transparency, so overlapping shadows blend their colours.
 - The scene draws the shadow from the same list the audio engine gets, in which a held speaker sits at the character's position.
@@ -211,9 +226,10 @@ stateDiagram-v2
 
 - Input: the held speaker and drags on its controls.
 - Output: the edited speaker.
-- Code: `src/components/SpeakerEditor.tsx` → `SpeakerEditor`, `OscillatorPanel`; `src/ui.tsx` → `Knob`, `Slider`, `Tabs`, `DragLockContext`, `NO_TOUCH_SCROLL`; `src/game/sprites.tsx` → `WavePicture`; `src/domain/sound.ts` → `waveShape()`.
+- Code: `src/components/SpeakerEditor.tsx` → `SpeakerEditor`, `SourcePicker`, `OscillatorPanel`; `src/ui.tsx` → `Knob`, `Slider`, `Tabs`, `DragLockContext`, `NO_TOUCH_SCROLL`; `src/game/sprites.tsx` → `WavePicture`; `src/domain/sound.ts` → `waveShape()`.
 - `Prepared` (`src/ui.tsx`) lays its children out invisibly (`HIDDEN_READY`) and reveals them three frames after its first layout, when measured children have applied their sizes; with `hidden` it stays invisible but mounted. `Modal` uses it, the settings modal is always mounted with `hidden` while closed, and its card is memoised so walking does not redraw it. The speaker editor keeps the inactive tabs absolutely placed and hidden; the equalizer reads the spectrum only while its tab is shown.
-- Three tabs: Sound (volume with the reach it gives, noise colour and level), Oscillators (OSC A and OSC B panels, an add button while fewer than two), Equalizer ([Equalizer](#equalizer)).
+- The Sound tab starts with the source picker: thirteen picture buttons (a brown speaker for the synthesiser, then each nature source drawn `still` at 62%), with the chosen name above. A choice goes through `withSource()`. Volume, oscillators and equalizer are edited the same way for every source; for a nature source the Sound tab shows, instead of the noise controls, a note that the recording is not ready yet.
+- For the synthesiser, three tabs: Sound (source, volume with the reach it gives, noise colour and level), Oscillators (OSC A and OSC B panels, an add button while fewer than two), Equalizer ([Equalizer](#equalizer)).
 - An oscillator panel has a dark display with two cycles of the wave, drawn taller as the level rises; four wave buttons that show the wave as a picture; and a frequency knob (logarithmic) and a level knob.
 - A knob turns by `(right − up) / 170 px` of drag, so vertical and horizontal drags both work.
 - Dragged controls call the drag lock while a finger is down; the editor's scroll view stops scrolling meanwhile. On the web they also set `touch-action: none` so the browser does not scroll with the same touch.

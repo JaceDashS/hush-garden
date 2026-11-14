@@ -23,7 +23,7 @@ import { actionDuration, liftTravel, type ActionName, type GroundSpot } from "..
 import { PICK_UP_TILES } from "../domain/characters";
 import { BUBBLE_MS, CHAT_MAX_LENGTH, cleanMessage, cueFor } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
-import { MAX_SPEAKERS, audibleCount, defaultSound, type NoiseColor, type Speaker } from "../domain/sound";
+import { MAX_SPEAKERS, audibleCount, defaultSound, lookOf, type SourceLook, type Speaker } from "../domain/sound";
 import type { TextKey } from "../domain/text";
 import { GARDEN_SIZE, clampToGarden, distance, keysToInput, step, toGarden, type Point } from "../domain/world";
 import { Scene, groundSpotFor, type Actor, type Marker } from "../game/Scene";
@@ -437,9 +437,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   }, [carryId, carried]);
 
   /** Plays an action of the player's character and runs `after` when it ends. */
-  const play = useCallback((name: ActionName, color: NoiseColor, after: () => void, ground?: GroundSpot, spot?: Point) => {
+  const play = useCallback((name: ActionName, look: SourceLook, after: () => void, ground?: GroundSpot, spot?: Point) => {
     acting.current = true;
-    setAction({ name, startedAt: Date.now(), color, ground, spot });
+    setAction({ name, startedAt: Date.now(), look, ground, spot });
     setTimeout(() => {
       if (!alive.current) return;
       acting.current = false;
@@ -453,7 +453,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (acting.current || carryId) return;
     setCarryId(speaker.id);
     // The speaker leaves the ground from where it stands, so the lift starts exactly on the drawn speaker.
-    play("lift", speaker.sound.noise.color, () => undefined, groundSpotFor(meRef.current, speaker, facing), { x: speaker.x, y: speaker.y });
+    play("lift", lookOf(speaker.sound), () => undefined, groundSpotFor(meRef.current, speaker, facing), { x: speaker.x, y: speaker.y });
   };
 
   /** Puts the carried speaker down one step in front of the character. */
@@ -465,7 +465,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     // The spot is fixed when the button is pressed, so the animation ends exactly where the speaker then stands.
     const ahead = toGarden({ x: facing * 40, y: 14 });
     const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
-    play("putDown", carried.sound.noise.color, () => {
+    play("putDown", lookOf(carried.sound), () => {
       setCarryId(null);
       if (placedRef.current.some((speaker) => speaker.id === id)) changeSpeakers(moveSpeaker(placedRef.current, id, spot), id);
     }, groundSpotFor(meRef.current, spot, facing), spot);
@@ -475,7 +475,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const create = () => {
     if (acting.current || carryId) return;
     if (placed.length >= MAX_SPEAKERS) return flash("notice.maxSpeakers", { n: MAX_SPEAKERS });
-    play("create", defaultSound().noise.color, () => {
+    play("create", lookOf(defaultSound()), () => {
       if (placedRef.current.length >= MAX_SPEAKERS) return;
       const id = newId();
       changeSpeakers(addSpeaker(placedRef.current, meRef.current, id), id);
@@ -488,7 +488,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (acting.current || !carried) return;
     const id = carried.id;
     setEditing(false);
-    play("discard", carried.sound.noise.color, () => {
+    play("discard", lookOf(carried.sound), () => {
       setCarryId(null);
       if (!online) return onGarden({ ...gardenRef.current, speakers: removeSpeaker(placedRef.current, id) });
       setPublicSpeakers(removeSpeaker(placedRef.current, id));
@@ -532,7 +532,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const myName = online ? entry?.name ?? "…" : settings.name || t("name.me");
   const actors: Actor[] = useMemo(() => {
     const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, name: player.name, label: player.place, bubble: bubbles[player.id]?.text, kind: player.character, facing: motion[player.id]?.facing, walking: motion[player.id]?.walking }));
-    list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, facing, walking, carrying: action ? undefined : carried?.sound.noise.color, action });
+    list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, facing, walking, carrying: action ? undefined : carried ? lookOf(carried.sound) : undefined, action });
     return list;
   }, [others, motion, bubbles, me, myName, place, facing, walking, settings.character, carried, action]);
 

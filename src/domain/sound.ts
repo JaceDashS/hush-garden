@@ -1,4 +1,7 @@
-/** Speaker sound model and distance mixing. There is one kind of speaker; every speaker has all of these controls. */
+/**
+ * Speaker sound model and distance mixing. A speaker plays either the synthesiser (noise, oscillators and an
+ * equalizer) or one nature source, which has only a volume and is drawn as its own object.
+ */
 import { flatEqualizer, normalizeEqualizer, type Equalizer } from "./equalizer";
 import { TILE_WIDTH, distance, toScreen, type Point } from "./world";
 
@@ -13,7 +16,16 @@ export interface Oscillator {
   level: number;
 }
 
-export interface SpeakerSound {
+/**
+ * Nature sources in the order the sound picker shows them: first those a long crossfaded recording covers, then
+ * those that add events on a bed, then those with a played rhythm.
+ */
+export const NATURE_SOURCES = ["rain", "stream", "waterfall", "reeds", "airplane", "campfire", "waves", "thunder", "cafe", "windchime", "train", "heartbeat"] as const;
+export type NatureSource = (typeof NATURE_SOURCES)[number];
+export type SoundSource = "synth" | NatureSource;
+
+export interface SynthSound {
+  source: "synth";
   /** Overall loudness, 0 to 1. It also decides how far the speaker is heard: see reachOf(). */
   volume: number;
   noise: { color: NoiseColor; level: number };
@@ -21,6 +33,39 @@ export interface SpeakerSound {
   oscillators: Oscillator[];
   /** One five-band curve: low cut, low shelf, bell, high shelf and high cut. */
   eq: Equalizer;
+}
+
+/**
+ * A nature source: its recording takes the place of the synthesiser's noise; the oscillators and the equalizer
+ * work as for the synthesiser. There is no default oscillator.
+ */
+export interface NatureSound {
+  source: NatureSource;
+  /** Overall loudness, 0 to 1, and with it the reach, as for the synthesiser. */
+  volume: number;
+  oscillators: Oscillator[];
+  eq: Equalizer;
+}
+
+export type SpeakerSound = SynthSound | NatureSound;
+
+/** How a speaker looks: a speaker cabinet in its noise colour, or the object of its nature source. */
+export type SourceLook = NoiseColor | NatureSource;
+
+export const isSynth = (sound: SpeakerSound): sound is SynthSound => sound.source === "synth";
+export const isNatureSource = (value: unknown): value is NatureSource => NATURE_SOURCES.includes(value as NatureSource);
+export const lookOf = (sound: SpeakerSound): SourceLook => (isSynth(sound) ? sound.noise.color : sound.source);
+
+/**
+ * The sound after choosing a source in the editor. The volume and the equalizer always stay. Going from the
+ * synthesiser to a nature source empties the oscillators, since a nature source has none by default; between
+ * nature sources they stay; going back to the synthesiser keeps them and takes the default noise.
+ */
+export function withSource(sound: SpeakerSound, source: SoundSource): SpeakerSound {
+  if (source === sound.source) return sound;
+  const { volume, eq } = sound;
+  if (source === "synth") return { source, volume, noise: defaultSound().noise, oscillators: sound.oscillators, eq };
+  return { source, volume, oscillators: isSynth(sound) ? [] : sound.oscillators, eq };
 }
 
 export interface Speaker {
@@ -57,8 +102,9 @@ export function defaultOscillator(index: number): Oscillator {
 }
 
 /** A gentle brown noise with a low sine under it: the sound a new speaker starts with. */
-export function defaultSound(): SpeakerSound {
+export function defaultSound(): SynthSound {
   return {
+    source: "synth",
     volume: 0.7,
     noise: { color: "brown", level: 0.8 },
     oscillators: [defaultOscillator(0)],
@@ -69,15 +115,12 @@ export function defaultSound(): SpeakerSound {
 /**
  * Turns any stored or received value into a valid sound: missing fields get defaults and numbers are clamped.
  * Sounds saved before the bass drone was removed carry `bass`; it becomes a sine oscillator of the same loudness
- * placed before the others. A former `radius` is ignored.
+ * placed before the others. A former `radius` is ignored. A value without a source, as every sound saved before
+ * nature sources existed, is a synthesiser sound; a nature source keeps its volume, oscillators and equalizer.
  */
 export function normalizeSound(value: unknown): SpeakerSound {
   const base = defaultSound();
   const v = record(value);
-  const noise = record(v.noise);
-  const bass = record(v.bass);
-  const bassLevel = v.bass ? unit(bass.level, 0.35) : 0;
-  const fromBass: Oscillator[] = bassLevel > 0 ? [{ wave: "sine", frequency: num(bass.frequency, LIMITS.oscillatorFrequency, 55), level: Math.min(1, bassLevel * BASS_TO_OSCILLATOR) }] : [];
   const stored: Oscillator[] = (Array.isArray(v.oscillators) ? v.oscillators : []).map((item) => {
     const o = record(item);
     return {
@@ -86,9 +129,16 @@ export function normalizeSound(value: unknown): SpeakerSound {
       level: unit(o.level, 0.2),
     };
   });
+  // A nature source has no default oscillator and no noise; it never had a bass drone.
+  if (isNatureSource(v.source)) return { source: v.source, volume: unit(v.volume, base.volume), oscillators: stored.slice(0, MAX_OSCILLATORS), eq: normalizeEqualizer(v.eq) };
+  const noise = record(v.noise);
+  const bass = record(v.bass);
+  const bassLevel = v.bass ? unit(bass.level, 0.35) : 0;
+  const fromBass: Oscillator[] = bassLevel > 0 ? [{ wave: "sine", frequency: num(bass.frequency, LIMITS.oscillatorFrequency, 55), level: Math.min(1, bassLevel * BASS_TO_OSCILLATOR) }] : [];
   // A value that says nothing about tones gets the default low hum.
   const silentOnTones = !Array.isArray(v.oscillators) && !v.bass;
   return {
+    source: "synth",
     volume: unit(v.volume, base.volume),
     noise: { color: NOISE_COLORS.includes(noise.color as NoiseColor) ? (noise.color as NoiseColor) : base.noise.color, level: unit(noise.level, base.noise.level) },
     oscillators: silentOnTones ? base.oscillators : [...fromBass, ...stored].slice(0, MAX_OSCILLATORS),

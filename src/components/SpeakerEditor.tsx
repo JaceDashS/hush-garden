@@ -1,14 +1,15 @@
 /**
- * Sound controls of the speaker the character holds. Every speaker has the same controls; there is only one kind.
- * The controls are split into three tabs so each fits a phone screen, and the page does not scroll while a
+ * Sound controls of the speaker the character holds. The Sound tab chooses what the speaker plays: the
+ * synthesiser, or a nature source, which has only a volume and no other tabs. The synthesiser's controls are
+ * split into three tabs so each fits a phone screen, and the page does not scroll while a
  * slider, a knob or an equalizer point is being dragged. All three tabs are kept laid out, so switching shows a
  * tab at once and fully drawn, and the editor itself appears only once it is ready.
  */
 import React, { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { LIMITS, MAX_OSCILLATORS, NOISE_COLORS, WAVES, defaultOscillator, reachOf, type Oscillator, type Speaker, type SpeakerSound } from "../domain/sound";
-import { SHADOW_TINT, WavePicture } from "../game/sprites";
+import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, defaultOscillator, isSynth, lookOf, reachOf, withSource, type Oscillator, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
+import { SHADOW_TINT, SourceArt, WavePicture } from "../game/sprites";
 import { useT } from "../i18n";
 import { Btn, Chips, DragLockContext, HIDDEN_READY, IconBtn, Input, Knob, Prepared, Slider, T, Tabs, colors } from "../ui";
 import { EqGraph, type Spectrum } from "./EqGraph";
@@ -71,13 +72,41 @@ function OscillatorPanel({ index, oscillator, onChange, onRemove }: { index: num
   );
 }
 
+/** The pictures to choose what a speaker plays: the synthesiser speaker and each nature source. */
+function SourcePicker({ value, onChange }: { value: SoundSource; onChange: (source: SoundSource) => void }) {
+  const t = useT();
+  const sources: SoundSource[] = ["synth", ...NATURE_SOURCES];
+  return (
+    <View style={{ gap: 6 }}>
+      <T size={12.5} tone="muted" weight="700">{t("source.label") + " · " + t(("source." + value) as "source.synth")}</T>
+      <View accessibilityRole="radiogroup" style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {sources.map((source) => {
+          const selected = source === value;
+          return (
+            <Pressable key={source} accessibilityRole="radio" accessibilityLabel={t(("source." + source) as "source.synth")} accessibilityState={{ selected }} testID={"source-" + source} onPress={() => onChange(source)} style={{ width: 50, height: 56, borderRadius: 12, borderWidth: 2, borderColor: selected ? colors.mintDeep : colors.panelEdge, backgroundColor: selected ? colors.mint : colors.white, alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+              <View pointerEvents="none" style={{ width: 60, height: 76, transform: [{ scale: 0.62 }] }}>
+                <SourceArt look={source === "synth" ? "brown" : source} shadow={false} still />
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 /** `onChange` receives the whole edited speaker. `readSpectrum` feeds the analyser behind the equalizer curve. */
 export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { speaker: Speaker; onChange: (speaker: Speaker) => void; onClose: () => void; readSpectrum: () => Spectrum | null }) {
   const t = useT();
   const [tab, setTab] = useState<Tab>("sound");
   const [dragging, setDragging] = useState(false);
   const sound = speaker.sound;
-  const set = (patch: Partial<SpeakerSound>) => onChange({ ...speaker, sound: { ...sound, ...patch } });
+  const synth = isSynth(sound) ? sound : null;
+  const shown: Tab = tab;
+  // Volume, oscillators and equalizer belong to every source; only the synthesiser has noise.
+  const set = (patch: Partial<Pick<SpeakerSound, "volume" | "oscillators" | "eq">>) => onChange({ ...speaker, sound: { ...sound, ...patch } });
+  const setVolume = (volume: number) => set({ volume });
+  const setNoise = (patch: Partial<SynthSound["noise"]>) => synth && onChange({ ...speaker, sound: { ...synth, noise: { ...synth.noise, ...patch } } });
   const setOscillator = (index: number, patch: Partial<Oscillator>) => set({ oscillators: sound.oscillators.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
   const next = sound.oscillators.length;
   return (
@@ -94,24 +123,33 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
           <Tabs value={tab} onChange={setTab} options={[{ value: "sound", label: t("tab.sound") }, { value: "osc", label: t("tab.osc") }, { value: "eq", label: t("tab.eq") }]} />
         </View>
         <ScrollView style={{ flex: 1 }} scrollEnabled={!dragging} contentContainerStyle={{ padding: 12, gap: 10 }} keyboardShouldPersistTaps="handled">
-          <View style={pane(tab === "sound")} pointerEvents={tab === "sound" ? "auto" : "none"}>
-              <Slider label={t("editor.volume")} value={sound.volume} min={0} max={1} format={percent} onChange={(volume) => set({ volume })} testID="speaker-volume" />
-              <T size={12} tone="muted">{t("editor.reach", { n: reachOf(sound).toFixed(1) })}</T>
+          <View style={pane(shown === "sound")} pointerEvents={shown === "sound" ? "auto" : "none"}>
+              <SourcePicker value={sound.source} onChange={(source) => onChange({ ...speaker, sound: withSource(sound, source) })} />
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, borderTopWidth: 2, borderTopColor: colors.track }}>
-                <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: SHADOW_TINT[sound.noise.color], borderWidth: 2, borderColor: colors.ink }} />
-                <Chips label={t("noise.kind")} value={sound.noise.color} options={NOISE_COLORS.map((color) => ({ value: color, label: t(("noise." + color) as "noise.white") }))} onChange={(color) => set({ noise: { ...sound.noise, color } })} />
+                <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: SHADOW_TINT[lookOf(sound)], borderWidth: 2, borderColor: colors.ink }} />
+                <View style={{ flex: 1 }}>
+                  <Slider label={t("editor.volume")} value={sound.volume} min={0} max={1} format={percent} onChange={setVolume} testID="speaker-volume" />
+                </View>
               </View>
-              <Slider label={t("noise.level")} value={sound.noise.level} min={0} max={1} format={percent} onChange={(level) => set({ noise: { ...sound.noise, level } })} testID="noise-level" />
+              <T size={12} tone="muted">{t("editor.reach", { n: reachOf(sound).toFixed(1) })}</T>
+              {synth ? (
+                <>
+                  <Chips label={t("noise.kind")} value={synth.noise.color} options={NOISE_COLORS.map((color) => ({ value: color, label: t(("noise." + color) as "noise.white") }))} onChange={(color) => setNoise({ color })} />
+                  <Slider label={t("noise.level")} value={synth.noise.level} min={0} max={1} format={percent} onChange={(level) => setNoise({ level })} testID="noise-level" />
+                </>
+              ) : (
+                <T size={12} tone="muted">{t("source.coming")}</T>
+              )}
           </View>
-          <View style={pane(tab === "osc")} pointerEvents={tab === "osc" ? "auto" : "none"}>
+          <View style={pane(shown === "osc")} pointerEvents={shown === "osc" ? "auto" : "none"}>
               {sound.oscillators.length === 0 && <T size={12.5} tone="muted">{t("osc.empty")}</T>}
               {sound.oscillators.map((oscillator, index) => (
                 <OscillatorPanel key={index} index={index} oscillator={oscillator} onChange={(patch) => setOscillator(index, patch)} onRemove={() => set({ oscillators: sound.oscillators.filter((_, i) => i !== index) })} />
               ))}
               {next < MAX_OSCILLATORS && <Btn small title={t("osc.add", { name: PANELS[next].name })} onPress={() => set({ oscillators: [...sound.oscillators, defaultOscillator(next)] })} testID="oscillator-add" />}
           </View>
-          <View style={pane(tab === "eq")} pointerEvents={tab === "eq" ? "auto" : "none"}>
-            <EqGraph eq={sound.eq} active={tab === "eq"} onChange={(eq) => set({ eq })} readSpectrum={readSpectrum} />
+          <View style={pane(shown === "eq")} pointerEvents={shown === "eq" ? "auto" : "none"}>
+            <EqGraph eq={sound.eq} active={shown === "eq"} onChange={(eq) => set({ eq })} readSpectrum={readSpectrum} />
           </View>
         </ScrollView>
       </View>

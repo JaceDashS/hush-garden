@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LIMIT_KNEE, LIMIT_RANGE, limiterCurve, softClip } from "../src/audio/limiter.ts";
 import { fillNoise, loopOffset } from "../src/audio/noise.ts";
+import { lookOf } from "../src/domain/sound.ts";
 import { RIPPLE_INTERVAL, RIPPLE_POOL, RIPPLE_SECONDS, firstRippleDelay, nextRippleInterval } from "../src/game/ripple.ts";
 import { parseServerMessage, socketUrl } from "../src/api/socket.ts";
 import { roundCoordinate } from "../src/coordinates.ts";
@@ -24,7 +25,7 @@ test("server messages are validated and unknown ones are dropped", () => {
   const joined = parseServerMessage(JSON.stringify({ t: "join", player: { id: "q", x: 1, y: 1, character: "dragon" } }));
   assert.ok(joined && joined.t === "join" && joined.player.character === "bunny");
   assert.equal(hello.speakers.length, 1);
-  assert.equal(hello.speakers[0].sound.noise.color, "brown");
+  assert.equal(lookOf(hello.speakers[0].sound), "brown");
   assert.deepEqual(parseServerMessage(JSON.stringify({ t: "rename", id: "p", name: "Momo" })), { t: "rename", id: "p", name: "Momo" });
   assert.equal(parseServerMessage(JSON.stringify({ t: "rename", id: "p" })), null);
   const moves = parseServerMessage(JSON.stringify({ t: "moves", moves: [{ id: "p", x: 1, y: 1 }, { id: "q", x: "a", y: 1 }] }));

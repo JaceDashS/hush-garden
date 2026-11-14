@@ -1,6 +1,7 @@
 /**
  * Synthesises what the listener hears. Each speaker in range is a voice (noise and oscillator tones through an
- * EQ and filters); voices are summed on a bus. A chat cue briefly swaps part of the bus for a darker copy leaning
+ * EQ and filters); voices are summed on a bus. A nature source has no recording yet: its voice holds only its
+ * oscillators, and one without oscillators gets no voice. A chat cue briefly swaps part of the bus for a darker copy leaning
  * toward the talker, so loudness and bass stay and only the brightness moves. A limiter after the master rounds
  * off any peak that would clip.
  *
@@ -9,7 +10,7 @@
 import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type AudioNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
 import { bandCoefficients, type EqBand } from "../domain/equalizer";
-import { mixFor, reachOf, type NoiseColor, type Speaker } from "../domain/sound";
+import { isSynth, mixFor, reachOf, type NoiseColor, type Speaker, type SpeakerSound } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { LIMIT_RANGE, limiterCurve } from "./limiter";
 import { fillNoise, loopOffset } from "./noise";
@@ -40,13 +41,14 @@ interface BandSlot {
 }
 
 interface Voice {
-  /** Changes when nodes must be rebuilt: the noise colour or the oscillator waves. */
+  /** Changes when nodes must be rebuilt: the noise colour or nature source, or the oscillator waves. */
   shape: string;
   /** Changes when any value changed. */
   key: string;
   sources: (AudioBufferSourceNode | OscillatorNode)[];
   nodes: { disconnect(): void }[];
-  noiseGain: GainNode;
+  /** The noise of a synthesiser sound; a nature source has none. */
+  noiseGain: GainNode | null;
   tones: { oscillator: OscillatorNode; gain: GainNode }[];
   bands: BandSlot[];
   /** The end of the equalizer chain: what this speaker sounds like before distance and pan. */
@@ -57,7 +59,9 @@ interface Voice {
   pan: StereoPannerNode;
 }
 
-const shapeOf = (sound: Speaker["sound"]) => sound.noise.color + "|" + sound.oscillators.map((o) => o.wave).join(",");
+const shapeOf = (sound: SpeakerSound) => (isSynth(sound) ? sound.noise.color : "nature:" + sound.source) + "|" + sound.oscillators.map((o) => o.wave).join(",");
+/** Whether a speaker makes any sound now: the synthesiser always; a nature source only through its oscillators. */
+const playable = (sound: SpeakerSound) => isSynth(sound) || sound.oscillators.length > 0;
 
 export class GardenAudio {
   private context: AudioContext | null = null;
@@ -129,9 +133,12 @@ export class GardenAudio {
     await context?.close();
   }
 
-  /** Replaces the speaker layout. A voice is rebuilt only when its sound settings changed. */
+  /**
+   * Replaces the speaker layout. A voice is rebuilt only when its sound settings changed. A nature source without
+   * oscillators makes no sound yet, so it is left out and does not turn the mix down.
+   */
   setSpeakers(speakers: readonly Speaker[]): void {
-    this.speakers = [...speakers];
+    this.speakers = speakers.filter((speaker) => playable(speaker.sound));
     this.refresh();
   }
 
@@ -263,10 +270,13 @@ export class GardenAudio {
       nodes.push(source, gain);
       return gain;
     };
-    const noise = context.createBufferSource();
-    noise.buffer = this.noise(context, sound.noise.color);
-    noise.loop = true;
-    const noiseGain = feed(noise);
+    // The recording of a nature source will take this place.
+    const noise = isSynth(sound) ? context.createBufferSource() : null;
+    if (noise && isSynth(sound)) {
+      noise.buffer = this.noise(context, sound.noise.color);
+      noise.loop = true;
+    }
+    const noiseGain = noise ? feed(noise) : null;
     const tones = sound.oscillators.map((item) => {
       const oscillator = context.createOscillator();
       oscillator.type = item.wave;
@@ -287,16 +297,16 @@ export class GardenAudio {
     pan.connect(this.bus);
     nodes.push(sum, ...bands.flatMap((band) => [band.input, band.output]), level, pan);
     const at = context.currentTime;
-    noise.start(at, loopOffset(NOISE_SECONDS));
+    noise?.start(at, loopOffset(NOISE_SECONDS));
     for (const tone of tones) tone.oscillator.start(at);
     return { shape: shapeOf(sound), key: "", sources, nodes, noiseGain, tones, bands, shaped: tail, level, pan };
   }
 
   /** Applies sound values to an existing voice. Values glide, so dragging a slider is heard without clicks. */
-  private tune(context: AudioContext, voice: Voice, sound: Speaker["sound"]): void {
+  private tune(context: AudioContext, voice: Voice, sound: SpeakerSound): void {
     const now = context.currentTime;
     const set = (param: { setTargetAtTime(value: number, start: number, constant: number): unknown }, value: number) => param.setTargetAtTime(value, now, GLIDE / 2);
-    set(voice.noiseGain.gain, sound.noise.level);
+    if (voice.noiseGain && isSynth(sound)) set(voice.noiseGain.gain, sound.noise.level);
     voice.tones.forEach((tone, index) => {
       set(tone.oscillator.frequency, sound.oscillators[index].frequency);
       set(tone.gain.gain, sound.oscillators[index].level * 0.3);
