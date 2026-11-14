@@ -35,6 +35,9 @@ export function createSoundStore(): SoundStore {
         if (request.url !== MANIFEST && !keep.has(path)) await cache.delete(request);
       }
     },
+    async clear() {
+      await caches.delete(CACHE);
+    },
     async readManifest() {
       const hit = await (await open()).match(MANIFEST);
       return hit ? hit.json() : null;

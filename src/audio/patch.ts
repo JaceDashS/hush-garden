@@ -1,8 +1,9 @@
 /**
  * The nature sound patch: after entering, every built recording is downloaded from the platform server onto the
- * device. Nature sources can be chosen and heard only once all files are there. The server's manifest lists the
- * files with their sizes and a version; files already on the device are kept, missing ones are fetched, and files
- * of older versions are removed. Without a connection, a complete earlier download is used as it is.
+ * device, once the player agreed to the download. Nature sources can be chosen and heard only once all files are
+ * there. The server's manifest lists the files with their sizes and a version; files already on the device are
+ * kept, missing ones are fetched, and files of older versions are removed. Without a connection, a complete
+ * earlier download is used as it is.
  */
 import { isManifest, type SoundFiles, type SoundManifest } from "./library";
 
@@ -13,11 +14,14 @@ export interface SoundStore {
   source(path: string): Promise<ArrayBuffer | string>;
   /** Removes stored files whose path is not in `keep`. */
   prune(keep: Set<string>): Promise<void>;
+  /** Removes every stored file and the stored manifest (developer option: download again). */
+  clear(): Promise<void>;
   readManifest(): Promise<unknown>;
   writeManifest(manifest: SoundManifest): Promise<void>;
 }
 
-export type PatchPhase = "checking" | "downloading" | "ready" | "failed";
+/** "asking": files are missing and the player is asked; "declined": the player chose not to download now. */
+export type PatchPhase = "checking" | "asking" | "downloading" | "ready" | "declined" | "failed";
 
 export interface PatchState {
   phase: PatchPhase;
@@ -34,9 +38,10 @@ const files = (manifest: SoundManifest) => manifest.recordings.flatMap((recordin
 
 /**
  * Brings the device up to the server's manifest. Reports progress through `onState` and resolves with the files
- * to play, or null when they cannot all be there (then nature sources stay unavailable this session).
+ * to play, or null when they cannot all be there (then nature sources stay unavailable this session). When files
+ * are missing, `ask` is called with their total size first; nothing is downloaded unless it resolves true.
  */
-export async function runPatch(baseUrl: string, store: SoundStore, onState: (state: PatchState) => void, fetchJson: (url: string) => Promise<unknown> = (url) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))): Promise<SoundFiles | null> {
+export async function runPatch(baseUrl: string, store: SoundStore, onState: (state: PatchState) => void, ask: (missingBytes: number) => Promise<boolean> = async () => true, fetchJson: (url: string) => Promise<unknown> = (url) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status))))): Promise<SoundFiles | null> {
   const base = baseUrl.replace(/\/+$/, "") + "/";
   onState({ phase: "checking", doneBytes: 0, totalBytes: 0, doneFiles: 0, totalFiles: 0 });
   let manifest: SoundManifest | null = null;
@@ -61,7 +66,16 @@ export async function runPatch(baseUrl: string, store: SoundStore, onState: (sta
       state.doneFiles += 1;
     } else missing.push(file);
   }
-  onState({ ...state });
+  if (missing.length) {
+    const missingBytes = missing.reduce((sum, file) => sum + file.bytes, 0);
+    onState({ ...state, phase: "asking" });
+    if (!(await ask(missingBytes))) {
+      onState({ ...state, phase: "declined" });
+      return null;
+    }
+    // Downloading is shown only from here, so nothing flashes before the question is answered.
+    onState({ ...state });
+  }
   let failed = false;
   const queue = [...missing];
   const worker = async () => {

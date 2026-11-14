@@ -99,7 +99,7 @@ function SourcePicker({ value, onChange, locked }: { value: SoundSource; onChang
 }
 
 /** `onChange` receives the whole edited speaker. `readSpectrum` feeds the analyser behind the equalizer curve. */
-export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, natureLock = null }: { speaker: Speaker; onChange: (speaker: Speaker) => void; onClose: () => void; readSpectrum: () => Spectrum | null; natureLock?: "loading" | "failed" | null }) {
+export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, natureLock = null }: { speaker: Speaker; onChange: (speaker: Speaker) => void; onClose: () => void; readSpectrum: () => Spectrum | null; natureLock?: "loading" | "failed" | "declined" | null }) {
   const natureReady = natureLock === null;
   const t = useT();
   const [tab, setTab] = useState<Tab>("sound");
@@ -131,7 +131,7 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, nature
         <ScrollView style={{ flex: 1 }} scrollEnabled={!dragging} contentContainerStyle={{ padding: 12, gap: 10 }} keyboardShouldPersistTaps="handled">
           <View style={pane(shown === "sound")} pointerEvents={shown === "sound" ? "auto" : "none"}>
               <SourcePicker value={sound.source} locked={!natureReady} onChange={(source) => onChange({ ...speaker, sound: withSource(sound, source) })} />
-              {!natureReady && <T size={12} tone="muted">{t(natureLock === "failed" ? "patch.lockedFailed" : "patch.locked")}</T>}
+              {!natureReady && <T size={12} tone="muted">{t(natureLock === "failed" ? "patch.lockedFailed" : natureLock === "declined" ? "patch.lockedDeclined" : "patch.locked")}</T>}
               {/* Where the synthesiser chooses its noise colour, a nature source chooses its recording, and the heartbeat its tempo. */}
               {(synth || recordings.length > 1) && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, borderTopWidth: 2, borderTopColor: colors.track }}>

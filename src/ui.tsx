@@ -253,6 +253,18 @@ export function IconBtn({ label, onPress, children, size = 44, variant = "plain"
   );
 }
 
+/** A checkbox with its label; the whole row is pressable. */
+export function Check({ label, value, onChange, testID }: { label: string; value: boolean; onChange: (value: boolean) => void; testID?: string }) {
+  return (
+    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: value }} accessibilityLabel={label} testID={testID} onPress={() => onChange(!value)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 32 }}>
+      <View style={{ width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: value ? colors.mintDeep : colors.panelEdge, backgroundColor: value ? colors.mint : colors.white, alignItems: "center", justifyContent: "center" }}>
+        {value && <T size={13} weight="800">✓</T>}
+      </View>
+      <T size={13.5} weight="700">{label}</T>
+    </Pressable>
+  );
+}
+
 /** A row of tabs; the chosen one is filled. */
 export function Tabs<V extends string>({ value, options, onChange }: { value: V; options: readonly { value: V; label: string }[]; onChange: (value: V) => void }) {
   return (

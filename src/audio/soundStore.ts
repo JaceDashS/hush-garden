@@ -34,6 +34,10 @@ export function createSoundStore(): SoundStore {
         if (item instanceof File && item.name !== "manifest.json" && !keep.has(nameToPath(item.name))) item.delete();
       }
     },
+    async clear() {
+      const dir = folder();
+      if (dir.exists) dir.delete();
+    },
     async readManifest() {
       const file = new File(folder(), "manifest.json");
       return file.exists ? JSON.parse(await file.text()) : null;

@@ -15,7 +15,8 @@ import { getDeviceId } from "../deviceId";
 import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User } from "../api/types";
 import type { GardenAudio } from "../audio/engine";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
-import { ConsentCard, LoginCard, PresetCard, SettingsCard } from "../components/Panels";
+import { ConsentCard, LoginCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
+import { GardenStatus } from "../components/GardenStatus";
 import { SOUND_KEY_CODE, SoundButton } from "../components/SoundButton";
 import { SpeakerEditor } from "../components/SpeakerEditor";
 import { startPatch, usePatchState } from "../audio/patchSession";
@@ -131,10 +132,31 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   // --- sound -------------------------------------------------------------------------------------------------
   useEffect(() => audio.setSpeakers(speakers), [audio, speakers]);
-  // Entering a garden starts the nature sound download; nature sources stay silent and unchoosable until it ends.
-  useEffect(() => startPatch(audio), [audio]);
+  // Entering a garden checks the nature sounds. When files are missing the player is asked first (unless they
+  // agreed before or ticked "don't ask again"); nature sources stay silent and unchoosable until all are there.
+  const [askNature, setAskNature] = useState<{ bytes: number; answer: (yes: boolean) => void } | null>(null);
+  const askDownload = useCallback((bytes: number) => {
+    const choice = settingsRef.current.natureSounds;
+    if (choice !== "ask") return Promise.resolve(choice === "yes");
+    return new Promise<boolean>((answer) => setAskNature({ bytes, answer }));
+  }, []);
+  useEffect(() => startPatch(audio, askDownload), [audio, askDownload]);
   const patch = usePatchState();
-  const natureLock = patch?.phase === "ready" ? null : patch?.phase === "failed" ? "failed" : "loading";
+  const natureLock = patch?.phase === "ready" ? null : patch?.phase === "failed" ? "failed" : patch?.phase === "declined" ? "declined" : "loading";
+  const answerNature = (yes: boolean, dontAsk = false) => {
+    const next = yes ? "yes" : dontAsk ? "no" : settingsRef.current.natureSounds;
+    if (next !== settingsRef.current.natureSounds) {
+      settingsRef.current = { ...settingsRef.current, natureSounds: next };
+      onSettings(settingsRef.current);
+    }
+    askNature?.answer(yes);
+    setAskNature(null);
+  };
+  const downloadNature = () => {
+    settingsRef.current = { ...settingsRef.current, natureSounds: "yes" };
+    onSettings(settingsRef.current);
+    startPatch(audio, async () => true, true);
+  };
   useEffect(() => audio.setListener(me), [audio, me]);
   useEffect(() => audio.setVolume(settings.volume), [audio, settings.volume]);
 
@@ -569,8 +591,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const showEditor = editing && !!carried && !action;
 
   // The settings card is prepared once and only redrawn when what it shows changes, not on every step.
-  const settingsHandlers = useRef({ onSettings, changeName, togglePlay, logout, onExit });
-  settingsHandlers.current = { onSettings, changeName, togglePlay, logout, onExit };
+  const settingsHandlers = useRef({ onSettings, changeName, togglePlay, logout, onExit, downloadNature });
+  settingsHandlers.current = { onSettings, changeName, togglePlay, logout, onExit, downloadNature };
   const settingsOpen = panel === "settings";
   const settingsCard = useMemo(
     () => (
@@ -581,6 +603,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         online={online}
         shownName={myName}
         nameError={nameError ? t(nameError) : ""}
+        nature={patch?.phase ?? null}
+        onDownloadNature={() => settingsHandlers.current.downloadNature()}
         onChange={(next) => settingsHandlers.current.onSettings(next)}
         onName={(name) => settingsHandlers.current.changeName(name)}
         onPresets={() => setPanel("presets")}
@@ -590,7 +614,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         onClose={() => setPanel(null)}
       />
     ),
-    [settingsOpen, settings, entry?.user, online, myName, nameError, t],
+    [settingsOpen, settings, entry?.user, online, myName, nameError, t, patch?.phase],
   );
   const lostText = online && link === "lost" ? t(enterError || "notice.lost") : online && link === "replaced" ? t("notice.replaced") : "";
   const pill = { backgroundColor: "rgba(255,250,242,0.92)", borderRadius: 14, paddingHorizontal: 12, paddingVertical: 4, alignItems: "center" } as const;
@@ -605,10 +629,12 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             <View pointerEvents="box-none" style={{ flex: 1, alignItems: "flex-start" }}>
               {canEdit && link === "online" && (carried ? <Btn small variant="danger" title={t("top.discard")} disabled={!!action} onPress={discard} testID="speaker-discard" /> : <Btn small variant="primary" title={t("top.create")} disabled={!!action || !!carryId} onPress={create} testID="speaker-create" />)}
             </View>
-            <View pointerEvents="none" testID="garden-status" style={[pill, { flexShrink: 1 }]}>
-              <T size={12} weight="800" lines={1}>{t(online ? "status.public" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}</T>
-              <T size={11.5} weight="700" tone="muted" lines={1}>{patch && patch.phase !== "ready" ? (patch.phase === "failed" ? t("patch.failed") : t("patch.loading", { n: patch.totalBytes ? Math.floor((100 * patch.doneBytes) / patch.totalBytes) : 0 })) : t("status.heard", { n: heard })}</T>
-            </View>
+            <GardenStatus
+              title={t(online ? "status.public" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}
+              detail={patch?.phase === "failed" ? t("patch.failed") : t("status.heard", { n: heard })}
+              progress={patch?.phase === "downloading" ? (patch.totalBytes ? patch.doneBytes / patch.totalBytes : 0) : null}
+              gaugeLabel={t("status.downloading")}
+            />
             <View pointerEvents="box-none" style={{ flex: 1, flexDirection: "row", justifyContent: "flex-end", gap: 6 }}>
               <SoundButton playing={playing} volume={settings.volume} onToggle={() => void togglePlay()} onVolume={(volume) => onSettings({ ...settings, volume })} />
               <IconBtn label={t("top.settings")} onPress={() => setPanel("settings")} testID="open-settings">
@@ -675,6 +701,11 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               <Btn title={t("common.back")} onPress={onExit} />
             </View>
           )}
+        </Modal>
+      )}
+      {askNature && !(online && (link === "consent" || link === "entering")) && (
+        <Modal>
+          <NatureDownloadCard megabytes={Math.max(1, Math.round(askNature.bytes / 1e6))} onDownload={() => answerNature(true)} onLater={(dontAsk) => answerNature(false, dontAsk)} />
         </Modal>
       )}
       {/* Kept mounted and laid out while closed, so it opens at once and fully drawn. */}

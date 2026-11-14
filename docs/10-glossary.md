@@ -25,7 +25,7 @@
 - Avoid: "nature speaker" in code (use source); "ambience" (too broad)
 
 ## Sound Patch
-- Definition: The download of all nature recordings onto the device after entering a garden. Nature sources can be chosen and heard only once it is complete.
+- Definition: The download of all nature recordings onto the device after entering a garden, once the player agreed (asked while files are missing, unless they agreed before or chose not to be asked). Nature sources can be chosen and heard only once it is complete.
 - Code: `runPatch()`, `startPatch()`, `usePatchState()`, `PatchState`, `SoundStore`; files at `/hush-garden/sounds/` of the platform API
 - Avoid: "update" (the app itself does not change), "asset download"
 

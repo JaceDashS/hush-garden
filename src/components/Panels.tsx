@@ -9,9 +9,35 @@ import { NAME_MAX_LENGTH, checkName } from "../domain/names";
 import { LANGUAGES, LANGUAGE_NAMES, type TextKey } from "../domain/text";
 import { useT } from "../i18n";
 import type { Settings } from "../settings";
-import { Btn, Card, Chips, DragLockContext, Input, Slider, T, colors } from "../ui";
+import { Btn, Card, Check, Chips, DragLockContext, Input, Slider, T, colors } from "../ui";
+import type { PatchPhase } from "../audio/patch";
 import { CharacterPicker } from "./CharacterPicker";
 import { GoogleButton } from "./GoogleButton";
+
+/**
+ * Asks whether to download the nature sounds, with their size. "Later" with "don't ask again" ticked stops the
+ * question; the settings still offer the download.
+ */
+export function NatureDownloadCard({ megabytes, onDownload, onLater }: { megabytes: number; onDownload: () => void; onLater: (dontAsk: boolean) => void }) {
+  const t = useT();
+  const [dontAsk, setDontAsk] = useState(false);
+  return (
+    <Card title={t("natureAsk.title")}>
+      <View testID="nature-download-card" style={{ gap: 10 }}>
+        <T size={14}>{t("natureAsk.body", { n: megabytes })}</T>
+        <Check label={t("natureAsk.dontAsk")} value={dontAsk} onChange={setDontAsk} testID="nature-dont-ask" />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Btn title={t("natureAsk.later")} onPress={() => onLater(dontAsk)} testID="nature-later" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Btn variant="primary" title={t("natureAsk.download")} onPress={onDownload} testID="nature-download" />
+          </View>
+        </View>
+      </View>
+    </Card>
+  );
+}
 
 /** Explains what location is used for before the public garden opens. Nothing is requested until the user agrees. */
 export function ConsentCard({ busy, error, onAgree, onCancel }: { busy: boolean; error: string; onAgree: () => void; onCancel: () => void }) {
@@ -148,7 +174,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  * receives a checked name, or "" to go back to the account name; `nameError` is the server's refusal, if any.
  * `open` is false while the card is kept prepared but not shown.
  */
-export function SettingsCard({ open = true, settings, user, online, shownName, nameError, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
+export function SettingsCard({ open = true, settings, user, online, shownName, nameError, nature, onDownloadNature, developer, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; nature: PatchPhase | null; onDownloadNature: () => void; developer?: React.ReactNode; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
   const t = useT();
   const [name, setName] = useState(settings.name);
   // The card is prepared before it is opened, so each opening starts from the saved name with no error shown.
@@ -177,6 +203,16 @@ export function SettingsCard({ open = true, settings, user, online, shownName, n
           <Group title={t("settings.sound")}>
             <Slider label={t("settings.volume")} value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
           </Group>
+          <Group title={t("settings.nature")}>
+            {nature === "ready" ? (
+              <T size={13} tone="muted">{t("settings.natureReady")}</T>
+            ) : nature === "downloading" || nature === "checking" ? (
+              <T size={13} tone="muted">{t("settings.natureDownloading")}</T>
+            ) : (
+              <Btn variant="mint" title={t("settings.natureGet")} onPress={onDownloadNature} testID="settings-nature-download" />
+            )}
+          </Group>
+          {developer}
           <Group title={t("settings.character")}>
             <CharacterPicker value={settings.character} onChange={(character) => onChange({ ...settings, character })} />
           </Group>

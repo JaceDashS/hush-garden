@@ -33,9 +33,14 @@ export interface Settings {
   name: string;
   /** The language of the screens. */
   language: Language;
+  /**
+   * Whether to download the nature sounds: "ask" asks on entering while files are missing, "yes" downloads without
+   * asking (the player agreed once), "no" never asks (the player ticked "don't ask again"; settings still offer it).
+   */
+  natureSounds: "ask" | "yes" | "no";
 }
 
-export const DEFAULT_SETTINGS: Settings = { volume: 0.8, cue: "tone", consent: false, character: DEFAULT_CHARACTER, name: "", language: "ko" };
+export const DEFAULT_SETTINGS: Settings = { volume: 0.8, cue: "tone", consent: false, character: DEFAULT_CHARACTER, name: "", language: "ko", natureSounds: "ask" };
 
 /** Turns stored JSON into valid settings; unknown or broken values fall back to defaults. A missing language becomes the device language. */
 export function normalizeSettings(value: unknown): Settings {
@@ -47,5 +52,6 @@ export function normalizeSettings(value: unknown): Settings {
     character: normalizeCharacter(v.character),
     name: nameOrEmpty(v.name),
     language: normalizeLanguage(v.language, deviceLanguage()),
+    natureSounds: v.natureSounds === "yes" || v.natureSounds === "no" ? v.natureSounds : "ask",
   };
 }

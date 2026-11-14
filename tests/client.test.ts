@@ -38,8 +38,8 @@ test("server messages are validated and unknown ones are dropped", () => {
 test("settings fall back to defaults and keep valid values", () => {
   const device = deviceLanguage();
   assert.deepEqual(normalizeSettings(null), { ...DEFAULT_SETTINGS, language: device });
-  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon", language: "xx" }), { volume: 1, cue: "tone", consent: false, character: "bunny", name: "", language: device });
-  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda", name: " Momo ", language: "ja" }), { volume: 0.25, cue: "dip", consent: true, character: "panda", name: "Momo", language: "ja" });
+  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon", language: "xx", natureSounds: "maybe" }), { volume: 1, cue: "tone", consent: false, character: "bunny", name: "", language: device, natureSounds: "ask" });
+  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda", name: " Momo ", language: "ja", natureSounds: "no" }), { volume: 0.25, cue: "dip", consent: true, character: "panda", name: "Momo", language: "ja", natureSounds: "no" });
   assert.equal(normalizeSettings({ name: "admin" }).name, "");
 });
 
@@ -243,6 +243,7 @@ function memoryStore(initial: Record<string, number> = {}, manifest: unknown = n
       kept = keep;
       for (const path of [...files.keys()]) if (!keep.has(path)) files.delete(path);
     },
+    clear: async () => { files.clear(); saved = null; },
     readManifest: async () => saved,
     writeManifest: async (m) => { saved = m; },
   };
@@ -259,7 +260,7 @@ test("the sound patch downloads what is missing, reports progress and removes ol
   // The fake download stores the size the manifest expects, as a real download would.
   mem.store.download = async (url, path) => { mem.downloaded.push(path); mem.files.set(path, sample.recordings.flatMap((r) => r.files).find((f) => f.path === path)!.bytes); };
   const states: PatchState[] = [];
-  const files = await runPatch("https://api.example/hush-garden/sounds/", mem.store, (s) => states.push(s), async () => sample);
+  const files = await runPatch("https://api.example/hush-garden/sounds/", mem.store, (s) => states.push(s), async () => true, async () => sample);
   assert.ok(files);
   assert.deepEqual(mem.downloaded.sort(), ["fs-1/01.mp3", "fs-9/beat-0.wav"]);
   assert.equal(states[0].phase, "checking");
@@ -277,19 +278,34 @@ test("the sound patch works offline from a complete earlier download and fails w
   const offline = async () => { throw new Error("offline"); };
   const complete = memoryStore({ "fs-1/00.mp3": 100, "fs-1/01.mp3": 200, "fs-9/beat-0.wav": 300 }, sample);
   const states: PatchState[] = [];
-  assert.ok(await runPatch("https://x/", complete.store, (s) => states.push(s), offline));
+  assert.ok(await runPatch("https://x/", complete.store, (s) => states.push(s), undefined, offline));
   assert.equal(states.at(-1)!.phase, "ready");
   assert.equal(complete.downloaded.length, 0);
   const nothing = memoryStore();
   const failed: PatchState[] = [];
-  assert.equal(await runPatch("https://x/", nothing.store, (s) => failed.push(s), offline), null);
+  assert.equal(await runPatch("https://x/", nothing.store, (s) => failed.push(s), undefined, offline), null);
   assert.equal(failed.at(-1)!.phase, "failed");
 });
 
 test("a failed download leaves nature sources unavailable", async () => {
   const mem = memoryStore();
   const states: PatchState[] = [];
-  assert.equal(await runPatch("https://broken/", mem.store, (s) => states.push(s), async () => sample), null);
+  assert.equal(await runPatch("https://broken/", mem.store, (s) => states.push(s), undefined, async () => sample), null);
   assert.equal(states.at(-1)!.phase, "failed");
   assert.equal(mem.saved(), null, "no manifest is saved for an incomplete download");
+});
+
+test("the sound patch asks before downloading and does nothing when declined", async () => {
+  const mem = memoryStore({ "fs-1/00.mp3": 100 });
+  const asked: number[] = [];
+  const states: PatchState[] = [];
+  assert.equal(await runPatch("https://x/", mem.store, (s) => states.push(s), async (bytes) => { asked.push(bytes); return false; }, async () => sample), null);
+  assert.deepEqual(asked, [500], "asked once with the size still missing");
+  assert.equal(mem.downloaded.length, 0);
+  assert.deepEqual(states.map((s) => s.phase), ["checking", "asking", "declined"]);
+  // Nothing is asked when everything is already there.
+  const complete = memoryStore({ "fs-1/00.mp3": 100, "fs-1/01.mp3": 200, "fs-9/beat-0.wav": 300 });
+  let questions = 0;
+  assert.ok(await runPatch("https://x/", complete.store, () => undefined, async () => { questions++; return true; }, async () => sample));
+  assert.equal(questions, 0);
 });

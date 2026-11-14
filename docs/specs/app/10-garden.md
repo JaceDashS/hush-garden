@@ -50,8 +50,8 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Each nature source stands in the garden as its own object with its own movement, not as a speaker cabinet: drops fall from the rain cloud, the stream flows, water falls, reeds sway, the airplane bobs with a spinning propeller, the campfire flickers and sparks, the wave rises and falls, steam rises from the cafe cup, the train rocks with turning wheels and smoke puffs, and the heart beats. Equal objects do not move in step.
 - A nature source has no oscillator by default. Changing the source always keeps the Sound tab volume (noise or recording) and the equalizer. Going from the synthesiser to a nature source empties the oscillators; between nature sources they stay; going back to the synthesiser keeps them and uses the default noise.
 - Like speakers, nature sources are lifted, carried, put down and discarded, and send sound waves in a colour of their own over the area they reach.
-- The recordings are not part of the app or web download. After entering a garden, all of them (about 230 MB) are downloaded from the platform server and kept on the device; later visits only check for changes. Until every file is there, nature sources cannot be chosen and are not heard at all (oscillators included); placed ones are still drawn with their waves. Synthesiser speakers play from the start.
-- While downloading, the garden status shows the progress in place of the speakers heard. If the download fails, the status says so, nature sources stay unavailable, and entering a garden again tries again. Without a connection, a complete earlier download is used.
+- The recordings are not part of the app or web download. When some are missing on entering a garden, the player is asked whether to download them, with their size, and can tick "don't ask again". Download fetches all of them (about 230 MB) from the platform server and keeps them on the device; later visits only check for changes and download changes without asking. Later without the tick asks again on the next entry; with it, it does not ask. The settings always offer the download while it is not complete. Until every file is there, nature sources cannot be chosen and are not heard at all (oscillators included); placed ones are still drawn with their waves. Synthesiser speakers play from the start.
+- While downloading, the garden status turns entirely into a gauge, with no text or numbers, and turns back when done. If the download fails, the status says so, nature sources stay unavailable, and entering a garden again tries again. Without a connection, a complete earlier download is used.
 - The public garden accepts nature sources too.
 
 ## Oscillators
@@ -108,7 +108,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Screens are prepared before they are shown, so a half-drawn state never flashes: the settings are kept laid out while closed and open at once; the speaker editor and other panels appear only once laid out; the editor keeps all three tabs laid out so switching tabs is instant.
 - Entering the public garden sends a random device id (kept on the device; per tab in a browser). If the app was killed without closing its connection and comes back, the server replaces the character left behind at once. When a newer visit from the same id takes over, this one shows a notice and does not reconnect.
 - Escape opens the settings and closes them, or any other open panel, again (web and desktop).
-- Settings hold everything else: master volume, character, language, character name, nearby chat cue, presets (private garden), account (public garden) and leaving the garden.
+- Settings hold everything else: master volume, nature sound download, character, language, character name, nearby chat cue, presets (private garden), account (public garden) and leaving the garden.
 
 ## Languages
 

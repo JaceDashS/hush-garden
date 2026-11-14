@@ -209,6 +209,13 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: only the two missing files are downloaded, progress starts at the stored file's size and only grows, it ends ready with 600 of 600 bytes, the old file is removed and the manifest saved; offline with an earlier download it is ready without downloading; offline with nothing and with failing downloads it ends failed and saves no manifest.
 - Test: "the sound patch downloads what is missing, reports progress and removes old files", "the sound patch works offline from a complete earlier download and fails without one", "a failed download leaves nature sources unavailable". Browser check in Chrome 2026-11-14: 231 MB from a local server in 2.4 s with the status counting up; with the sound files blocked the status said the download failed and the nature pictures were disabled.
 
+## Asked Before Downloading
+- Design: [Nature Sound Patch](../../../design/app/10-garden.md#nature-sound-patch)
+- Input: a device missing 500 of 600 bytes that declines; one that has everything; in the browser a fresh profile entering three times.
+- Steps: `runPatch()` with an `ask` that answers no, then with everything stored; in Chrome: enter → Later → enter again → tick "Don't ask again" → Later → enter again → settings → Download nature sounds.
+- Result: asked once with 500 bytes, nothing downloaded, phases checking → asking → declined; nothing asked when nothing is missing. In the browser the question (231 MB) appears, Later keeps the garden working without nature sources, it is asked again, after the tick it is not asked, and the settings button downloads: the status pill turns into a gauge and back.
+- Test: "the sound patch asks before downloading and does nothing when declined". Browser check in Chrome 2026-11-14.
+
 ## Recordings And Heartbeat Tempo
 - Design: [Nature Sources](../../../design/app/10-garden.md#nature-sources)
 - Input: a stream with its second recording; a stream naming a rain recording; a heartbeat without tempo, with 300 and with 71.6; a stored `thunder` and a stored `windchime`; the editor with a stream and then a heartbeat.
