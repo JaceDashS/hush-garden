@@ -24,12 +24,14 @@ export const NATURE_SOURCES = ["rain", "stream", "waterfall", "reeds", "airplane
 export type NatureSource = (typeof NATURE_SOURCES)[number];
 export type SoundSource = "synth" | NatureSource;
 
+/**
+ * A synthesiser sound. There is no overall volume: the noise and each oscillator have their own volume (`level`,
+ * 0 to 1), and the loudest of them decides how far the speaker is heard (see reachOf()).
+ */
 export interface SynthSound {
   source: "synth";
-  /** Overall loudness, 0 to 1. It also decides how far the speaker is heard: see reachOf(). */
-  volume: number;
   noise: { color: NoiseColor; level: number };
-  /** Up to MAX_OSCILLATORS synthesised tones (OSC A and OSC B). The default sound uses OSC A for its low end. */
+  /** Up to MAX_OSCILLATORS synthesised tones (OSC A and OSC B), each with its own volume. The default sound uses OSC A for its low end. */
   oscillators: Oscillator[];
   /** One five-band curve: low cut, low shelf, bell, high shelf and high cut. */
   eq: Equalizer;
@@ -41,8 +43,8 @@ export interface SynthSound {
  */
 export interface NatureSound {
   source: NatureSource;
-  /** Overall loudness, 0 to 1, and with it the reach, as for the synthesiser. */
-  volume: number;
+  /** Volume of the recording, 0 to 1, in the place of the synthesiser's noise volume. */
+  level: number;
   oscillators: Oscillator[];
   eq: Equalizer;
 }
@@ -55,17 +57,23 @@ export type SourceLook = NoiseColor | NatureSource;
 export const isSynth = (sound: SpeakerSound): sound is SynthSound => sound.source === "synth";
 export const isNatureSource = (value: unknown): value is NatureSource => NATURE_SOURCES.includes(value as NatureSource);
 export const lookOf = (sound: SpeakerSound): SourceLook => (isSynth(sound) ? sound.noise.color : sound.source);
+/** Volume of the noise (synthesiser) or of the recording (nature source): the one volume of the Sound tab. */
+export const baseLevel = (sound: SpeakerSound): number => (isSynth(sound) ? sound.noise.level : sound.level);
+/** Volume of the loudest part, noise or recording or an oscillator. It decides the reach and the waves. */
+export const loudnessOf = (sound: SpeakerSound): number => Math.max(baseLevel(sound), ...sound.oscillators.map((oscillator) => oscillator.level));
 
 /**
- * The sound after choosing a source in the editor. The volume and the equalizer always stay. Going from the
- * synthesiser to a nature source empties the oscillators, since a nature source has none by default; between
- * nature sources they stay; going back to the synthesiser keeps them and takes the default noise.
+ * The sound after choosing a source in the editor. The Sound tab volume (noise or recording) and the equalizer
+ * always stay. Going from the synthesiser to a nature source empties the oscillators, since a nature source has
+ * none by default; between nature sources they stay; going back to the synthesiser keeps them and takes the
+ * default noise colour.
  */
 export function withSource(sound: SpeakerSound, source: SoundSource): SpeakerSound {
   if (source === sound.source) return sound;
-  const { volume, eq } = sound;
-  if (source === "synth") return { source, volume, noise: defaultSound().noise, oscillators: sound.oscillators, eq };
-  return { source, volume, oscillators: isSynth(sound) ? [] : sound.oscillators, eq };
+  const level = baseLevel(sound);
+  const { eq } = sound;
+  if (source === "synth") return { source, noise: { color: defaultSound().noise.color, level }, oscillators: sound.oscillators, eq };
+  return { source, level, oscillators: isSynth(sound) ? [] : sound.oscillators, eq };
 }
 
 export interface Speaker {
@@ -81,7 +89,7 @@ export const MAX_SPEAKERS = 24;
 export const LIMITS = {
   oscillatorFrequency: [20, 8000],
 } as const;
-/** Reach in tiles of a silent speaker and of a full-volume speaker. */
+/** Reach in tiles of a silent speaker and of one whose loudest part is at full volume. */
 export const REACH = [2, 11] as const;
 /** A stored bass drone played at 0.5 of its level; an oscillator plays at 0.3 of its level. */
 const BASS_TO_OSCILLATOR = 0.5 / 0.3;
@@ -98,15 +106,14 @@ const record = (value: unknown): Record<string, unknown> => (value && typeof val
 
 /** The oscillator a new panel starts with: OSC A is the low hum, OSC B a quiet tone above it. */
 export function defaultOscillator(index: number): Oscillator {
-  return index === 0 ? { wave: "sine", frequency: 55, level: 0.55 } : { wave: "sine", frequency: 165, level: 0.2 };
+  return index === 0 ? { wave: "sine", frequency: 55, level: 0.5 } : { wave: "sine", frequency: 165, level: 0.15 };
 }
 
-/** A gentle brown noise with a low sine under it: the sound a new speaker starts with. */
+/** A gentle brown noise with a low sine under it: the sound a new speaker starts with. It reaches 8.3 tiles. */
 export function defaultSound(): SynthSound {
   return {
     source: "synth",
-    volume: 0.7,
-    noise: { color: "brown", level: 0.8 },
+    noise: { color: "brown", level: 0.7 },
     oscillators: [defaultOscillator(0)],
     eq: flatEqualizer(),
   };
@@ -116,39 +123,49 @@ export function defaultSound(): SynthSound {
  * Turns any stored or received value into a valid sound: missing fields get defaults and numbers are clamped.
  * Sounds saved before the bass drone was removed carry `bass`; it becomes a sine oscillator of the same loudness
  * placed before the others. A former `radius` is ignored. A value without a source, as every sound saved before
- * nature sources existed, is a synthesiser sound; a nature source keeps its volume, oscillators and equalizer.
+ * nature sources existed, is a synthesiser sound; a nature source keeps its recording volume, oscillators and
+ * equalizer.
+ *
+ * Sounds saved before part volumes carry an overall `volume` that multiplied every part. It is folded into each
+ * part (noise or recording, oscillators), so they sound the same; a nature source of that time had only `volume`,
+ * which becomes its recording volume.
  */
 export function normalizeSound(value: unknown): SpeakerSound {
   const base = defaultSound();
   const v = record(value);
+  const legacy = typeof v.volume === "number" && Number.isFinite(v.volume);
+  const overall = legacy ? unit(v.volume, 1) : 1;
   const stored: Oscillator[] = (Array.isArray(v.oscillators) ? v.oscillators : []).map((item) => {
     const o = record(item);
     return {
       wave: WAVES.includes(o.wave as Wave) ? (o.wave as Wave) : "sine",
       frequency: num(o.frequency, LIMITS.oscillatorFrequency, 220),
-      level: unit(o.level, 0.2),
+      level: unit(o.level, 0.2) * overall,
     };
   });
   // A nature source has no default oscillator and no noise; it never had a bass drone.
-  if (isNatureSource(v.source)) return { source: v.source, volume: unit(v.volume, base.volume), oscillators: stored.slice(0, MAX_OSCILLATORS), eq: normalizeEqualizer(v.eq) };
+  if (isNatureSource(v.source)) {
+    const level = typeof v.level === "number" ? unit(v.level, base.noise.level) * overall : legacy ? overall : base.noise.level;
+    return { source: v.source, level, oscillators: stored.slice(0, MAX_OSCILLATORS), eq: normalizeEqualizer(v.eq) };
+  }
   const noise = record(v.noise);
   const bass = record(v.bass);
   const bassLevel = v.bass ? unit(bass.level, 0.35) : 0;
-  const fromBass: Oscillator[] = bassLevel > 0 ? [{ wave: "sine", frequency: num(bass.frequency, LIMITS.oscillatorFrequency, 55), level: Math.min(1, bassLevel * BASS_TO_OSCILLATOR) }] : [];
-  // A value that says nothing about tones gets the default low hum.
+  const fromBass: Oscillator[] = bassLevel > 0 ? [{ wave: "sine", frequency: num(bass.frequency, LIMITS.oscillatorFrequency, 55), level: Math.min(1, bassLevel * BASS_TO_OSCILLATOR) * overall }] : [];
+  // A value that says nothing about tones gets the default low hum (at the old default level when it is old).
   const silentOnTones = !Array.isArray(v.oscillators) && !v.bass;
+  const hum = legacy ? [{ ...defaultOscillator(0), level: 0.55 * overall }] : base.oscillators;
   return {
     source: "synth",
-    volume: unit(v.volume, base.volume),
-    noise: { color: NOISE_COLORS.includes(noise.color as NoiseColor) ? (noise.color as NoiseColor) : base.noise.color, level: unit(noise.level, base.noise.level) },
-    oscillators: silentOnTones ? base.oscillators : [...fromBass, ...stored].slice(0, MAX_OSCILLATORS),
+    noise: { color: NOISE_COLORS.includes(noise.color as NoiseColor) ? (noise.color as NoiseColor) : base.noise.color, level: unit(noise.level, legacy ? 0.8 : base.noise.level) * overall },
+    oscillators: silentOnTones ? hum : [...fromBass, ...stored].slice(0, MAX_OSCILLATORS),
     eq: normalizeEqualizer(v.eq, v.filter),
   };
 }
 
-/** How far a speaker is heard, in tiles. There is no separate setting: a louder speaker reaches farther. */
-export function reachOf(sound: Pick<SpeakerSound, "volume">): number {
-  return REACH[0] + (REACH[1] - REACH[0]) * Math.max(0, Math.min(1, sound.volume));
+/** How far a speaker is heard, in tiles. There is no separate setting: the louder its loudest part, the farther. */
+export function reachOf(sound: SpeakerSound): number {
+  return REACH[0] + (REACH[1] - REACH[0]) * Math.max(0, Math.min(1, loudnessOf(sound)));
 }
 
 /** Share of full loudness heard `tiles` away from a point with the given reach: 1 at the point, 0 at the reach. */
@@ -158,9 +175,9 @@ export function gainAt(tiles: number, radius: number): number {
   return closeness * closeness;
 }
 
-/** Loudness (0 to 1) of a speaker heard from `tiles` away: its volume, fading smoothly to silence at its reach. */
-export function loudnessAt(tiles: number, sound: Pick<SpeakerSound, "volume">): number {
-  return gainAt(tiles, reachOf(sound)) * sound.volume;
+/** Loudness (0 to 1) of a speaker heard from `tiles` away: its loudest part, fading smoothly to silence at its reach. */
+export function loudnessAt(tiles: number, sound: SpeakerSound): number {
+  return gainAt(tiles, reachOf(sound)) * loudnessOf(sound);
 }
 
 /** Left/right balance (-1 to 1) of a source seen from the listener, following the on-screen direction. */
@@ -172,23 +189,24 @@ export function panFor(listener: Point, source: Point, radius: number): number {
 
 export interface SpeakerLevel {
   id: string;
+  /** The distance gain, already turned down with the mix. The parts carry their own volumes on top of it. */
   gain: number;
   pan: number;
 }
 
 /**
  * What the listener hears from each speaker. Speakers in range are summed, so two nearby speakers blend;
- * when the sum would get louder than one speaker at full volume, all are scaled down together.
+ * when the sum of their loudness would get louder than one speaker at full volume, all are scaled down together.
  */
 export function mixFor(listener: Point, speakers: readonly Speaker[]): SpeakerLevel[] {
-  const levels = speakers.map((speaker) => ({
-    id: speaker.id,
-    gain: loudnessAt(distance(listener, speaker), speaker.sound),
-    pan: panFor(listener, speaker, reachOf(speaker.sound)),
-  }));
-  const power = Math.sqrt(levels.reduce((sum, level) => sum + level.gain * level.gain, 0));
+  const levels = speakers.map((speaker) => {
+    const tiles = distance(listener, speaker);
+    const reach = reachOf(speaker.sound);
+    return { id: speaker.id, distanceGain: gainAt(tiles, reach), loudness: loudnessAt(tiles, speaker.sound), pan: panFor(listener, speaker, reach) };
+  });
+  const power = Math.sqrt(levels.reduce((sum, level) => sum + level.loudness * level.loudness, 0));
   const scale = power > 1 ? 1 / power : 1;
-  return levels.map((level) => ({ ...level, gain: level.gain * scale }));
+  return levels.map((level) => ({ id: level.id, gain: level.distanceGain * scale, pan: level.pan }));
 }
 
 /** How many speakers the listener can currently hear. Shown in the status line. */

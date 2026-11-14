@@ -8,7 +8,7 @@
 import React, { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, defaultOscillator, isSynth, lookOf, reachOf, withSource, type Oscillator, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
+import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, baseLevel, defaultOscillator, isSynth, lookOf, reachOf, withSource, type Oscillator, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
 import { SHADOW_TINT, SourceArt, WavePicture } from "../game/sprites";
 import { useT } from "../i18n";
 import { Btn, Chips, DragLockContext, HIDDEN_READY, IconBtn, Input, Knob, Prepared, Slider, T, Tabs, colors } from "../ui";
@@ -103,10 +103,10 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
   const sound = speaker.sound;
   const synth = isSynth(sound) ? sound : null;
   const shown: Tab = tab;
-  // Volume, oscillators and equalizer belong to every source; only the synthesiser has noise.
-  const set = (patch: Partial<Pick<SpeakerSound, "volume" | "oscillators" | "eq">>) => onChange({ ...speaker, sound: { ...sound, ...patch } });
-  const setVolume = (volume: number) => set({ volume });
+  // Oscillators and equalizer belong to every source; the Sound tab volume is the noise's or the recording's.
+  const set = (patch: Partial<Pick<SpeakerSound, "oscillators" | "eq">>) => onChange({ ...speaker, sound: { ...sound, ...patch } });
   const setNoise = (patch: Partial<SynthSound["noise"]>) => synth && onChange({ ...speaker, sound: { ...synth, noise: { ...synth.noise, ...patch } } });
+  const setBaseLevel = (level: number) => (isSynth(sound) ? setNoise({ level }) : onChange({ ...speaker, sound: { ...sound, level } }));
   const setOscillator = (index: number, patch: Partial<Oscillator>) => set({ oscillators: sound.oscillators.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
   const next = sound.oscillators.length;
   return (
@@ -125,21 +125,15 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
         <ScrollView style={{ flex: 1 }} scrollEnabled={!dragging} contentContainerStyle={{ padding: 12, gap: 10 }} keyboardShouldPersistTaps="handled">
           <View style={pane(shown === "sound")} pointerEvents={shown === "sound" ? "auto" : "none"}>
               <SourcePicker value={sound.source} onChange={(source) => onChange({ ...speaker, sound: withSource(sound, source) })} />
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, borderTopWidth: 2, borderTopColor: colors.track }}>
-                <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: SHADOW_TINT[lookOf(sound)], borderWidth: 2, borderColor: colors.ink }} />
-                <View style={{ flex: 1 }}>
-                  <Slider label={t("editor.volume")} value={sound.volume} min={0} max={1} format={percent} onChange={setVolume} testID="speaker-volume" />
-                </View>
-              </View>
-              <T size={12} tone="muted">{t("editor.reach", { n: reachOf(sound).toFixed(1) })}</T>
-              {synth ? (
-                <>
+              {synth && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, borderTopWidth: 2, borderTopColor: colors.track }}>
+                  <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: SHADOW_TINT[lookOf(sound)], borderWidth: 2, borderColor: colors.ink }} />
                   <Chips label={t("noise.kind")} value={synth.noise.color} options={NOISE_COLORS.map((color) => ({ value: color, label: t(("noise." + color) as "noise.white") }))} onChange={(color) => setNoise({ color })} />
-                  <Slider label={t("noise.level")} value={synth.noise.level} min={0} max={1} format={percent} onChange={(level) => setNoise({ level })} testID="noise-level" />
-                </>
-              ) : (
-                <T size={12} tone="muted">{t("source.coming")}</T>
+                </View>
               )}
+              <Slider label={t(synth ? "noise.level" : "source.level")} value={baseLevel(sound)} min={0} max={1} format={percent} onChange={setBaseLevel} testID="base-level" />
+              <T size={12} tone="muted">{t("editor.reach", { n: reachOf(sound).toFixed(1) })}</T>
+              {!synth && <T size={12} tone="muted">{t("source.coming")}</T>}
           </View>
           <View style={pane(shown === "osc")} pointerEvents={shown === "osc" ? "auto" : "none"}>
               {sound.oscillators.length === 0 && <T size={12.5} tone="muted">{t("osc.empty")}</T>}

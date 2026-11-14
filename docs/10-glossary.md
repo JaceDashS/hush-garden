@@ -20,7 +20,7 @@
 - Code: `Speaker`, `SpeakerSound`, `SynthSound` in `src/domain/sound.ts`
 
 ## Nature Source
-- Definition: One of the twelve recorded-style sounds a speaker can play instead of the synthesiser (rain, stream, waterfall, reeds, airplane, campfire, waves, thunder, cafe, wind chime, train, heartbeat). It has a volume, oscillators and an equalizer like the synthesiser, its recording in place of the noise, and its own garden object.
+- Definition: One of the twelve recorded-style sounds a speaker can play instead of the synthesiser (rain, stream, waterfall, reeds, airplane, campfire, waves, thunder, cafe, wind chime, train, heartbeat). Its recording takes the place of the noise and has its own volume; it has oscillators and an equalizer like the synthesiser, and its own garden object.
 - Code: `NATURE_SOURCES`, `NatureSound`, `NatureArt`, `NATURE_TINT`, `withSource()`
 - Avoid: "nature speaker" in code (use source); "ambience" (too broad)
 
@@ -43,8 +43,13 @@
 - Avoid: "speaker button" (that is the make or discard button for speakers in the garden), "mute" in code (it pauses the audio like sound off)
 
 ## Reach
-- Definition: How far a speaker is heard, in tiles. It follows from the volume (2 tiles when silent up to 11 at full volume); there is no setting for it.
-- Code: `reachOf()`, `REACH`, `loudnessAt()`
+- Definition: How far a speaker is heard, in tiles. It follows from the volume of its loudest part, noise or recording or an oscillator (2 tiles when silent up to 11 at full volume); there is no setting for it.
+- Code: `reachOf()`, `loudnessOf()`, `REACH`, `loudnessAt()`
+
+## Part Volume
+- Definition: The volume of one part of a speaker: its noise (synthesiser), its recording (nature source) or one oscillator. A speaker has no overall volume.
+- Code: `noise.level`, `NatureSound.level`, `Oscillator.level`, `baseLevel()`
+- Avoid: "speaker volume" (removed); "master volume" means the listener's own output volume, not a speaker's
 - Avoid: "radius", "range" for a speaker (the former radius setting no longer exists).
 
 ## Sound Shadow

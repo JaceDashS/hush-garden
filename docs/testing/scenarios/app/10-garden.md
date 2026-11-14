@@ -26,10 +26,10 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "a speaker is loudest next to it and silent at its radius". Browser check: the audible speaker count dropped from 3 to 2 after walking away.
 
 ## Louder Reaches Farther
-- Input: speakers at volume 0, 0.3, 0.4, 0.5, 0.9 and 1; a listener 9 tiles away; a silent speaker at the listener's position.
-- Steps: `reachOf()` → `2 + 9 × volume`; `loudnessAt()` → volume times the distance share.
-- Result: reach 2 tiles at volume 0 and 11 at volume 1; the full-volume speaker is heard at 9 tiles and the 0.4 one is not; a silent speaker is never counted as heard.
-- Test: "a louder speaker is heard farther away and a silent one is not heard". Browser check 2026-11-12: the editor showed "reaches 8.3 tiles" at 70%.
+- Input: speakers whose only part is noise at volume 0, 0.3, 0.4, 0.5, 0.9 and 1; a listener 9 tiles away; a silent speaker at the listener's position; a speaker with noise at 0.2 and an oscillator at 0.9.
+- Steps: `loudnessOf()` → the loudest part; `reachOf()` → `2 + 9 × loudness`; `loudnessAt()` → loudness times the distance share.
+- Result: reach 2 tiles at volume 0 and 11 at volume 1; the noise 0.2 plus oscillator 0.9 speaker reaches 10.1 tiles; the full-volume speaker is heard at 9 tiles and the 0.4 one is not; a silent speaker is never counted as heard.
+- Test: "a louder speaker is heard farther away and a silent one is not heard", "the loudest part decides the reach, and older sounds keep how they sounded". Browser check 2026-11-14: a new speaker's editor showed "reaches 8.3 tiles" with noise volume 70%.
 
 ## Two Speakers Blend
 - Input: listener between two speakers in range and one out of range.
@@ -37,8 +37,8 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "two speakers in range are both heard".
 
 ## Mix Does Not Exceed One Speaker
-- Input: three full-volume speakers at the listener's position.
-- Result: total power at most one full speaker.
+- Input: three speakers with noise at full volume at the listener's position; one quiet speaker alone.
+- Result: total power at most one full speaker; the quiet speaker alone is not turned up (its distance gain stays 1).
 - Test: "overlapping speakers never exceed one full speaker".
 
 ## Speaker On The Right Sounds Right
@@ -47,8 +47,8 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "a speaker to the right on screen pans right".
 
 ## Sound Values Are Clamped
-- Input: volume 9, a stored radius, an unknown noise colour, five oscillators, high cut below low cut; and `null`.
-- Result: values inside their ranges, no radius, two oscillators, high cut at least the low cut; `null` gives the default sound.
+- Input: noise volume 2, a stored radius, an unknown noise colour, five oscillators, high cut below low cut; and `null`.
+- Result: values inside their ranges (noise volume 1), no radius and no overall volume, two oscillators, high cut at least the low cut; `null` gives the default sound.
 - Test: "sound values are clamped and broken input falls back to defaults".
 
 ## Default Low End
@@ -63,8 +63,8 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "a stored bass drone becomes a sine oscillator of the same loudness". Browser check 2026-11-12: the speakers seeded on the local server with a drone were served with one oscillator each.
 
 ## Edit Speakers
-- Input: add at (3, 4), put down at (99, -5), rename with spaces, change volume, remove; then add 27 speakers.
-- Result: the position is clamped, the name trimmed, the volume stored, the list empty after removal; never more than 24.
+- Input: add at (3, 4), put down at (99, -5), rename with spaces, change the noise volume, remove; then add 27 speakers.
+- Result: the position is clamped, the name trimmed, the noise volume stored, the list empty after removal; never more than 24.
 - Test: "speakers can be added, moved, edited and removed", "a full garden refuses another speaker".
 
 ## Presets
@@ -126,7 +126,7 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 
 ## Edit A Public Speaker
 - Input: an administrator in the public garden makes a speaker, edits it while holding it, puts it down, lifts it again and discards it.
-- Result: the server stores the new speaker with volume, noise, oscillators and equalizer only; after discarding, the server list is back to what it was.
+- Result: the server stores the new speaker with source, noise, oscillators and equalizer only; after discarding, the server list is back to what it was.
 - Test: Browser check 2026-11-12 against a local API: four speakers before, five after making, four after discarding; no stored sound had a radius or a bass field. A guest saw no speaker button.
 
 ## Ten Characters
@@ -172,19 +172,19 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 
 ## Nature Sources Have Oscillators And Equalizer
 - Design: [Nature Sources](../../../design/app/10-garden.md#nature-sources)
-- Input: stored sounds `{source: "waterfall", volume: 0.4, noise: {...}, oscillators: []}`, `{source: "rain", volume: 7}`, `{source: "train"}`, a cafe with three oscillators (one at 99999 Hz), a low shelf of +6 dB and a bass drone, `{source: "dragon", volume: 0.5}` and an old sound without a source.
+- Input: stored sounds `{source: "waterfall", level: 0.4, noise: {...}, oscillators: []}`, `{source: "rain", level: 7}`, `{source: "train"}`, a cafe with three oscillators (one at 99999 Hz), a low shelf of +6 dB and a bass drone, `{source: "dragon", level: 0.5}`, an old sound without a source, and `{source: "rain", volume: 0.4}` saved before part volumes.
 - Steps: `normalizeSound()` on each.
-- Result: the waterfall keeps volume 0.4 with no oscillators and a flat equalizer; rain gets volume 1; the train volume 0.7 with no oscillator; the cafe keeps two oscillators (the first at 8000 Hz) and its +6 dB shelf, has no noise and ignores the drone; the unknown source and the old sound are synthesiser sounds.
+- Result: the waterfall keeps recording volume 0.4 with no oscillators and a flat equalizer; rain gets 1; the train 0.7 with no oscillator; the old rain gets recording volume 0.4; the cafe keeps two oscillators (the first at 8000 Hz) and its +6 dB shelf, has no noise and ignores the drone; the unknown source and the old sound are synthesiser sounds.
 - Test: "a nature source has oscillators and an equalizer but no noise and no default oscillator".
 
 ## Choose A Nature Source
-- Input: a held default synthesiser speaker (OSC A a 55 Hz sine) at volume 0.35 with a +3 dB low shelf.
+- Input: a held synthesiser speaker (OSC A a 55 Hz sine) with white noise at volume 0.35 and a +3 dB low shelf.
 - Steps: choose the waterfall → add OSC A at 80 Hz → choose rain → choose the synthesiser.
-- Result: waterfall with no oscillators and the +3 dB shelf → rain keeps the 80 Hz oscillator and the shelf → the synthesiser keeps them with the default noise. In the browser all three tabs stay for a nature source, the noise controls give way to the note about the recording, the oscillator added to the waterfall shows in its own spectrum, the held speaker turns into the chosen object, and putting it down leaves that object on the ground with its own waves.
-- Test: "choosing a source keeps volume and equalizer; a nature source starts without oscillators". Browser check in Chrome 2026-11-14.
+- Result: waterfall with recording volume 0.35, no oscillators and the +3 dB shelf → rain keeps the 80 Hz oscillator and the shelf → the synthesiser keeps them, with brown noise at volume 0.35. In the browser all three tabs stay for a nature source, the noise controls give way to the note about the recording, the oscillator added to the waterfall shows in its own spectrum, the held speaker turns into the chosen object, and putting it down leaves that object on the ground with its own waves.
+- Test: "choosing a source keeps the Sound tab volume and the equalizer; a nature source starts without oscillators". Browser check in Chrome 2026-11-14.
 
 ## Twelve Nature Objects
-- Input: a stored private garden with one of each nature source at volume 0.25.
+- Input: a stored private garden with one of each nature source at recording volume 0.25.
 - Steps: enter the private garden and look at the objects over time.
 - Result: each source is drawn as its own object with its own movement, in its own wave colour; without oscillators no audio plays for them; no errors.
 - Test: Browser check in Chrome 2026-11-14 (screenshots of all twelve).

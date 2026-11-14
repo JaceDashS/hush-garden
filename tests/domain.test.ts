@@ -7,10 +7,12 @@ import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
 import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
-import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, defaultSound, gainAt, isSynth, lookOf, loudnessAt, mixFor, normalizeSound, reachOf, waveShape, withSource, type Speaker, type SynthSound } from "../src/domain/sound.ts";
+import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, baseLevel, defaultSound, gainAt, isSynth, lookOf, loudnessAt, loudnessOf, mixFor, normalizeSound, reachOf, waveShape, withSource, type Speaker, type SpeakerSound, type SynthSound } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
 
-const speaker = (id: string, x: number, y: number, patch = {}): Speaker => ({ id, name: id, x, y, sound: { ...defaultSound(), ...patch } });
+/** A brown noise at the given volume with no oscillators, so its loudest part is the noise. */
+const noiseAt = (level: number): SynthSound => ({ ...defaultSound(), noise: { color: "brown", level }, oscillators: [] });
+const speaker = (id: string, x: number, y: number, sound: SpeakerSound = defaultSound()): Speaker => ({ id, name: id, x, y, sound });
 
 /** Normalises a value that must come out as a synthesiser sound. */
 const synthOf = (value: unknown): SynthSound => {
@@ -63,8 +65,13 @@ test("two speakers in range are both heard", () => {
 });
 
 test("overlapping speakers never exceed one full speaker", () => {
-  const levels = mixFor({ x: 10, y: 10 }, [speaker("a", 10, 10, { volume: 1 }), speaker("b", 10, 10, { volume: 1 }), speaker("c", 10, 10, { volume: 1 })]);
-  assert.ok(Math.sqrt(levels.reduce((sum, level) => sum + level.gain ** 2, 0)) <= 1 + 1e-9);
+  const speakers = [speaker("a", 10, 10, noiseAt(1)), speaker("b", 10, 10, noiseAt(1)), speaker("c", 10, 10, noiseAt(1))];
+  const levels = mixFor({ x: 10, y: 10 }, speakers);
+  // The gain is the distance gain; each speaker's parts carry their own volume on top of it.
+  const heard = levels.map((level, index) => level.gain * loudnessOf(speakers[index].sound));
+  assert.ok(Math.sqrt(heard.reduce((sum, value) => sum + value ** 2, 0)) <= 1 + 1e-9);
+  // A single quiet speaker is not turned up: its gain is just the distance gain.
+  assert.equal(mixFor({ x: 10, y: 10 }, [speaker("q", 10, 10, noiseAt(0.3))])[0].gain, 1);
 });
 
 test("a speaker to the right on screen pans right", () => {
@@ -74,10 +81,10 @@ test("a speaker to the right on screen pans right", () => {
 
 test("a nature source has oscillators and an equalizer but no noise and no default oscillator", () => {
   const flat = flatEqualizer();
-  assert.deepEqual(normalizeSound({ source: "waterfall", volume: 0.4, noise: { color: "pink", level: 1 }, oscillators: [] }), { source: "waterfall", volume: 0.4, oscillators: [], eq: flat });
-  assert.deepEqual(normalizeSound({ source: "rain", volume: 7 }), { source: "rain", volume: 1, oscillators: [], eq: flat });
-  assert.deepEqual(normalizeSound({ source: "train" }), { source: "train", volume: defaultSound().volume, oscillators: [], eq: flat });
-  const tuned = normalizeSound({ source: "cafe", volume: 0.5, oscillators: [{ wave: "triangle", frequency: 99999, level: 0.4 }, {}, {}], eq: { bands: [{ type: "lowshelf", frequency: 120, gain: 6, q: 0.7 }] }, bass: { level: 1 } });
+  assert.deepEqual(normalizeSound({ source: "waterfall", level: 0.4, noise: { color: "pink", level: 1 }, oscillators: [] }), { source: "waterfall", level: 0.4, oscillators: [], eq: flat });
+  assert.deepEqual(normalizeSound({ source: "rain", level: 7 }), { source: "rain", level: 1, oscillators: [], eq: flat });
+  assert.deepEqual(normalizeSound({ source: "train" }), { source: "train", level: defaultSound().noise.level, oscillators: [], eq: flat });
+  const tuned = normalizeSound({ source: "cafe", level: 0.5, oscillators: [{ wave: "triangle", frequency: 99999, level: 0.4 }, {}, {}], eq: { bands: [{ type: "lowshelf", frequency: 120, gain: 6, q: 0.7 }] }, bass: { level: 1 } });
   assert.equal(tuned.source, "cafe");
   assert.equal(tuned.oscillators.length, MAX_OSCILLATORS);
   assert.deepEqual(tuned.oscillators[0], { wave: "triangle", frequency: 8000, level: 0.4 });
@@ -85,32 +92,33 @@ test("a nature source has oscillators and an equalizer but no noise and no defau
   assert.equal("noise" in tuned, false);
   assert.deepEqual(normalizeSound(tuned), tuned);
   // A sound saved before nature sources existed has no source; an unknown source is the synthesiser.
-  assert.equal(normalizeSound({ volume: 0.5, noise: { color: "pink", level: 0.5 } }).source, "synth");
-  assert.equal(normalizeSound({ source: "dragon", volume: 0.5 }).source, "synth");
+  assert.equal(normalizeSound({ noise: { color: "pink", level: 0.5 } }).source, "synth");
+  assert.equal(normalizeSound({ source: "dragon", level: 0.5 }).source, "synth");
   assert.equal(NATURE_SOURCES.length, 12);
-  for (const source of NATURE_SOURCES) assert.equal(normalizeSound({ source, volume: 0.3 }).source, source);
+  for (const source of NATURE_SOURCES) assert.equal(normalizeSound({ source, level: 0.3 }).source, source);
   assert.equal(lookOf(defaultSound()), "brown");
-  assert.equal(lookOf({ source: "campfire", volume: 1, oscillators: [], eq: flat }), "campfire");
+  assert.equal(lookOf({ source: "campfire", level: 1, oscillators: [], eq: flat }), "campfire");
 });
 
-test("choosing a source keeps volume and equalizer; a nature source starts without oscillators", () => {
+test("choosing a source keeps the Sound tab volume and the equalizer; a nature source starts without oscillators", () => {
   const eq = { bands: [{ type: "lowshelf", frequency: 200, gain: 3, q: NEUTRAL_Q }, ...flatEqualizer().bands.slice(1)] } as SynthSound["eq"];
-  const tuned: SynthSound = { ...defaultSound(), volume: 0.35, noise: { color: "white", level: 0.2 }, eq };
-  // The default synthesiser carries a 55 Hz sine; the waterfall starts without it but keeps the equalizer.
+  const tuned: SynthSound = { ...defaultSound(), noise: { color: "white", level: 0.35 }, eq };
+  // The default synthesiser carries a 55 Hz sine; the waterfall starts without it but keeps the volume and the equalizer.
   const fall = withSource(tuned, "waterfall");
-  assert.deepEqual(fall, { source: "waterfall", volume: 0.35, oscillators: [], eq });
+  assert.deepEqual(fall, { source: "waterfall", level: 0.35, oscillators: [], eq });
   const withTone = { ...fall, oscillators: [{ wave: "sine" as const, frequency: 80, level: 0.5 }] };
   // Between nature sources the added oscillator and the equalizer stay.
   const rain = withSource(withTone, "rain");
   assert.deepEqual(rain, { ...withTone, source: "rain" });
-  // Back to the synthesiser: oscillators and equalizer stay, the noise is the default one.
-  assert.deepEqual(withSource(rain, "synth"), { source: "synth", volume: 0.35, noise: defaultSound().noise, oscillators: withTone.oscillators, eq });
+  // Back to the synthesiser: volume, oscillators and equalizer stay, the noise colour is the default one.
+  assert.deepEqual(withSource(rain, "synth"), { source: "synth", noise: { color: "brown", level: 0.35 }, oscillators: withTone.oscillators, eq });
   assert.equal(withSource(tuned, "synth"), tuned);
 });
 
 test("sound values are clamped and broken input falls back to defaults", () => {
-  const sound = synthOf({ volume: 9, radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], eq: { bands: [{ type: "lowcut", frequency: 99999, q: 99 }, { type: "nope" }] } });
-  assert.equal(sound.volume, 1);
+  const sound = synthOf({ radius: -1, noise: { color: "purple", level: 2 }, oscillators: [1, 2, 3, 4, 5], eq: { bands: [{ type: "lowcut", frequency: 99999, q: 99 }, { type: "nope" }] } });
+  assert.equal(sound.noise.level, 1);
+  assert.equal("volume" in sound, false);
   assert.equal("radius" in sound, false);
   assert.equal(sound.noise.color, "brown");
   assert.equal(sound.oscillators.length, MAX_OSCILLATORS);
@@ -124,9 +132,9 @@ test("speakers can be added, moved, edited and removed", () => {
   let speakers = addSpeaker([], { x: 3, y: 4 }, "s1");
   speakers = moveSpeaker(speakers, "s1", { x: 99, y: -5 });
   assert.ok(speakers[0].x <= GARDEN_SIZE && speakers[0].y >= 0);
-  speakers = updateSpeaker(speakers, "s1", { name: "  Rain  ", sound: { ...defaultSound(), volume: 0.2 } });
+  speakers = updateSpeaker(speakers, "s1", { name: "  Rain  ", sound: noiseAt(0.2) });
   assert.equal(speakers[0].name, "Rain");
-  assert.equal(speakers[0].sound.volume, 0.2);
+  assert.equal(baseLevel(speakers[0].sound), 0.2);
   assert.deepEqual(removeSpeaker(speakers, "s1"), []);
 });
 
@@ -332,14 +340,36 @@ test("an action glides between keyframes and shows its effects only briefly", ()
 });
 
 test("a louder speaker is heard farther away and a silent one is not heard", () => {
-  assert.equal(reachOf({ volume: 0 }), REACH[0]);
-  assert.equal(reachOf({ volume: 1 }), REACH[1]);
-  assert.ok(reachOf({ volume: 0.9 }) > reachOf({ volume: 0.3 }));
-  assert.equal(loudnessAt(0, { volume: 0.5 }), 0.5);
-  assert.equal(loudnessAt(reachOf({ volume: 0.5 }), { volume: 0.5 }), 0);
-  assert.ok(loudnessAt(9, { volume: 1 }) > 0);
-  assert.equal(loudnessAt(9, { volume: 0.4 }), 0);
-  assert.equal(audibleCount({ x: 10, y: 10 }, [speaker("near", 11, 10), speaker("far", 0, 0), speaker("mute", 10, 10, { volume: 0 })]), 1);
+  assert.equal(reachOf(noiseAt(0)), REACH[0]);
+  assert.equal(reachOf(noiseAt(1)), REACH[1]);
+  assert.ok(reachOf(noiseAt(0.9)) > reachOf(noiseAt(0.3)));
+  assert.equal(loudnessAt(0, noiseAt(0.5)), 0.5);
+  assert.equal(loudnessAt(reachOf(noiseAt(0.5)), noiseAt(0.5)), 0);
+  assert.ok(loudnessAt(9, noiseAt(1)) > 0);
+  assert.equal(loudnessAt(9, noiseAt(0.4)), 0);
+  assert.equal(audibleCount({ x: 10, y: 10 }, [speaker("near", 11, 10), speaker("far", 0, 0), speaker("mute", 10, 10, noiseAt(0))]), 1);
+});
+
+test("the loudest part decides the reach, and older sounds keep how they sounded", () => {
+  // Noise at 20 % with an oscillator at 90 %: the oscillator decides.
+  const tone: SynthSound = { ...noiseAt(0.2), oscillators: [{ wave: "sine", frequency: 55, level: 0.9 }] };
+  assert.equal(loudnessOf(tone), 0.9);
+  near(reachOf(tone), 2 + 9 * 0.9, 1e-9);
+  // A new speaker still reaches 8.3 tiles.
+  near(reachOf(defaultSound()), 8.3, 1e-9);
+  // A sound saved with an overall volume has it folded into every part.
+  const old = synthOf({ volume: 0.5, noise: { color: "pink", level: 0.8 }, oscillators: [{ wave: "sine", frequency: 55, level: 0.6 }] });
+  near(old.noise.level, 0.4, 1e-9);
+  near(old.oscillators[0].level, 0.3, 1e-9);
+  assert.deepEqual(normalizeSound(old), old);
+  // An old nature source had only a volume: it becomes the recording volume; its oscillators are folded too.
+  assert.deepEqual(normalizeSound({ source: "rain", volume: 0.4 }), { source: "rain", level: 0.4, oscillators: [], eq: flatEqualizer() });
+  const oldCafe = normalizeSound({ source: "cafe", volume: 0.5, oscillators: [{ wave: "sine", frequency: 80, level: 0.6 }] });
+  assert.ok(!isSynth(oldCafe) && oldCafe.level === 0.5 && Math.abs(oldCafe.oscillators[0].level - 0.3) < 1e-9);
+  // A very old sound with only a volume gets the old default noise and hum, scaled by it.
+  const bare = synthOf({ volume: 0.7 });
+  near(bare.noise.level, 0.56, 1e-9);
+  near(bare.oscillators[0].level, 0.385, 1e-9);
 });
 
 test("the default sound gets its low end from oscillator A and holds at most two oscillators", () => {

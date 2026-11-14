@@ -2,7 +2,7 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Easing, Platform, View } from "react-native";
 import Svg, { Circle, Defs, Ellipse, G, Path, Polygon, RadialGradient, Rect, Stop } from "react-native-svg";
-import { NOISE_COLORS, lookOf, reachOf, waveShape, type NoiseColor, type SourceLook, type SpeakerSound, type Wave } from "../domain/sound";
+import { NOISE_COLORS, lookOf, loudnessOf, reachOf, waveShape, type NoiseColor, type SourceLook, type SpeakerSound, type Wave } from "../domain/sound";
 import { NATURE_TINT, NatureArt } from "./nature";
 import { GARDEN_SIZE, TILE_HEIGHT, TILE_WIDTH, toScreen } from "../domain/world";
 import { RIPPLE_POOL, RIPPLE_SECONDS, firstRippleDelay, nextRippleInterval } from "./ripple";
@@ -109,13 +109,14 @@ export function SourceArt({ look, playing, shadow = true, still }: { look: Sourc
 }
 const NATIVE_DRIVER = Platform.OS !== "web";
 
-/** How strong a speaker's sound waves look (0 to 1): louder is stronger, a silent speaker sends none. */
-export function shadowStrength(sound: Pick<SpeakerSound, "volume">): number {
-  return sound.volume <= 0 ? 0 : 0.45 + 0.55 * sound.volume;
+/** How strong a speaker's sound waves look (0 to 1): a louder loudest part is stronger, a silent speaker sends none. */
+export function shadowStrength(sound: SpeakerSound): number {
+  const loudness = loudnessOf(sound);
+  return loudness <= 0 ? 0 : 0.45 + 0.55 * loudness;
 }
 
 /** Screen size of the area a speaker is heard in: its round reach seen in quarter view. Louder reaches further. */
-export function shadowSize(sound: Pick<SpeakerSound, "volume">): { width: number; height: number } {
+export function shadowSize(sound: SpeakerSound): { width: number; height: number } {
   const reach = reachOf(sound);
   return { width: reach * TILE_WIDTH * Math.SQRT2, height: reach * TILE_HEIGHT * Math.SQRT2 };
 }
@@ -173,7 +174,7 @@ export const SoundShadow = React.memo(function SoundShadow({ sound }: { id: stri
   return (
     <View pointerEvents="none" style={{ width, height }}>
       <Svg width={width} height={height} style={{ position: "absolute", left: 0, top: 0 }}>
-        <Ellipse cx={width / 2} cy={height / 2} rx={width / 2} ry={height / 2} fill={color} fillOpacity={0.07 + 0.08 * sound.volume} />
+        <Ellipse cx={width / 2} cy={height / 2} rx={width / 2} ry={height / 2} fill={color} fillOpacity={0.07 + 0.08 * loudnessOf(sound)} />
       </Svg>
       {rings.map((progress, index) => (
         <Ripple key={index} progress={progress} width={width} height={height} color={color} strength={strength} />

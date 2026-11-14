@@ -16,7 +16,11 @@ export interface MyGarden {
   presets: Preset[];
 }
 
-const sound = (patch: Partial<SynthSound>): SpeakerSound => normalizeSound({ ...defaultSound(), ...patch });
+/**
+ * Built-in presets are written as they were made: with an overall volume (0.7 unless given) that normalizeSound()
+ * folds into the noise and oscillator volumes, so they keep sounding the same.
+ */
+const sound = (patch: Partial<Omit<SynthSound, "noise">> & { volume?: number; noise?: SynthSound["noise"] }): SpeakerSound => normalizeSound({ volume: 0.7, noise: { color: "brown", level: 0.8 }, ...patch });
 /** An equalizer with some of its three points changed. */
 const eq = (...patches: (Partial<EqBand> | null)[]): SynthSound["eq"] => {
   const flat = flatEqualizer();

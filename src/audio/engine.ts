@@ -10,7 +10,7 @@
 import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type AudioNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
 import { bandCoefficients, type EqBand } from "../domain/equalizer";
-import { isSynth, mixFor, reachOf, type NoiseColor, type Speaker, type SpeakerSound } from "../domain/sound";
+import { isSynth, loudnessOf, mixFor, reachOf, type NoiseColor, type Speaker, type SpeakerSound } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { LIMIT_RANGE, limiterCurve } from "./limiter";
 import { fillNoise, loopOffset } from "./noise";
@@ -222,7 +222,7 @@ export class GardenAudio {
     const wanted = new Set<string>();
     const levels = mixFor(this.listener, this.speakers);
     this.speakers.forEach((speaker, index) => {
-      const awake = distance(this.listener, speaker) < reachOf(speaker.sound) + WAKE_MARGIN && speaker.sound.volume > 0;
+      const awake = distance(this.listener, speaker) < reachOf(speaker.sound) + WAKE_MARGIN && loudnessOf(speaker.sound) > 0;
       if (!awake) return;
       wanted.add(speaker.id);
       const key = JSON.stringify(speaker.sound);
