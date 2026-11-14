@@ -183,11 +183,18 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Result: waterfall with recording volume 0.35, no oscillators and the +3 dB shelf → rain keeps the 80 Hz oscillator and the shelf → the synthesiser keeps them, with brown noise at volume 0.35. In the browser all three tabs stay for a nature source, the noise controls give way to the note about the recording, the oscillator added to the waterfall shows in its own spectrum, the held speaker turns into the chosen object, and putting it down leaves that object on the ground with its own waves.
 - Test: "choosing a source keeps the Sound tab volume and the equalizer; a nature source starts without oscillators". Browser check in Chrome 2026-11-14.
 
-## Twelve Nature Objects
+## Ten Nature Objects
 - Input: a stored private garden with one of each nature source at recording volume 0.25.
 - Steps: enter the private garden and look at the objects over time.
 - Result: each source is drawn as its own object with its own movement, in its own wave colour; without oscillators no audio plays for them; no errors.
-- Test: Browser check in Chrome 2026-11-14 (screenshots of all twelve).
+- Test: Browser check in Chrome 2026-11-14 (screenshots of all of them; thunder and wind chime were removed the same day).
+
+## Recordings And Heartbeat Tempo
+- Design: [Nature Sources](../../../design/app/10-garden.md#nature-sources)
+- Input: a stream with its second recording; a stream naming a rain recording; a heartbeat without tempo, with 300 and with 71.6; a stored `thunder` and a stored `windchime`; the editor with a stream and then a heartbeat.
+- Steps: `normalizeSound()`, `withSource()`; in the browser choose the stream, then Recording 2, then the heartbeat.
+- Result: the second recording stays; the rain recording falls back to the stream's first; the heartbeat gets 60, 120 and 72 BPM; thunder becomes rain with `fs-737691`; the wind chime becomes a synthesiser sound. In the editor the stream shows Recording 1 to 3 where the noise colours were, the heartbeat shows a tempo slider instead, and an old stored thunder speaker appears as rain.
+- Test: "a nature source plays one of its recordings, and the heartbeat has a tempo". Browser check in Chrome 2026-11-14.
 
 ## Edit Only While Holding
 - Input: a speaker on the ground; then the same speaker held.

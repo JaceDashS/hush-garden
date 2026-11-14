@@ -20,9 +20,14 @@
 - Code: `Speaker`, `SpeakerSound`, `SynthSound` in `src/domain/sound.ts`
 
 ## Nature Source
-- Definition: One of the twelve recorded-style sounds a speaker can play instead of the synthesiser (rain, stream, waterfall, reeds, airplane, campfire, waves, thunder, cafe, wind chime, train, heartbeat). Its recording takes the place of the noise and has its own volume; it has oscillators and an equalizer like the synthesiser, and its own garden object.
+- Definition: One of the ten recorded sounds a speaker can play instead of the synthesiser (rain, stream, waterfall, reeds, airplane, campfire, waves, cafe, train, heartbeat). Its recording takes the place of the noise and has its own volume; it has oscillators and an equalizer like the synthesiser, and its own garden object.
 - Code: `NATURE_SOURCES`, `NatureSound`, `NatureArt`, `NATURE_TINT`, `withSource()`
 - Avoid: "nature speaker" in code (use source); "ambience" (too broad)
+
+## Recording
+- Definition: One of the recordings a nature source can play, chosen in the Sound tab like a noise colour; identified by its Freesound sound id. The heartbeat has one recording played beat by beat at a tempo.
+- Code: `RECORDINGS`, `Recording`, `NatureSound.recording`, `recordingOf()`; tempo: `NatureSound.tempo`, `TEMPO`
+- Avoid: "variant", "track"
 
 ## Source Look
 - Definition: How a speaker is drawn: its noise colour for the synthesiser, or its nature source.

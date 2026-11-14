@@ -7,6 +7,7 @@ import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
 import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
+import { DEFAULT_TEMPO, RECORDINGS, TEMPO, defaultRecording } from "../src/domain/recordings.ts";
 import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, baseLevel, defaultSound, gainAt, isSynth, lookOf, loudnessAt, loudnessOf, mixFor, normalizeSound, reachOf, waveShape, withSource, type Speaker, type SpeakerSound, type SynthSound } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
 
@@ -81,9 +82,9 @@ test("a speaker to the right on screen pans right", () => {
 
 test("a nature source has oscillators and an equalizer but no noise and no default oscillator", () => {
   const flat = flatEqualizer();
-  assert.deepEqual(normalizeSound({ source: "waterfall", level: 0.4, noise: { color: "pink", level: 1 }, oscillators: [] }), { source: "waterfall", level: 0.4, oscillators: [], eq: flat });
-  assert.deepEqual(normalizeSound({ source: "rain", level: 7 }), { source: "rain", level: 1, oscillators: [], eq: flat });
-  assert.deepEqual(normalizeSound({ source: "train" }), { source: "train", level: defaultSound().noise.level, oscillators: [], eq: flat });
+  assert.deepEqual(normalizeSound({ source: "waterfall", level: 0.4, noise: { color: "pink", level: 1 }, oscillators: [] }), { source: "waterfall", recording: defaultRecording("waterfall"), level: 0.4, oscillators: [], eq: flat });
+  assert.deepEqual(normalizeSound({ source: "rain", level: 7 }), { source: "rain", recording: defaultRecording("rain"), level: 1, oscillators: [], eq: flat });
+  assert.deepEqual(normalizeSound({ source: "train" }), { source: "train", recording: defaultRecording("train"), level: defaultSound().noise.level, oscillators: [], eq: flat });
   const tuned = normalizeSound({ source: "cafe", level: 0.5, oscillators: [{ wave: "triangle", frequency: 99999, level: 0.4 }, {}, {}], eq: { bands: [{ type: "lowshelf", frequency: 120, gain: 6, q: 0.7 }] }, bass: { level: 1 } });
   assert.equal(tuned.source, "cafe");
   assert.equal(tuned.oscillators.length, MAX_OSCILLATORS);
@@ -94,10 +95,33 @@ test("a nature source has oscillators and an equalizer but no noise and no defau
   // A sound saved before nature sources existed has no source; an unknown source is the synthesiser.
   assert.equal(normalizeSound({ noise: { color: "pink", level: 0.5 } }).source, "synth");
   assert.equal(normalizeSound({ source: "dragon", level: 0.5 }).source, "synth");
-  assert.equal(NATURE_SOURCES.length, 12);
+  assert.equal(NATURE_SOURCES.length, 10);
   for (const source of NATURE_SOURCES) assert.equal(normalizeSound({ source, level: 0.3 }).source, source);
   assert.equal(lookOf(defaultSound()), "brown");
-  assert.equal(lookOf({ source: "campfire", level: 1, oscillators: [], eq: flat }), "campfire");
+  assert.equal(lookOf({ source: "campfire", recording: defaultRecording("campfire"), level: 1, oscillators: [], eq: flat }), "campfire");
+});
+
+test("a nature source plays one of its recordings, and the heartbeat has a tempo", () => {
+  // Every source but the heartbeat has recordings to choose from; ids are unique.
+  const ids = Object.values(RECORDINGS).flat().map((item) => item.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(ids.length, 25);
+  assert.equal(RECORDINGS.heartbeat.length, 1);
+  const second = RECORDINGS.stream[1].id;
+  const stream = normalizeSound({ source: "stream", recording: second, level: 0.5 });
+  assert.ok(!isSynth(stream) && stream.recording === second && !("tempo" in stream));
+  // A recording of another source, or an unknown one, falls back to the first recording.
+  assert.equal((normalizeSound({ source: "stream", recording: RECORDINGS.rain[0].id }) as { recording: string }).recording, defaultRecording("stream"));
+  // The heartbeat keeps a whole tempo inside its range; the default is 60.
+  assert.equal((normalizeSound({ source: "heartbeat" }) as { tempo: number }).tempo, DEFAULT_TEMPO);
+  assert.equal((normalizeSound({ source: "heartbeat", tempo: 300 }) as { tempo: number }).tempo, TEMPO[1]);
+  assert.equal((normalizeSound({ source: "heartbeat", tempo: 71.6 }) as { tempo: number }).tempo, 72);
+  // Thunder became a rain recording; wind chime is gone and falls back to the synthesiser.
+  assert.deepEqual(normalizeSound({ source: "thunder", level: 0.6 }), { source: "rain", recording: "fs-737691", level: 0.6, oscillators: [], eq: flatEqualizer() });
+  assert.equal(normalizeSound({ source: "windchime", level: 0.6 }).source, "synth");
+  // Choosing a source starts at its first recording; the heartbeat gets the default tempo.
+  assert.equal((withSource(stream, "heartbeat") as { tempo: number }).tempo, DEFAULT_TEMPO);
+  assert.equal((withSource(stream, "rain") as { recording: string }).recording, defaultRecording("rain"));
 });
 
 test("choosing a source keeps the Sound tab volume and the equalizer; a nature source starts without oscillators", () => {
@@ -105,11 +129,11 @@ test("choosing a source keeps the Sound tab volume and the equalizer; a nature s
   const tuned: SynthSound = { ...defaultSound(), noise: { color: "white", level: 0.35 }, eq };
   // The default synthesiser carries a 55 Hz sine; the waterfall starts without it but keeps the volume and the equalizer.
   const fall = withSource(tuned, "waterfall");
-  assert.deepEqual(fall, { source: "waterfall", level: 0.35, oscillators: [], eq });
+  assert.deepEqual(fall, { source: "waterfall", recording: defaultRecording("waterfall"), level: 0.35, oscillators: [], eq });
   const withTone = { ...fall, oscillators: [{ wave: "sine" as const, frequency: 80, level: 0.5 }] };
   // Between nature sources the added oscillator and the equalizer stay.
   const rain = withSource(withTone, "rain");
-  assert.deepEqual(rain, { ...withTone, source: "rain" });
+  assert.deepEqual(rain, { ...withTone, source: "rain", recording: defaultRecording("rain") });
   // Back to the synthesiser: volume, oscillators and equalizer stay, the noise colour is the default one.
   assert.deepEqual(withSource(rain, "synth"), { source: "synth", noise: { color: "brown", level: 0.35 }, oscillators: withTone.oscillators, eq });
   assert.equal(withSource(tuned, "synth"), tuned);
@@ -363,7 +387,7 @@ test("the loudest part decides the reach, and older sounds keep how they sounded
   near(old.oscillators[0].level, 0.3, 1e-9);
   assert.deepEqual(normalizeSound(old), old);
   // An old nature source had only a volume: it becomes the recording volume; its oscillators are folded too.
-  assert.deepEqual(normalizeSound({ source: "rain", volume: 0.4 }), { source: "rain", level: 0.4, oscillators: [], eq: flatEqualizer() });
+  assert.deepEqual(normalizeSound({ source: "rain", volume: 0.4 }), { source: "rain", recording: defaultRecording("rain"), level: 0.4, oscillators: [], eq: flatEqualizer() });
   const oldCafe = normalizeSound({ source: "cafe", volume: 0.5, oscillators: [{ wave: "sine", frequency: 80, level: 0.6 }] });
   assert.ok(!isSynth(oldCafe) && oldCafe.level === 0.5 && Math.abs(oldCafe.oscillators[0].level - 0.3) < 1e-9);
   // A very old sound with only a volume gets the old default noise and hum, scaled by it.

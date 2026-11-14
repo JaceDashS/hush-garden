@@ -8,10 +8,11 @@
 import React, { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, baseLevel, defaultOscillator, isSynth, lookOf, reachOf, withSource, type Oscillator, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
+import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, baseLevel, defaultOscillator, isSynth, lookOf, reachOf, withSource, type Oscillator, type NatureSound, type NatureSource, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
 import { SHADOW_TINT, SourceArt, WavePicture } from "../game/sprites";
 import { useT } from "../i18n";
 import { Btn, Chips, DragLockContext, HIDDEN_READY, IconBtn, Input, Knob, Prepared, Slider, T, Tabs, colors } from "../ui";
+import { DEFAULT_TEMPO, RECORDINGS, TEMPO, hasTempo } from "../domain/recordings";
 import { EqGraph, type Spectrum } from "./EqGraph";
 
 type Tab = "sound" | "osc" | "eq";
@@ -107,6 +108,8 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
   const set = (patch: Partial<Pick<SpeakerSound, "oscillators" | "eq">>) => onChange({ ...speaker, sound: { ...sound, ...patch } });
   const setNoise = (patch: Partial<SynthSound["noise"]>) => synth && onChange({ ...speaker, sound: { ...synth, noise: { ...synth.noise, ...patch } } });
   const setBaseLevel = (level: number) => (isSynth(sound) ? setNoise({ level }) : onChange({ ...speaker, sound: { ...sound, level } }));
+  const setNature = (patch: Partial<Pick<NatureSound, "recording" | "tempo">>) => !isSynth(sound) && onChange({ ...speaker, sound: { ...sound, ...patch } });
+  const recordings = synth ? [] : RECORDINGS[sound.source as NatureSource];
   const setOscillator = (index: number, patch: Partial<Oscillator>) => set({ oscillators: sound.oscillators.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
   const next = sound.oscillators.length;
   return (
@@ -125,11 +128,19 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum }: { sp
         <ScrollView style={{ flex: 1 }} scrollEnabled={!dragging} contentContainerStyle={{ padding: 12, gap: 10 }} keyboardShouldPersistTaps="handled">
           <View style={pane(shown === "sound")} pointerEvents={shown === "sound" ? "auto" : "none"}>
               <SourcePicker value={sound.source} onChange={(source) => onChange({ ...speaker, sound: withSource(sound, source) })} />
-              {synth && (
+              {/* Where the synthesiser chooses its noise colour, a nature source chooses its recording, and the heartbeat its tempo. */}
+              {(synth || recordings.length > 1) && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 6, borderTopWidth: 2, borderTopColor: colors.track }}>
                   <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: SHADOW_TINT[lookOf(sound)], borderWidth: 2, borderColor: colors.ink }} />
-                  <Chips label={t("noise.kind")} value={synth.noise.color} options={NOISE_COLORS.map((color) => ({ value: color, label: t(("noise." + color) as "noise.white") }))} onChange={(color) => setNoise({ color })} />
+                  {synth ? (
+                    <Chips label={t("noise.kind")} value={synth.noise.color} options={NOISE_COLORS.map((color) => ({ value: color, label: t(("noise." + color) as "noise.white") }))} onChange={(color) => setNoise({ color })} />
+                  ) : (
+                    <Chips label={t("source.recording")} value={(sound as NatureSound).recording} options={recordings.map((item, index) => ({ value: item.id, label: t("source.recordingN", { n: index + 1 }) }))} onChange={(recording) => setNature({ recording })} />
+                  )}
                 </View>
+              )}
+              {!isSynth(sound) && hasTempo(sound.source) && (
+                <Slider label={t("source.tempo")} value={sound.tempo ?? DEFAULT_TEMPO} min={TEMPO[0]} max={TEMPO[1]} format={(v) => Math.round(v) + " BPM"} onChange={(tempo) => setNature({ tempo: Math.round(tempo) })} testID="heartbeat-tempo" />
               )}
               <Slider label={t(synth ? "noise.level" : "source.level")} value={baseLevel(sound)} min={0} max={1} format={percent} onChange={setBaseLevel} testID="base-level" />
               <T size={12} tone="muted">{t("editor.reach", { n: reachOf(sound).toFixed(1) })}</T>

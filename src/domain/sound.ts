@@ -3,6 +3,7 @@
  * equalizer) or one nature source, which has only a volume and is drawn as its own object.
  */
 import { flatEqualizer, normalizeEqualizer, type Equalizer } from "./equalizer";
+import { DEFAULT_TEMPO, TEMPO, defaultRecording, hasTempo, recordingOf } from "./recordings";
 import { TILE_WIDTH, distance, toScreen, type Point } from "./world";
 
 export type NoiseColor = "white" | "pink" | "brown";
@@ -18,9 +19,9 @@ export interface Oscillator {
 
 /**
  * Nature sources in the order the sound picker shows them: first those a long crossfaded recording covers, then
- * those that add events on a bed, then those with a played rhythm.
+ * those with events on a bed, then those with a rhythm. The heartbeat is played beat by beat at a tempo.
  */
-export const NATURE_SOURCES = ["rain", "stream", "waterfall", "reeds", "airplane", "campfire", "waves", "thunder", "cafe", "windchime", "train", "heartbeat"] as const;
+export const NATURE_SOURCES = ["rain", "stream", "waterfall", "reeds", "airplane", "campfire", "waves", "cafe", "train", "heartbeat"] as const;
 export type NatureSource = (typeof NATURE_SOURCES)[number];
 export type SoundSource = "synth" | NatureSource;
 
@@ -43,6 +44,10 @@ export interface SynthSound {
  */
 export interface NatureSound {
   source: NatureSource;
+  /** Which of the source's recordings plays: its id in RECORDINGS (see recordings.ts). */
+  recording: string;
+  /** Heartbeat only: beats per minute, TEMPO[0] to TEMPO[1]. */
+  tempo?: number;
   /** Volume of the recording, 0 to 1, in the place of the synthesiser's noise volume. */
   level: number;
   oscillators: Oscillator[];
@@ -62,18 +67,23 @@ export const baseLevel = (sound: SpeakerSound): number => (isSynth(sound) ? soun
 /** Volume of the loudest part, noise or recording or an oscillator. It decides the reach and the waves. */
 export const loudnessOf = (sound: SpeakerSound): number => Math.max(baseLevel(sound), ...sound.oscillators.map((oscillator) => oscillator.level));
 
+/** A nature sound with its default recording, and the default tempo when the source has one. */
+export function natureSound(source: NatureSource, rest: Pick<NatureSound, "level" | "oscillators" | "eq">): NatureSound {
+  return { source, recording: defaultRecording(source), ...(hasTempo(source) ? { tempo: DEFAULT_TEMPO } : null), ...rest };
+}
+
 /**
  * The sound after choosing a source in the editor. The Sound tab volume (noise or recording) and the equalizer
  * always stay. Going from the synthesiser to a nature source empties the oscillators, since a nature source has
  * none by default; between nature sources they stay; going back to the synthesiser keeps them and takes the
- * default noise colour.
+ * default noise colour. A new nature source starts with its first recording (and the default tempo).
  */
 export function withSource(sound: SpeakerSound, source: SoundSource): SpeakerSound {
   if (source === sound.source) return sound;
   const level = baseLevel(sound);
   const { eq } = sound;
   if (source === "synth") return { source, noise: { color: defaultSound().noise.color, level }, oscillators: sound.oscillators, eq };
-  return { source, level, oscillators: isSynth(sound) ? [] : sound.oscillators, eq };
+  return natureSound(source, { level, oscillators: isSynth(sound) ? [] : sound.oscillators, eq });
 }
 
 export interface Speaker {
@@ -91,6 +101,8 @@ export const LIMITS = {
 } as const;
 /** Reach in tiles of a silent speaker and of one whose loudest part is at full volume. */
 export const REACH = [2, 11] as const;
+/** The rain recording a stored thunder source turns into. */
+const THUNDER_RECORDING = "fs-737691";
 /** A stored bass drone played at 0.5 of its level; an oscillator plays at 0.3 of its level. */
 const BASS_TO_OSCILLATOR = 0.5 / 0.3;
 
@@ -143,10 +155,14 @@ export function normalizeSound(value: unknown): SpeakerSound {
       level: unit(o.level, 0.2) * overall,
     };
   });
-  // A nature source has no default oscillator and no noise; it never had a bass drone.
-  if (isNatureSource(v.source)) {
+  // A nature source has no default oscillator and no noise; it never had a bass drone. Thunder became a rain
+  // recording; a stored thunder plays rain with that recording.
+  const source = v.source === "thunder" ? "rain" : v.source;
+  if (isNatureSource(source)) {
     const level = typeof v.level === "number" ? unit(v.level, base.noise.level) * overall : legacy ? overall : base.noise.level;
-    return { source: v.source, level, oscillators: stored.slice(0, MAX_OSCILLATORS), eq: normalizeEqualizer(v.eq) };
+    const recording = recordingOf(source, v.source === "thunder" ? THUNDER_RECORDING : v.recording);
+    const tempo = hasTempo(source) ? { tempo: Math.round(num(v.tempo, TEMPO, DEFAULT_TEMPO)) } : null;
+    return { source, recording, ...tempo, level, oscillators: stored.slice(0, MAX_OSCILLATORS), eq: normalizeEqualizer(v.eq) };
   }
   const noise = record(v.noise);
   const bass = record(v.bass);

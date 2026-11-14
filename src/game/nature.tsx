@@ -23,9 +23,7 @@ export const NATURE_TINT: Record<NatureSource, string> = {
   airplane: "#8c9bb0",
   campfire: "#f07f2f",
   waves: "#2496bf",
-  thunder: "#7a6cc0",
   cafe: "#9a6a43",
-  windchime: "#d8a531",
   train: "#d5545a",
   heartbeat: "#e9728f",
 };
@@ -275,25 +273,6 @@ function Waves({ still, shadow }: ArtProps) {
   );
 }
 
-function Thunder({ still, shadow }: ArtProps) {
-  const flash = useLoop(3400, still);
-  const lit = range(flash, [0, 0.55, 0.57, 0.62, 0.66, 0.7, 0.76, 1], still ? [1, 1, 1, 1, 1, 1, 1, 1] : [0, 0, 1, 0.2, 1, 1, 0, 0]);
-  return (
-    <>
-      <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        {shadow && <Shadow rx={16} />}
-        <Path d="M8 34 a9 9 0 0 1 4 -16 a12 12 0 0 1 22 -6 a10 10 0 0 1 16 12 a7 7 0 0 1 -2 10 z" fill="#8a86a8" stroke={INK} strokeWidth={2.5} strokeLinejoin="round" />
-        <Circle cx={25} cy={23} r={1.8} fill={INK} />
-        <Circle cx={35} cy={23} r={1.8} fill={INK} />
-        <Path d="M27 28 h6" stroke={INK} strokeWidth={1.6} strokeLinecap="round" />
-      </Svg>
-      <Part x={18} y={30} w={24} h={38} style={{ opacity: lit }}>
-        <Path d="M14 2 l-10 18 h8 l-6 16 l16 -22 h-9 l7 -12 z" fill="#ffd84d" stroke={INK} strokeWidth={2} strokeLinejoin="round" />
-      </Part>
-    </>
-  );
-}
-
 function Cafe({ still, shadow }: ArtProps) {
   const steam = [useLoop(2200, still), useLoop(2600, still)];
   return (
@@ -312,34 +291,6 @@ function Cafe({ still, shadow }: ArtProps) {
           <Path d="M6 22 q-5 -5 0 -10 q5 -5 0 -10" stroke="#c9c2b8" strokeWidth={2.5} fill="none" strokeLinecap="round" />
         </Part>
       ))}
-    </>
-  );
-}
-
-function Windchime({ still, shadow }: ArtProps) {
-  const sway = useSwing(2300, still);
-  const strip = useSwing(1700, still);
-  return (
-    <>
-      <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        {shadow && <Shadow rx={16} />}
-        <Rect x={44} y={6} width={5} height={62} rx={2.5} fill="#b78f68" stroke={INK} strokeWidth={1.8} />
-        <Rect x={14} y={5} width={35} height={5} rx={2.5} fill="#b78f68" stroke={INK} strokeWidth={1.8} />
-        <Ellipse cx={46.5} cy={68} rx={7} ry={2.5} fill="#a8774b" stroke={INK} strokeWidth={1.5} />
-      </Svg>
-      <Part x={8} y={10} w={36} h={58} origin="18px 0px" style={{ transform: [{ rotate: deg(sway, 9) }] }}>
-        <Line x1={18} y1={0} x2={18} y2={6} stroke={INK} strokeWidth={1.5} />
-        <Path d="M6 16 q12 -14 24 0 z" fill="#ffd36b" stroke={INK} strokeWidth={2} strokeLinejoin="round" />
-        {[9, 15, 21, 27].map((x, index) => (
-          <Rect key={x} x={x - 1.5} y={17} width={3} height={14 + (index % 2) * 5} rx={1.5} fill="#e8e2d6" stroke={INK} strokeWidth={1} />
-        ))}
-        <Line x1={18} y1={16} x2={18} y2={36} stroke={INK} strokeWidth={1} />
-        <Circle cx={18} cy={34} r={2.5} fill="#ff9eb5" stroke={INK} strokeWidth={1} />
-        <Line x1={18} y1={36} x2={18} y2={40} stroke={INK} strokeWidth={1} />
-      </Part>
-      <Part x={20} y={48} w={12} h={18} origin="6px 0px" style={{ transform: [{ rotate: deg(strip, 18) }] }}>
-        <Rect x={2} y={0} width={8} height={17} rx={1.5} fill="#ff9eb5" stroke={INK} strokeWidth={1.2} />
-      </Part>
     </>
   );
 }
@@ -409,9 +360,7 @@ const ARTS: Record<NatureSource, (props: ArtProps) => React.ReactElement> = {
   airplane: Airplane,
   campfire: Campfire,
   waves: Waves,
-  thunder: Thunder,
   cafe: Cafe,
-  windchime: Windchime,
   train: Train,
   heartbeat: Heartbeat,
 };
