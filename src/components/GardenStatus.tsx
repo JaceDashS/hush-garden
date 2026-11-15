@@ -26,8 +26,8 @@ export function GardenStatus({ title, detail, progress, gaugeLabel }: { title: s
     return () => animation.stop();
   }, [progress, fill]);
   return (
-    <View pointerEvents="none" testID="garden-status" style={{ flexShrink: 1, minWidth: 150, borderRadius: 14, backgroundColor: "rgba(255,250,242,0.92)", paddingHorizontal: 12, paddingVertical: 4, alignItems: "center", overflow: "hidden" }}>
-      <Animated.View style={{ alignItems: "center", opacity: mix.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ scale: mix.interpolate({ inputRange: [0, 1], outputRange: [1, 0.92] }) }] }}>
+    <View pointerEvents="none" testID="garden-status" style={{ flex: 1, minWidth: 0, borderRadius: 14, backgroundColor: "rgba(255,250,242,0.92)", paddingHorizontal: 12, paddingVertical: 4, alignItems: "center", overflow: "hidden" }}>
+      <Animated.View style={{ maxWidth: "100%", alignItems: "center", opacity: mix.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }), transform: [{ scale: mix.interpolate({ inputRange: [0, 1], outputRange: [1, 0.92] }) }] }}>
         <T size={12} weight="800" lines={1}>{title}</T>
         <T size={11.5} weight="700" tone="muted" lines={1}>{detail}</T>
       </Animated.View>

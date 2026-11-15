@@ -664,12 +664,12 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             <View pointerEvents="box-none" style={{ flex: 1, alignItems: "flex-start" }}>
               {canEdit && link === "online" && (carried ? <Btn small variant="danger" title={t("top.discard")} disabled={!!action} onPress={discard} testID="speaker-discard" /> : <Btn small variant="primary" title={t("top.create")} disabled={!!action || !!carryId} onPress={create} testID="speaker-create" />)}
             </View>
-            {wide && <GardenStatus
+            {wide && <View style={{ flex: 1, minWidth: 0, alignItems: "center" }}><GardenStatus
               title={t(online ? "status.public" : mode === "test" ? "status.test" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}
               detail={patch?.phase === "failed" ? t("patch.failed") : t("status.heard", { n: heard })}
               progress={patch?.phase === "downloading" ? (patch.totalBytes ? patch.doneBytes / patch.totalBytes : 0) : null}
               gaugeLabel={t("status.downloading")}
-            />}
+            /></View>}
             <View pointerEvents="box-none" style={{ flex: 1, flexDirection: "row", justifyContent: "flex-end", gap: 6 }}>
               <SoundButton compact={!wide} playing={playing} volume={settings.volume} onToggle={() => void togglePlay()} onVolume={(volume) => onSettings({ ...settings, volume })} />
               <IconBtn label={t("top.settings")} onPress={() => setPanel("settings")} testID="open-settings">
