@@ -27,3 +27,7 @@ flowchart LR
 ## Keyboard Interaction
 
 Escape dismisses only the feedback composer when idle and is ignored during submission. Web feedback overlays trap Tab focus, restore the trigger on close and lock background scrolling; Hush Garden uses the existing React Native modal and captures Escape before the garden settings handler.
+
+## Field Hints
+
+The guest edit password and feedback content use their localized text as placeholders inside the fields. The separate content caption is omitted. Both fields retain accessibility labels when their placeholders disappear during typing.

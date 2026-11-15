@@ -28,3 +28,9 @@
 - Also verified at a 390 by 844 mobile viewport; the feedback input and controls fit the screen.
 - A reduced motion environment supplied before app initialization opened the composer with no React Native modal animation.
 - Escape closed only feedback and retained the underlying settings card.
+
+## Guest Field Placeholders
+
+- Input: A signed out visitor opens Feedback.
+- Steps: Inspect the empty password and content fields, then type into each.
+- Expected result: Localized password and content hints appear inside the empty fields, disappear as text is entered, and remain available as accessibility labels. No separate content caption is shown.

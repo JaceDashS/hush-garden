@@ -59,9 +59,8 @@ export function FeedbackDialog({ client, language, signedIn, onClose }: { client
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
             <T tone="muted">{text.notice}</T>
             {sent ? <T>{text.sent}</T> : <>
-              {!signedIn && <Input label={text.password} value={password} onChangeText={value => { if (!sending.current) setPassword(value); }} secure testID="feedback-password" />}
-              <T>{text.content}</T>
-              <TextInput autoFocus accessibilityLabel={text.content} testID="feedback-content" multiline value={content} editable={!busy} onChangeText={setContent} style={{ minHeight: 120, padding: 12, borderWidth: 1, borderColor: colors.panelEdge, borderRadius: 12, color: colors.ink, backgroundColor: colors.panel, textAlignVertical: "top" }} />
+              {!signedIn && <Input label={text.password} placeholder={text.password} value={password} onChangeText={value => { if (!sending.current) setPassword(value); }} secure testID="feedback-password" />}
+              <TextInput autoFocus accessibilityLabel={text.content} placeholder={text.content} placeholderTextColor={colors.muted} testID="feedback-content" multiline value={content} editable={!busy} onChangeText={setContent} style={{ minHeight: 120, padding: 12, borderWidth: 1, borderColor: colors.panelEdge, borderRadius: 12, color: colors.ink, backgroundColor: colors.panel, textAlignVertical: "top" }} />
               {error && <T tone="danger">{text.error}</T>}
               <Btn title={busy ? text.busy : text.send} disabled={busy || !content.trim() || (!signedIn && !password.trim())} onPress={() => void submit()} testID="feedback-send" />
             </>}
