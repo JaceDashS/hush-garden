@@ -284,12 +284,13 @@ stateDiagram-v2
 ## Top Bar And Settings
 
 - Code: `src/screens/Game.tsx` (top bar, M key), `src/components/SoundButton.tsx` → `SoundButton`, `SOUND_KEY_CODE`; `src/components/Panels.tsx` → `SettingsCard`; `src/ui.tsx` → `IconBtn`, `GearIcon`, `SpeakerIcon`, `Slider` (`bare`).
-- The top bar is one row: the make or discard button on the left for players who may edit, the status pill in the centre (garden, visitors when online, speakers heard), the sound button and the gear button on the right. Messages and notices are toasts from the top of the screen ([Toasts And Platform Notices](#toasts-and-platform-notices)).
+- The top bar is one row: the make or discard button on the left for players who may edit, the status pill in the centre on screens at least 820 px wide (garden, visitors when online, speakers heard), the sound button and the gear button on the right. Messages and notices are toasts from the top of the screen ([Toasts And Platform Notices](#toasts-and-platform-notices)).
 - The sound button calls the same `togglePlay()` as the lock screen controls: it starts or pauses the audio context, so on and off always match the media notification. The M key is matched by `event.code` (`KeyM`), so it works with a Korean or other keyboard layout; it is ignored while typing, with Ctrl, Alt or Meta, and on key repeat. The key handler is set up once and reaches the current toggle through a ref.
-- Hover uses pointer enter and leave on the button's own container and only counts a mouse pointer, so a tap on a phone browser never opens it. The button keeps the round 44 px footprint in the layout; its container is drawn absolutely, anchored on the right, and grows over the bar to its left, so the pointer never crosses a gap. Closing waits 250 ms and is held while the slider is dragged (through `DragLockContext`). The hint is drawn below.
-- The container (`sound-button`, white with the round button's border) grows from 44 px to 44 + 168 px in 180 ms (ease out) and shrinks back the same way, with `overflow: hidden`. Inside, the slider part keeps its full width beside the icon and fades in, so it is uncovered from right to left rather than squeezed; the icon stays at the right end. Width cannot use the native driver; this runs only with a mouse, on the web and desktop.
+- Hover uses pointer enter and leave on the button's own container and only counts a mouse pointer, so a tap on a phone browser never opens it. The button keeps the round 44 px footprint in the layout; its container is drawn absolutely, anchored on the right, and grows over the bar to its left on wide screens or unfolds below on compact screens, so the pointer never crosses a gap. Closing waits 250 ms and is held while the slider is dragged (through `DragLockContext`). The hint is drawn below.
+- On compact screens (below 820 px), Game passes `compact` to SoundButton and omits GardenStatus. Input: viewport width, volume and pointer hover. Output: the button keeps its 44 px footprint and the full-width slider unfolds below it through a 0 to 56 px height animation; the shortcut hint sits below the slider. The popup remains within the hover region and drag lock keeps it open.
+- The wide-screen container (`sound-button`, white with the round button's border) grows from 44 px to 44 + 168 px in 180 ms (ease out) and shrinks back the same way, with `overflow: hidden`. Inside, the slider part keeps its full width beside the icon and fades in, so it is uncovered from right to left rather than squeezed; the icon stays at the right end. Width cannot use the native driver; this runs only with a mouse, on the web and desktop.
 - The settings card holds master volume, language, character name, chat cue, account (public garden), presets (private garden) and leaving the garden.
-- Scenario: A guest in the public garden → no speaker button on the left; the centre shows the garden, the visitor count and the speakers heard; the sound button and the gear are on the right; the gear opens settings with a login button.
+- Scenario: A guest in the public garden at a width of at least 820 px → no speaker button on the left; the centre shows the garden, the visitor count and the speakers heard; the sound button and the gear are on the right; the gear opens settings with a login button.
 
 ## Languages
 
@@ -327,3 +328,17 @@ stateDiagram-v2
 - Scenario: Input a drag across the "Hush Garden" title in Chromium; steps press, move 340 px right, release; result `getSelection()` is empty. The same drag inside the chat field selects the typed text.
 - Spec: [No Text Selection](../../specs/app/10-garden.md#no-text-selection)
 - Scenarios: [No Text Selection Scenario](../../testing/scenarios/app/10-garden.md#no-text-selection-scenario)
+
+## Compact Top Bar Scenario
+
+- Input: 390 px viewport with permission to create speakers.
+- Steps: enter the garden, hover the sound button, drag the volume slider and leave the button.
+- Result: no centre status pill, slider unfolds below the sound button and folds after leaving; speaker creation and settings remain available.
+- All scenarios: [Garden Scenarios](../../testing/scenarios/app/10-garden.md#compact-top-bar).
+
+```mermaid
+flowchart LR
+    A[Viewport width] --> B{At least 820 px}
+    B -->|Yes| C[Centre status and left expansion]
+    B -->|No| D[Hidden status and downward expansion]
+```

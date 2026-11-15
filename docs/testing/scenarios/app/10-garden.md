@@ -282,7 +282,8 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 
 ## Top Bar And Settings
 - Input: the garden at phone size; the gear pressed.
-- Result: speaker button left, status centre, sound button and gear right; settings show master volume, language, character name, chat cue, presets and leave the garden.
+- Steps: open the garden at phone size and press the settings gear.
+- Result: speaker button left, centre status hidden below 820 px, sound button and gear right; settings show master volume, language, character name, chat cue, presets and leave the garden.
 - Test: Browser check 2026-11-12; sound button and settings without the on and off button checked in Chrome 2026-11-14.
 
 ## Sound Button And M Key
@@ -329,3 +330,11 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Expected result: The title drag selects nothing (`getSelection()` is empty, computed `user-select` is `none`). The chat drag selects the text.
 - Design: [No Text Selection](../../../design/app/10-garden.md#no-text-selection).
 - Verification: The title drag was checked in headless Chromium against the local dev server on 2026-11-15. The chat field drag was not run.
+
+## Compact Top Bar
+
+- Design: [Compact Top Bar Scenario](../../../design/app/10-garden.md#compact-top-bar-scenario).
+- Input: 390 px and 819 px viewports, a mouse, permission to create speakers, sound playing.
+- Steps: enter the garden, hover sound, drag volume, leave the popup, then resize to 820 px.
+- Result: below 820 px the centre status is hidden and the slider opens below without covering the create button; dragging changes volume and leaving closes it after the existing delay. At 820 px the status returns and the slider opens left. Touch taps still toggle sound and volume remains in settings.
+- Verification: manual browser verification pending.

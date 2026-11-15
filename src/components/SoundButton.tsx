@@ -1,6 +1,6 @@
 /**
  * The sound button of the top bar. Pressing it turns sound on and off. With a mouse, hovering it makes the button
- * itself grow to the left, uncovering the master volume slider inside the same container, and shows a hint naming
+ * itself grow to the left on wide screens or unfolds a slider below on compact screens, uncovering the master volume slider inside the same container, and shows a hint naming
  * the M shortcut; touch screens get only the press.
  */
 import React, { useEffect, useRef, useState } from "react";
@@ -20,7 +20,7 @@ const EXTRA_WIDTH = 12 + 112 + 6 + 34 + 4;
 
 type PointerEvent = { nativeEvent: { pointerType?: string } };
 
-export function SoundButton({ playing, volume, onToggle, onVolume }: { playing: boolean; volume: number; onToggle: () => void; onVolume: (volume: number) => void }) {
+export function SoundButton({ compact = false, playing, volume, onToggle, onVolume }: { compact?: boolean; playing: boolean; volume: number; onToggle: () => void; onVolume: (volume: number) => void }) {
   const t = useT();
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -50,15 +50,15 @@ export function SoundButton({ playing, volume, onToggle, onVolume }: { playing: 
   const label = t(playing ? "top.soundOff" : "top.soundOn");
   const hoverProps = { onPointerEnter: enter, onPointerLeave: leave } as object;
   return (
-    // The layout keeps the round button's footprint; the one container grows over the bar to its left.
+    // Keep the round button's footprint while the slider unfolds beside or below it.
     <View style={{ width: SIZE, height: SIZE }}>
       <Animated.View
         testID="sound-button"
         {...hoverProps}
-        style={{ position: "absolute", right: 0, top: 0, height: SIZE, width: unfold.interpolate({ inputRange: [0, 1], outputRange: [SIZE, SIZE + EXTRA_WIDTH] }), flexDirection: "row", justifyContent: "flex-end", overflow: "hidden", borderRadius: SIZE / 2, backgroundColor: colors.white, borderWidth: 2, borderBottomWidth: 4, borderColor: colors.panelEdge }}
+        style={{ position: "absolute", right: 0, top: 0, height: SIZE, width: unfold.interpolate({ inputRange: [0, 1], outputRange: [SIZE, compact ? SIZE : SIZE + EXTRA_WIDTH] }), flexDirection: "row", justifyContent: "flex-end", overflow: compact ? "visible" : "hidden", borderRadius: SIZE / 2, backgroundColor: colors.white, borderWidth: 2, borderBottomWidth: 4, borderColor: colors.panelEdge }}
       >
-        {/* The slider keeps its full width, anchored at the icon, so it is uncovered from right to left. */}
-        <Animated.View testID="sound-volume-popup" pointerEvents={open ? "auto" : "none"} style={{ width: EXTRA_WIDTH, flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 12, opacity: unfold.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0.6, 1] }) }}>
+        {/* Keep the slider at full width while its container unfolds. */}
+        <Animated.View testID="sound-volume-popup" pointerEvents={open ? "auto" : "none"} style={{ ...(compact ? { position: "absolute" as const, right: -2, top: SIZE - 4, height: unfold.interpolate({ inputRange: [0, 1], outputRange: [0, 56] }), overflow: "hidden" as const, backgroundColor: colors.white, borderRadius: 16, paddingRight: 8 } : {}), width: EXTRA_WIDTH, flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 12, opacity: unfold.interpolate({ inputRange: [0, 0.4, 1], outputRange: [0, 0.6, 1] }) }}>
           <View style={{ width: 112 }}>
             <DragLockContext.Provider value={setDragging}>
               <Slider bare label={t("settings.volume")} value={volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={onVolume} testID="top-volume" />
@@ -66,12 +66,12 @@ export function SoundButton({ playing, volume, onToggle, onVolume }: { playing: 
           </View>
           <T size={12} weight="800" style={{ width: 34, textAlign: "right" }}>{Math.round(volume * 100) + "%"}</T>
         </Animated.View>
-        <Pressable accessibilityRole="button" accessibilityLabel={label + " (M)"} testID="toggle-sound" onPress={onToggle} style={({ pressed }) => ({ width: SIZE - 4, alignItems: "center", justifyContent: "center", transform: [{ translateY: pressed ? 1 : 0 }] })}>
+        <Pressable accessibilityRole="button" accessibilityLabel={label + " (M)"} testID="toggle-sound" onPress={onToggle} style={({ pressed }) => ({ width: SIZE - 4, height: SIZE - 6, alignItems: "center", justifyContent: "center", transform: [{ translateY: pressed ? 1 : 0 }] })}>
           <SpeakerIcon on={playing} />
         </Pressable>
       </Animated.View>
       {open && (
-        <View pointerEvents="none" testID="sound-shortcut-hint" style={{ position: "absolute", right: 0, top: SIZE + 6, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: colors.ink }}>
+        <View pointerEvents="none" testID="sound-shortcut-hint" style={{ position: "absolute", right: 0, top: SIZE + (compact ? 62 : 6), flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: colors.ink }}>
           <T size={12} weight="700" tone="white" lines={1}>{label}</T>
           <View style={{ minWidth: 20, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, backgroundColor: colors.white, alignItems: "center" }}>
             <T size={11.5} weight="800">M</T>
