@@ -100,6 +100,7 @@ test("the limiter leaves quiet sound alone and keeps peaks below one", () => {
   assert.ok(curve.every((value, index) => index === 0 || value >= curve[index - 1]), "never folds back");
 });
 import { HushClient } from "../src/api/client.ts";
+import { ApiError } from "../src/api/types.ts";
 import { createNativeTransport } from "../src/api/transport.ts";
 import { signInWithNativeGoogle, type NativeGoogleProvider } from "../src/components/nativeGoogleFlow.ts";
 
@@ -355,4 +356,27 @@ test("messages and notices share one toast; a lasting one waits for passing ones
   assert.equal(currentToast()?.text, "Reconnecting");
   dismissToast("connection");
   assert.equal(currentToast(), null);
+});
+
+test("feedback supports guests and members, preserves canonical app identity and propagates rate limits", async () => {
+  const calls: { path: string; body: unknown }[] = [];
+  let limited = false;
+  const client = new HushClient({
+    hasCredentials: async () => true, forget: async () => undefined,
+    send: async <T>(path: string, body?: unknown) => {
+      calls.push({ path, body });
+      if (path === "/auth/session") return { user: { id: "u1", username: "garden" } } as T;
+      if (limited) throw new ApiError(429, "RATE_LIMITED");
+      return { id: 42 } as T;
+    },
+  });
+  await assert.rejects(client.submitFeedback("hello", ""), /required/);
+  assert.equal(calls.length, 0);
+  assert.deepEqual(await client.submitFeedback(" hello ", "guest-password"), { id: 42 });
+  assert.deepEqual(calls[0], { path: "/comments", body: { content: "hello", sourceAppId: 12, userPassword: "guest-password" } });
+  await client.restore();
+  await client.submitFeedback("member", "ignored-password");
+  assert.deepEqual(calls.at(-1)?.body, { content: "member", sourceAppId: 12 });
+  limited = true;
+  await assert.rejects(client.submitFeedback("retry", ""), /RATE_LIMITED/);
 });

@@ -59,3 +59,7 @@ The server side is part of the jace-s platform API (`services/api` in the jace-s
 
 ## Account Authentication
 - The existing account client and platform-specific transports remain the session owners. Android adds native Google account selection and the platform native credential exchange; web keeps GIS. See [Account Login](../design/app/20-account-login.md).
+
+## Feedback Composer
+
+The app opens feedback locally and retains the existing comments API and authentication boundary. See [Feedback Dialog Design](../design/app/98-feedback-dialogs.md) for the UI and transport paths.

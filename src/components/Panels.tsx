@@ -1,9 +1,10 @@
 /** Cards shown over the garden: location consent, login, presets and settings. */
+import { FeedbackDialog } from "./FeedbackDialog";
 import React, { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, ScrollView, View } from "react-native";
 import type { HushClient } from "../api/client";
 import { ApiError, type User } from "../api/types";
-import { APP_ID, SITE_ORIGIN } from "../config";
+import { SITE_ORIGIN } from "../config";
 import type { CueMode } from "../domain/chat";
 import { BUILT_IN_PRESETS, MAX_PRESETS, type MyGarden } from "../domain/garden";
 import { NAME_MAX_LENGTH, checkName } from "../domain/names";
@@ -175,8 +176,9 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  * receives a checked name, or "" to go back to the account name; `nameError` is the server's refusal, if any.
  * `open` is false while the card is kept prepared but not shown.
  */
-export function SettingsCard({ open = true, settings, user, online, shownName, nameError, nature, onDownloadNature, developer, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; nature: PatchPhase | null; onDownloadNature: () => void; developer?: React.ReactNode; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
+export function SettingsCard({ client, open = true, settings, user, online, shownName, nameError, nature, onDownloadNature, developer, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { client: HushClient; settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; nature: PatchPhase | null; onDownloadNature: () => void; developer?: React.ReactNode; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
   const t = useT();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [name, setName] = useState(settings.name);
   // The card is prepared before it is opened, so each opening starts from the saved name with no error shown.
   useEffect(() => {
@@ -198,6 +200,8 @@ export function SettingsCard({ open = true, settings, user, online, shownName, n
     onName(check.name);
   };
   return (
+    <>
+    {feedbackOpen && open && <FeedbackDialog client={client} language={settings.language} signedIn={!!client.currentUser} onClose={() => setFeedbackOpen(false)} />}
     <Card title={t("settings.title")} style={{ maxHeight: "100%" }}>
       <DragLockContext.Provider value={setDragging}>
         <ScrollView scrollEnabled={!dragging} style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 14 }} keyboardShouldPersistTaps="handled">
@@ -252,12 +256,12 @@ export function SettingsCard({ open = true, settings, user, online, shownName, n
           <Group title={t("settings.platform")}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               <Btn small title={t("settings.mainPage")} onPress={() => { const url = `${SITE_ORIGIN}/about`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="about-developer" />
-              <Btn small title={t("settings.feedback")} onPress={() => void Linking.openURL(`${SITE_ORIGIN}/feedback/${APP_ID}`)} testID="feedback" />
+              <Btn small title={t("settings.feedback")} onPress={() => setFeedbackOpen(true)} testID="feedback" />
             </View>
           </Group>
         </ScrollView>
       </DragLockContext.Provider>
       <Btn title={t("common.close")} onPress={onClose} testID="settings-close" />
-    </Card>
+    </Card></>
   );
 }

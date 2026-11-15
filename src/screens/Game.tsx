@@ -616,6 +616,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const settingsCard = useMemo(
     () => (
       <SettingsCard
+        client={client}
         open={settingsOpen}
         settings={settings}
         user={entry?.user ?? null}

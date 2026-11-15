@@ -31,6 +31,13 @@ export class HushClient {
   get currentUser(): User | null {
     return this.user;
   }
+  /** Posts public Hush Garden feedback using the current account or a guest edit password. */
+  submitFeedback(content: string, password: string): Promise<{ id: number }> {
+    return this.serialize(() => {
+      if (!content.trim() || (!this.user && !password.trim())) throw new Error("Feedback and guest password are required");
+      return this.call("/comments", { content: content.trim(), sourceAppId: 12, ...(!this.user ? { userPassword: password } : {}) });
+    });
+  }
 
   /** Returns the signed-in user, or null when there is no valid session. */
   restore(): Promise<User | null> {

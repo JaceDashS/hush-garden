@@ -162,3 +162,7 @@
 - Definition: A single-use nonce returned by the platform before Android Google account selection, bound to the subsequent ID token exchange. This is distinct from the garden socket ticket.
 - Code: HushClient.nativeGoogleChallenge, signInWithNativeGoogle.
 - Design: [Account Login](design/app/20-account-login.md).
+
+## Feedback Composer
+
+An in app writing dialog that posts a public comment with the canonical product identity. Opening it keeps the current app screen in place.
