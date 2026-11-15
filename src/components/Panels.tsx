@@ -1,8 +1,9 @@
 /** Cards shown over the garden: location consent, login, presets and settings. */
 import React, { useEffect, useState } from "react";
-import { Platform, Pressable, ScrollView, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, View } from "react-native";
 import type { HushClient } from "../api/client";
 import { ApiError, type User } from "../api/types";
+import { APP_ID, SITE_ORIGIN } from "../config";
 import type { CueMode } from "../domain/chat";
 import { BUILT_IN_PRESETS, MAX_PRESETS, type MyGarden } from "../domain/garden";
 import { NAME_MAX_LENGTH, checkName } from "../domain/names";
@@ -247,6 +248,12 @@ export function SettingsCard({ open = true, settings, user, online, shownName, n
           <Group title={t("settings.garden")}>
             {!online && <Btn small title={t("settings.presets")} onPress={onPresets} testID="open-presets" />}
             <Btn small variant="danger" title={t("settings.exit")} onPress={onExit} testID="exit" />
+          </Group>
+          <Group title={t("settings.platform")}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              <Btn small title={t("settings.mainPage")} onPress={() => void Linking.openURL(`${SITE_ORIGIN}/apps`)} testID="main-page" />
+              <Btn small title={t("settings.feedback")} onPress={() => void Linking.openURL(`${SITE_ORIGIN}/feedback/${APP_ID}`)} testID="feedback" />
+            </View>
           </Group>
         </ScrollView>
       </DragLockContext.Provider>
