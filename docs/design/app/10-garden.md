@@ -286,9 +286,10 @@ stateDiagram-v2
 - Code: `src/screens/Game.tsx` (top bar, M key), `src/components/SoundButton.tsx` → `SoundButton`, `SOUND_KEY_CODE`; `src/components/Panels.tsx` → `SettingsCard`; `src/ui.tsx` → `IconBtn`, `GearIcon`, `SpeakerIcon`, `Slider` (`bare`).
 - The top bar is one row: the make or discard button on the left for players who may edit, a flexible status pill in the centre on screens at least 820 px wide; it shrinks into remaining space without overlapping either side (garden, visitors when online, speakers heard), the sound button and the gear button on the right. Messages and notices are toasts from the top of the screen ([Toasts And Platform Notices](#toasts-and-platform-notices)).
 - The sound button calls the same `togglePlay()` as the lock screen controls: it starts or pauses the audio context, so on and off always match the media notification. The M key is matched by `event.code` (`KeyM`), so it works with a Korean or other keyboard layout; it is ignored while typing, with Ctrl, Alt or Meta, and on key repeat. The key handler is set up once and reaches the current toggle through a ref.
-- Hover uses pointer enter and leave on the button's own container and only counts a mouse pointer, so a tap on a phone browser never opens it. The button keeps the round 44 px footprint in the layout; its container is drawn absolutely, anchored on the right, and grows over the bar to its left on wide screens or unfolds below on compact screens, so the pointer never crosses a gap. Closing waits 250 ms and is held while the slider is dragged (through `DragLockContext`). The hint is drawn below.
-- On compact screens (below 820 px), Game passes `compact` to SoundButton and omits GardenStatus. Input: viewport width, volume and pointer hover. Output: the button keeps its 44 px footprint and the full-width slider unfolds below it through a 0 to 56 px height animation; the shortcut hint sits below the slider. The popup remains within the hover region and drag lock keeps it open.
-- The wide-screen container (`sound-button`, white with the round button's border) grows from 44 px to 44 + 168 px in 180 ms (ease out) and shrinks back the same way, with `overflow: hidden`. Inside, the slider part keeps its full width beside the icon and fades in, so it is uncovered from right to left rather than squeezed; the icon stays at the right end. Width cannot use the native driver; this runs only with a mouse, on the web and desktop.
+- The button keeps a 44 px layout footprint. Wide screens use mouse hover to extend its absolute container left; leaving closes after 250 ms, held while dragging through `DragLockContext`. Compact screens use an explicit expanded state: first press opens, subsequent presses toggle audio, and an outside pointer press closes. Web listens for outside pointer presses only while expanded; native uses a transparent dismiss layer. Escape also closes the web dropdown. No shortcut hint is rendered.
+- On compact screens (below 820 px), Game passes `compact` and omits GardenStatus. Input: viewport width, volume, button presses and outside presses. Output: one bordered white capsule grows from 44 to 214 px tall over 240 ms with cubic ease out and clipped overflow. The fixed-size slider fades and moves down 12 px as the capsule uncovers it; the icon remains at the top. Closing reverses the animation, and reopening interrupts it from its current value.
+- `Slider` in `src/ui.tsx` reuses its responder, drag lock and accessibility adjustments for both orientations. Optional `vertical` measures track height and page Y, reverses the ratio so the top is maximum, and draws a bottom-up fill. Existing horizontal controls retain page X behavior. The wide container grows from 44 to 212 px wide over the same 240 ms and keeps its icon at the right. Layout animations use `useNativeDriver: false`.
+- Spec: [Top Bar And Settings](../../specs/app/10-garden.md#top-bar-and-settings). Architecture: [Overview](../../architecture/10-overview.md).
 - The settings card holds master volume, language, character name, chat cue, account (public garden), presets (private garden) and leaving the garden.
 - Scenario: A guest in the public garden at a width of at least 820 px → no speaker button on the left; the centre shows the garden, the visitor count and the speakers heard; the sound button and the gear are on the right; the gear opens settings with a login button.
 
@@ -332,13 +333,16 @@ stateDiagram-v2
 ## Compact Top Bar Scenario
 
 - Input: 390 px viewport with permission to create speakers.
-- Steps: enter the garden, hover the sound button, drag the volume slider and leave the button.
-- Result: no centre status pill, slider unfolds below the sound button and folds after leaving; speaker creation and settings remain available.
+- Steps: enter the garden, press the sound button, drag the vertical volume slider and press outside.
+- Result: no centre status pill; the button capsule smoothly grows downward, volume follows vertical dragging, and the capsule folds after the outside press. A second press while expanded toggles sound. Speaker creation and settings remain available.
+- Spec: [Compact Top Bar](../../specs/app/10-garden.md#compact-top-bar).
 - All scenarios: [Garden Scenarios](../../testing/scenarios/app/10-garden.md#compact-top-bar).
 
 ```mermaid
 flowchart LR
-    A[Viewport width] --> B{At least 820 px}
-    B -->|Yes| C[Centre status and left expansion]
-    B -->|No| D[Hidden status and downward expansion]
+    A["Viewport width"] --> B{"At least 820 px"}
+    B -->|Yes| C["Hover extends left"]
+    B -->|No| D["First press extends down"]
+    D --> E["Vertical volume slider"]
+    E --> F["Outside press folds capsule"]
 ```

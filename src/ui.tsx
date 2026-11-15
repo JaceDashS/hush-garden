@@ -101,21 +101,22 @@ export function Chips<V extends string>({ label, value, options, onChange }: { l
 const THUMB = 26;
 
 /**
- * Horizontal slider. `log` spreads frequencies evenly by octave. `format` turns the value into the shown text.
+ * Slider with its label and value above. `vertical` puts the maximum at the top.
+ * `log` spreads frequencies by octave; `format` formats values; `bare` hides the label row for compact controls.
  */
-/** A horizontal slider with its label and value above. `bare` leaves out that line; the label still names it for screen readers. */
-export function Slider({ label, value, min, max, onChange, log, format = (v) => String(Math.round(v)), testID, bare }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; log?: boolean; format?: (value: number) => string; testID?: string; bare?: boolean }) {
+export function Slider({ label, value, min, max, onChange, log, format = (v) => String(Math.round(v)), testID, bare, vertical = false }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; log?: boolean; format?: (value: number) => string; testID?: string; bare?: boolean; vertical?: boolean }) {
   const [width, setWidth] = useState(1);
   const lock = useDragLock();
   const left = useRef(0);
   const track = useRef<React.ComponentRef<typeof View>>(null);
-  const latest = useRef({ width, min, max, log, onChange, lock });
-  latest.current = { width, min, max, log, onChange, lock };
+  const latest = useRef({ width, min, max, log, onChange, lock, vertical });
+  latest.current = { width, min, max, log, onChange, lock, vertical };
   const toRatio = (v: number) => (log ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min));
   const fromPage = (pageX: number) => {
     const s = latest.current;
     // The thumb's centre travels between THUMB / 2 from each end, so it is never cut off at 0 or 100 %.
-    const ratio = Math.max(0, Math.min(1, (pageX - left.current - THUMB / 2) / Math.max(1, s.width - THUMB)));
+    const position = (pageX - left.current - THUMB / 2) / Math.max(1, s.width - THUMB);
+    const ratio = Math.max(0, Math.min(1, s.vertical ? 1 - position : position));
     s.onChange(s.log ? s.min * Math.pow(s.max / s.min, ratio) : s.min + (s.max - s.min) * ratio);
   };
   const responder = useRef(
@@ -124,14 +125,14 @@ export function Slider({ label, value, min, max, onChange, log, format = (v) => 
       onMoveShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (event) => {
-        const pageX = event.nativeEvent.pageX;
+        const pageX = latest.current.vertical ? event.nativeEvent.pageY : event.nativeEvent.pageX;
         latest.current.lock(true);
-        track.current?.measureInWindow((x) => {
-          left.current = x;
+        track.current?.measureInWindow((x, y) => {
+          left.current = latest.current.vertical ? y : x;
           fromPage(pageX);
         });
       },
-      onPanResponderMove: (event) => fromPage(event.nativeEvent.pageX),
+      onPanResponderMove: (event) => fromPage(latest.current.vertical ? event.nativeEvent.pageY : event.nativeEvent.pageX),
       onPanResponderRelease: () => latest.current.lock(false),
       onPanResponderTerminate: () => latest.current.lock(false),
     }),
@@ -157,14 +158,14 @@ export function Slider({ label, value, min, max, onChange, log, format = (v) => 
         accessibilityValue={{ text: format(value) }}
         accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
         onAccessibilityAction={(event) => stepBy(event.nativeEvent.actionName === "increment" ? 1 : -1)}
-        onLayout={(event) => setWidth(Math.max(1, event.nativeEvent.layout.width))}
-        style={[{ height: 36, justifyContent: "center" }, NO_TOUCH_SCROLL]}
+        onLayout={(event) => setWidth(Math.max(1, vertical ? event.nativeEvent.layout.height : event.nativeEvent.layout.width))}
+        style={[vertical ? { height: 132, width: 36, alignItems: "center" } : { height: 36, justifyContent: "center" }, NO_TOUCH_SCROLL]}
         {...responder.panHandlers}
       >
-        <View style={{ height: 8, borderRadius: 4, marginHorizontal: THUMB / 2, backgroundColor: colors.track }}>
-          <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.mint, width: `${ratio * 100}%` }} />
+        <View style={vertical ? { width: 8, flex: 1, borderRadius: 4, marginVertical: THUMB / 2, backgroundColor: colors.track, justifyContent: "flex-end" } : { height: 8, borderRadius: 4, marginHorizontal: THUMB / 2, backgroundColor: colors.track }}>
+          <View style={vertical ? { width: 8, borderRadius: 4, backgroundColor: colors.mint, height: `${ratio * 100}%` } : { height: 8, borderRadius: 4, backgroundColor: colors.mint, width: `${ratio * 100}%` }} />
         </View>
-        <View pointerEvents="none" style={{ position: "absolute", left: ratio * Math.max(0, width - THUMB), width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: colors.white, borderWidth: 3, borderColor: colors.mintDeep }} />
+        <View pointerEvents="none" style={{ position: "absolute", ...(vertical ? { top: (1 - ratio) * Math.max(0, width - THUMB), left: 5 } : { left: ratio * Math.max(0, width - THUMB) }), width: THUMB, height: THUMB, borderRadius: THUMB / 2, backgroundColor: colors.white, borderWidth: 3, borderColor: colors.mintDeep }} />
       </View>
     </View>
   );

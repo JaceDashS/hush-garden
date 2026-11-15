@@ -67,7 +67,7 @@
 - Avoid: "compressor" (there is no compressor node; the limiter is a wave shaper)
 
 ## Sound Button
-- Definition: The loudspeaker icon left of the settings button that turns sound on and off (also the M key); hovering it with a mouse shows the master volume.
+- Definition: The loudspeaker icon left of settings. Below 820 px, the first press extends its capsule downward to show vertical master volume; further presses toggle sound and outside presses close it. On wide screens, hovering shows horizontal master volume. The M key also toggles sound.
 - Code: `SoundButton`, `SOUND_KEY_CODE`, `SpeakerIcon`
 - Avoid: "speaker button" (that is the make or discard button for speakers in the garden), "mute" in code (it pauses the audio like sound off)
 

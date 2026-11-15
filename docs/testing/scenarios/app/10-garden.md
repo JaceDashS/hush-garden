@@ -288,9 +288,9 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 
 ## Sound Button And M Key
 - Input: the private garden on a desktop browser with sound on; then a phone-size touch browser.
-- Steps: hover the sound button → the button itself grows to the left (its container from 44 to 212 px within about 0.2 s, the slider uncovered from the right inside it) and a hint "Turn sound off" with an M key below → click it → the picture shows a cross and the hint reads "Turn sound on" → drag the slider to about 30 % → move the mouse away → press M twice → on the phone, tap the button.
-- Result: sound turns off and on with each click or M; the slider sets the master volume (the settings show the same 29 %); the slider folds back and the hint closes after leaving; on the phone the tap turns sound off and no slider appears.
-- Test: Browser check in Chrome 2026-11-14 (desktop 1100 × 700 and touch 390 × 760); the growing container checked again the same day (44 → 212 px).
+- Steps: on a wide screen, hover the sound button, click it, drag the horizontal slider, move away, and press M twice. On a compact screen, press the button, drag vertically, press the icon again and press outside.
+- Result: wide hover extends the same container from 44 to 212 px and leaving folds it. Compact first press extends the same container from 44 to 214 px tall without muting; a second press toggles sound. Vertical dragging adjusts volume and outside press folds it. No M hint appears; the M shortcut remains available.
+- Design: [Top Bar And Settings](../../../design/app/10-garden.md#top-bar-and-settings).
 
 ## Languages
 - Input: every text key in Korean, English and Japanese; device locales `ja-JP`, `ko_KR`, `fr-FR` and none; Korean chosen in settings while the screens were English.
@@ -334,7 +334,7 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 ## Compact Top Bar
 
 - Design: [Compact Top Bar Scenario](../../../design/app/10-garden.md#compact-top-bar-scenario).
-- Input: 390 px and 819 px viewports, a mouse, permission to create speakers, sound playing.
-- Steps: enter the garden, hover sound, drag volume, leave the popup, then resize to 820 px.
-- Result: below 820 px the centre status is hidden and the slider opens below without covering the create button; dragging changes volume and leaving closes it after the existing delay. At 820 px the status returns and the slider opens left. Touch taps still toggle sound and volume remains in settings.
-- Verification: manual browser verification pending.
+- Input: compact viewport below 820 px, mouse or touch, permission to create speakers, sound playing at 80 percent.
+- Steps: enter the garden; hover without pressing; press sound once; inspect intermediate animation frames; drag the slider up and down; press the icon again; press outside; reopen while closing; resize to 820 px and hover.
+- Result: compact hover alone leaves the button closed. First press smoothly extends one 44 px wide capsule from 44 to 214 px tall and reveals a vertical slider, without changing playback. Volume rises toward the top and falls toward the bottom. Repressing toggles sound. Outside press folds the capsule and a quick reopen reverses smoothly. No shortcut hint appears. At 820 px the status returns and hover extends left with the horizontal slider.
+- Verification: Orca Chromium on 2026-11-15: compact container measured 44, 95, 142, 176 and 214 px during opening; vertical dragging changed 80 percent to 4 percent and back to 99 percent; repressing changed the sound icon and action; clicking settings folded the capsule to 44 px and hid the slider from accessibility. Wide hover measured 212 by 44 px with a 112 by 36 px horizontal slider and no shortcut hint. Native touch and rapid reversal remain manual checks.

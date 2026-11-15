@@ -104,7 +104,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - Top left: the speaker button (make, or discard while holding), for players who may edit.
 - Top centre: the garden name, the number of visitors in the public garden, and the number of speakers heard.
 - Top right: a sound button, then a settings icon.
-- The sound button turns sound on and off, and so does the M key (web and desktop). Its picture shows a loudspeaker with waves while sound is on and with a cross while it is off. With a mouse, hovering it makes the button itself grow to the left on screens at least 820 px wide, or unfolds the slider below the button on narrower screens, with a short animation, uncovering a horizontal master volume slider inside the same container (it shrinks back to the round button when the pointer leaves), and shows a hint with the button's action and the M key. On touch screens a tap only turns sound on and off; the volume is in the settings.
+- Below 820 px, the first click or tap on the sound button smoothly extends its own container downward to reveal a vertical master volume slider. A subsequent press toggles sound; pressing outside folds it back. On wider screens, mouse hover extends the container left to reveal the horizontal slider, and pressing toggles sound. The M key still toggles sound on web and desktop, without a shortcut hint. Its picture shows waves while sound is on and a cross while it is off.
 - Screens are prepared before they are shown, so a half-drawn state never flashes: the settings are kept laid out while closed and open at once; the speaker editor and other panels appear only once laid out; the editor keeps all three tabs laid out so switching tabs is instant.
 - Entering the public garden sends a random device id (kept on the device; per tab in a browser). If the app was killed without closing its connection and comes back, the server replaces the character left behind at once. When a newer visit from the same id takes over, this one shows a notice and does not reconnect.
 - Escape opens the settings and closes them, or any other open panel, again (web and desktop).
@@ -182,4 +182,5 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 ## Compact Top Bar
 
 - Below 820 px, hide the centre garden status pill to leave room for speaker creation and the sound and settings buttons.
-- Scenario: Input: 390 px viewport with speaker creation available. Steps: enter the garden and hover the sound button with a mouse. Result: the centre pill is absent and the volume slider unfolds below the sound button.
+- Scenario: Input: 390 px viewport with speaker creation available. Steps: enter the garden, press the sound button, adjust the vertical slider, then press outside. Result: the centre pill is absent; the same button container smoothly extends downward and folds back after the outside press.
+- Design: [Compact Top Bar Scenario](../../design/app/10-garden.md#compact-top-bar-scenario).
