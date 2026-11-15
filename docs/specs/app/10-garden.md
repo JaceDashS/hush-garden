@@ -16,7 +16,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 
 ## Characters
 
-- The player chooses one of ten characters on the title screen: bunny, cat, bear, frog, chick, fox, penguin, pig, panda and mouse. The choice is kept on the device.
+- The player chooses one of ten characters on the title screen: bunny, cat, bear, frog, chick, fox, penguin, pig, panda and mouse. The choice is kept on the device. A logged-in player may also use a character of their own: [Character Images](30-character-images.md).
 - Every character has a walking animation: while it moves, its feet step in turn, its body bobs, its arms swing and its ears sway. It stands still when it stops. No character is a single fixed picture.
 - Other players are drawn with the character they chose, facing the way they move and walking while they move.
 

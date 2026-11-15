@@ -121,7 +121,7 @@ export default function App() {
       {!ready ? (
         <View style={{ flex: 1, backgroundColor: colors.sky }} />
       ) : mode === "home" ? (
-        <Home character={settings.character} onCharacter={(character) => changeSettings({ ...settings, character })} onPick={pick} />
+        <Home character={settings.character} onCharacter={(character) => changeSettings({ ...settings, character, customCharacter: "" })} onPick={pick} />
       ) : (
         <Game key={mode} mode={mode} client={client} audio={audio} settings={settings} onSettings={changeSettings} garden={mode === "test" ? testGarden : garden} onGarden={mode === "test" ? changeTestGarden : changeGarden} onExit={exit} />
       )}

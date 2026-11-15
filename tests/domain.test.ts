@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CARRY, actionAt, actionDuration, actionFrames, liftTravel } from "../src/domain/actions.ts";
+import { CARRY, actionAt, actionDuration, actionFrames, actionKindOf, liftTravel } from "../src/domain/actions.ts";
+import { SHEET, SHEET_ROWS, fallbackKind, normalizeCharacterList, readPngSize, sheetFrame, sheetUrl } from "../src/domain/imageCharacters.ts";
+import { characterPrompt } from "../src/domain/characterPrompt.ts";
 import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor, scrollToShow, stepCharacter } from "../src/domain/characters.ts";
 import { LANGUAGES, TEXTS, languageForLocale, normalizeLanguage, translate, type TextKey } from "../src/domain/text.ts";
 import { checkName, isReservedName } from "../src/domain/names.ts";
@@ -516,5 +518,65 @@ test("a lifted speaker's sound travels along the ground with it, not up", () => 
     assert.ok(travel >= last - 1e-9);
     last = travel;
     near(travel, liftTravel("cat", "putDown", length - ms), 1e-9);
+  }
+});
+
+test("image map frames", () => {
+  const still = { walking: false, carrying: false, frame: 0 };
+  assert.deepEqual(sheetFrame(still), { row: 0, column: 0 });
+  assert.deepEqual(sheetFrame({ walking: true, carrying: false, frame: 2 }), { row: 1, column: 2 });
+  assert.deepEqual(sheetFrame({ walking: true, carrying: true, frame: 1 }), { row: 3, column: 1 });
+  assert.deepEqual(sheetFrame({ walking: false, carrying: true, frame: 3 }), { row: 3, column: 0 });
+  assert.deepEqual(sheetFrame({ ...still, action: { name: "create", progress: 0.5 } }), { row: 4, column: 4 });
+  assert.deepEqual(sheetFrame({ ...still, action: { name: "discard", progress: 0.99 } }), { row: 5, column: 7 });
+  assert.deepEqual(sheetFrame({ ...still, action: { name: "discard", progress: 1 } }), { row: 5, column: 7 });
+  assert.deepEqual(sheetFrame({ ...still, action: { name: "lift", progress: 0 } }), { row: 2, column: 0 });
+  assert.deepEqual(sheetFrame({ ...still, action: { name: "lift", progress: 1 } }), { row: 2, column: 5 });
+  assert.deepEqual(sheetFrame({ ...still, action: { name: "putDown", progress: 0 } }), { row: 2, column: 5 });
+  for (const row of Object.values(SHEET_ROWS)) assert.ok(row.frames <= SHEET.columns && row.row < SHEET.height / SHEET.frame);
+  assert.equal(sheetUrl("https://api.jace-s.com", "a".repeat(32)), "https://api.jace-s.com/hush-garden/characters/" + "a".repeat(32) + ".png");
+});
+
+test("image character stand-in", () => {
+  assert.equal(fallbackKind("3f2c".padEnd(32, "1")), fallbackKind("3f2c".padEnd(32, "1")));
+  const seen = new Set<string>();
+  for (let index = 0; index < 200; index++) {
+    const kind = fallbackKind(index.toString(16).padStart(32, "0"));
+    assert.ok(CHARACTER_KINDS.includes(kind));
+    seen.add(kind);
+  }
+  assert.ok(seen.size >= 8);
+});
+
+test("image characters keep the speaker in their hands and do not move their body", () => {
+  assert.equal(actionKindOf("fox", null), "fox");
+  assert.equal(actionKindOf("fox", "a".repeat(32)), "image");
+  assert.equal(actionDuration("image", "create"), 1200);
+  assert.equal(actionDuration("image", "discard"), 1200);
+  assert.deepEqual(actionAt("image", "create", 1200).prop, CARRY);
+  assert.equal(actionAt("image", "create", 500).prop.opacity, 0);
+  assert.equal(actionAt("image", "discard", 0).prop.opacity, 1);
+  assert.equal(actionAt("image", "discard", 600).prop.opacity, 0);
+  assert.equal(actionAt("image", "create", 600).stance.hop, 0);
+  assert.equal(actionFrames("image", "lift"), actionFrames("fox", "lift"));
+});
+
+test("image map size is read from the PNG header", () => {
+  const bytes = new Uint8Array(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 4, 0, 0, 0, 3, 0, 8, 6]);
+  const base64 = btoa(String.fromCharCode(...bytes));
+  assert.deepEqual(readPngSize(base64), { width: 1024, height: 768 });
+  assert.equal(readPngSize(btoa("GIF89a" + "x".repeat(30))), null);
+  assert.equal(readPngSize("@@@"), null);
+  const list = normalizeCharacterList({ characters: [{ id: "b".repeat(32), name: "A", status: "pending" }, { id: "b".repeat(32), name: "B", status: "lost" }] });
+  assert.deepEqual(list.characters.map((item) => item.name), ["A"]);
+});
+
+test("character prompt", () => {
+  for (const language of LANGUAGES) {
+    const prompt = characterPrompt(language);
+    for (const part of ["1024", "768", "128", "(64, 120)", "#4a4038", "PNG"]) assert.ok(prompt.includes(part), language + " " + part);
+    for (const count of [SHEET_ROWS.walk.frames, SHEET_ROWS.lift.frames, SHEET_ROWS.create.frames, SHEET_ROWS.discard.frames]) assert.ok(prompt.includes(String(count)), language + " " + count);
+    assert.ok(prompt.includes(translate(language, "custom.title")), language + " names the settings group");
   }
 });

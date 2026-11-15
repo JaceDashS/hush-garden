@@ -47,6 +47,8 @@ export interface RemotePlayer {
   name: string;
   place: string;
   character: CharacterKind;
+  /** An approved character image of that player, drawn instead of `character` once loaded. */
+  custom?: string;
   x: number;
   y: number;
 }
@@ -60,4 +62,6 @@ export type ServerMessage =
   | { t: "moves"; moves: { id: string; x: number; y: number }[] }
   | { t: "chat"; id: string; name: string; text: string; x: number; y: number }
   | { t: "speakers"; speakers: Speaker[] }
+  /** A player's character image was deleted: draw `character` from now on. */
+  | { t: "look"; id: string; character: CharacterKind; custom?: string }
   | { t: "error"; error: string };

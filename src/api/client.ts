@@ -1,5 +1,6 @@
 import type { CharacterKind } from "../domain/characters";
 import { normalizeSpeakers } from "../domain/garden";
+import { normalizeCharacterList, type CharacterList } from "../domain/imageCharacters";
 import type { Speaker } from "../domain/sound";
 import { ApiError, type Entry, type Transport, type User } from "./types";
 
@@ -114,8 +115,29 @@ export class HushClient {
    * `character` is the picture other players see and `name` the character name; an empty or refused name
    * becomes the account name or "Guest", and the accepted one comes back in the result.
    */
-  enter(coordinates: { latitude: number; longitude: number } | null, character: CharacterKind, name: string, deviceId?: string): Promise<Entry> {
-    return this.serialize(() => this.call<Entry>("/hush-garden/enter", { consent: true, character, name, ...(deviceId ? { deviceId } : {}), ...(coordinates ?? {}) }));
+  enter(coordinates: { latitude: number; longitude: number } | null, character: CharacterKind, name: string, deviceId?: string, customCharacter?: string): Promise<Entry> {
+    return this.serialize(() => this.call<Entry>("/hush-garden/enter", { consent: true, character, name, ...(customCharacter ? { customCharacter } : {}), ...(deviceId ? { deviceId } : {}), ...(coordinates ?? {}) }));
+  }
+
+  /** The account's character images with their review state, and whether it may upload. Needs a login. */
+  myCharacters(): Promise<CharacterList> {
+    return this.serialize(async () => normalizeCharacterList(await this.call<unknown>("/hush-garden/characters/mine")));
+  }
+
+  /** Sends an image map (base64 PNG) for review. Needs the upload permission. Returns the new list. */
+  uploadCharacter(name: string, png: string): Promise<CharacterList> {
+    return this.serialize(async () => {
+      const result = await this.call<{ characters: unknown }>("/hush-garden/characters/upload", { name: name.trim(), png });
+      return normalizeCharacterList({ ...(await this.call<Record<string, unknown>>("/hush-garden/characters/mine")), characters: result.characters });
+    });
+  }
+
+  /** Deletes one of the account's characters. Returns the new list. */
+  deleteCharacter(id: string): Promise<CharacterList> {
+    return this.serialize(async () => {
+      await this.call("/hush-garden/characters/delete", { id });
+      return normalizeCharacterList(await this.call<unknown>("/hush-garden/characters/mine"));
+    });
   }
 
   /** Creates or replaces a public speaker. Needs the edit permission. Returns the new layout. */

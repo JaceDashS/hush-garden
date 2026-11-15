@@ -1,12 +1,13 @@
 /** The quarter-view garden: ground, sound shadows, trees, speakers and characters, with the camera following the player. */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, View } from "react-native";
-import { CARRY, NEUTRAL, actionAt, type ActionMoment, type ActionName, type GroundSpot } from "../domain/actions";
+import { CARRY, NEUTRAL, actionAt, actionDuration, actionKindOf, type ActionMoment, type ActionName, type GroundSpot } from "../domain/actions";
 import type { CharacterKind } from "../domain/characters";
 import { lookOf, loudnessAt, type SourceLook, type Speaker } from "../domain/sound";
 import { distance, joystickToInput, toScreen, type Point } from "../domain/world";
 import { T, colors } from "../ui";
 import { CHARACTER_FEET, CHARACTER_SIZE, Character } from "./characters";
+import { ImageCharacter, SheetLoading, useSheet } from "./imageCharacter";
 import { FxView, PropView } from "./props";
 import { GROUND_OFFSET_X, Ground, SPEAKER_SIZE, SoundShadow, SourceArt, TREES, TREE_SIZE, Tree, shadowSize } from "./sprites";
 
@@ -25,6 +26,8 @@ export interface Actor {
   bubble?: string;
   /** Which of the ten characters to draw. */
   kind: CharacterKind;
+  /** An approved character image drawn instead of `kind`, by its id. */
+  custom?: string;
   facing?: 1 | -1;
   walking?: boolean;
 }
@@ -70,20 +73,24 @@ const place = (point: Point) => {
 const depth = (point: Point) => Math.round((point.x + point.y) * 10);
 
 /** The character with whatever it holds; `moment` is the frame of the action being played, if any. */
-function ActorBody({ actor, moment }: { actor: Actor; moment: ActionMoment | null }) {
+function ActorBody({ actor, moment, progress, sheet }: { actor: Actor; moment: ActionMoment | null; progress: number; sheet: ReturnType<typeof useSheet> }) {
   const action = actor.action;
   const facing = actor.facing ?? 1;
   if (!moment) {
     return (
       <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
-        <Character kind={actor.kind} facing={facing} walking={actor.walking} carrying={!!actor.carrying} />
+        {actor.custom ? <ImageCharacter id={actor.custom} sheet={sheet} facing={facing} walking={actor.walking} carrying={!!actor.carrying} /> : <Character kind={actor.kind} facing={facing} walking={actor.walking} carrying={!!actor.carrying} />}
         {!!actor.carrying && <PropView prop={CARRY} form="speaker" look={actor.carrying} facing={facing} origin={CHARACTER_FEET} />}
       </View>
     );
   }
   return (
     <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
-      <Character kind={actor.kind} facing={facing} turn={moment.turn} walking={moment.walk} carrying={moment.arms === "up"} stance={moment.stance ?? NEUTRAL} />
+      {actor.custom ? (
+        <ImageCharacter id={actor.custom} sheet={sheet} facing={facing} action={{ name: action!.name, progress }} />
+      ) : (
+        <Character kind={actor.kind} facing={facing} turn={moment.turn} walking={moment.walk} carrying={moment.arms === "up"} stance={moment.stance ?? NEUTRAL} />
+      )}
       <PropView prop={moment.prop} form={moment.form} look={action!.look} facing={facing} origin={CHARACTER_FEET} />
       {moment.effects.map((effect, index) => (
         <FxView key={effect.kind + index + effect.x} kind={effect.kind} x={effect.x} y={effect.y} progress={effect.progress} facing={facing} origin={CHARACTER_FEET} />
@@ -102,7 +109,11 @@ function ActorView({ actor }: { actor: Actor }) {
     const timer = setInterval(() => setNow(Date.now()), ACTION_FRAME_MS);
     return () => clearInterval(timer);
   }, [action]);
-  const moment = action ? actionAt(actor.kind, action.name, now - action.startedAt, action.ground) : null;
+  const sheet = useSheet(actor.custom);
+  const kind = actionKindOf(actor.kind, actor.custom);
+  const moment = action ? actionAt(kind, action.name, now - action.startedAt, action.ground) : null;
+  const length = action ? actionDuration(kind, action.name === "putDown" ? "lift" : action.name) : 0;
+  const progress = action && length > 0 ? Math.max(0, Math.min(1, (now - action.startedAt) / length)) : 0;
   const at = place(actor);
   // While lifting or putting down, the name rises and sinks with the speaker instead of jumping.
   const lifting = action && (action.name === "lift" || action.name === "putDown") && moment;
@@ -110,6 +121,7 @@ function ActorView({ actor }: { actor: Actor }) {
   return (
     <View pointerEvents="none" style={{ position: "absolute", left: at.left - 90, top: at.top - CHARACTER_SIZE.height - 44 - LABEL_HEIGHT - headroom, width: 180, alignItems: "center", zIndex: depth(actor) }}>
       <View style={{ height: 40, justifyContent: "flex-end", alignItems: "center" }}>
+        {!!actor.custom && !sheet.ready && !actor.bubble && <SheetLoading />}
         {!!actor.bubble && (
           <View style={{ maxWidth: 180, backgroundColor: colors.white, borderRadius: 12, borderWidth: 2, borderColor: colors.ink, paddingHorizontal: 8, paddingVertical: 2 }}>
             <T size={12} lines={2}>{actor.bubble}</T>
@@ -120,12 +132,12 @@ function ActorView({ actor }: { actor: Actor }) {
         <T size={11.5} weight="800" lines={1}>{actor.name}</T>
         <T size={9.5} weight="600" tone="muted" lines={1}>{actor.label}</T>
       </View>
-      <ActorBody actor={actor} moment={moment} />
+      <ActorBody actor={actor} moment={moment} progress={progress} sheet={sheet} />
     </View>
   );
 }
 
-const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking && a.actor.kind === b.actor.kind && a.actor.name === b.actor.name && a.actor.carrying === b.actor.carrying && a.actor.action === b.actor.action);
+const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking && a.actor.kind === b.actor.kind && a.actor.custom === b.actor.custom && a.actor.name === b.actor.name && a.actor.carrying === b.actor.carrying && a.actor.action === b.actor.action);
 
 /**
  * `onInput` receives the joystick direction while a finger or the mouse is held on the garden, and zero on release.

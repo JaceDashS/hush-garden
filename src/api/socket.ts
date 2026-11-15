@@ -1,4 +1,5 @@
 import { normalizeCharacter } from "../domain/characters";
+import { isCharacterId } from "../domain/imageCharacters";
 import { normalizeSpeakers } from "../domain/garden";
 import type { Point } from "../domain/world";
 import type { ServerMessage } from "./types";
@@ -36,6 +37,8 @@ export function parseServerMessage(text: string): ServerMessage | null {
       return { t: "chat", id: m.id, name: typeof m.name === "string" ? m.name : "", text: m.text, x: m.x as number, y: m.y as number };
     case "speakers":
       return { t: "speakers", speakers: normalizeSpeakers(m.speakers) };
+    case "look":
+      return typeof m.id === "string" ? { t: "look", id: m.id, character: normalizeCharacter(m.character), ...(isCharacterId(m.custom) ? { custom: m.custom } : {}) } : null;
     case "error":
       return typeof m.error === "string" ? { t: "error", error: m.error } : null;
     default:
@@ -45,7 +48,7 @@ export function parseServerMessage(text: string): ServerMessage | null {
 
 function toPlayer(value: unknown) {
   const v = value as Record<string, unknown>;
-  return { id: v.id as string, name: typeof v.name === "string" ? v.name : "", place: typeof v.place === "string" ? v.place : "", character: normalizeCharacter(v.character), x: v.x as number, y: v.y as number };
+  return { id: v.id as string, name: typeof v.name === "string" ? v.name : "", place: typeof v.place === "string" ? v.place : "", character: normalizeCharacter(v.character), ...(isCharacterId(v.custom) ? { custom: v.custom } : {}), x: v.x as number, y: v.y as number };
 }
 
 /** Close code the server sends when a newer visit from the same device replaced this one. */

@@ -8,6 +8,17 @@
  */
 import type { CharacterKind } from "./characters";
 
+/**
+ * Whose motions to play: one of the ten drawn characters, or "image" for a character drawn from an image map,
+ * whose body moves in the image itself.
+ */
+export type ActionKind = CharacterKind | "image";
+
+/** The action kind of a player: "image" while it appears as an image character. */
+export function actionKindOf(character: CharacterKind, custom?: string | null): ActionKind {
+  return custom ? "image" : character;
+}
+
 /** `putDown` plays `lift` backwards. */
 export type ActionName = "create" | "discard" | "lift" | "putDown";
 /** What the thing in the character's hands looks like at the moment. */
@@ -408,9 +419,26 @@ const DISCARD: Record<CharacterKind, readonly Keyframe[]> = {
   ],
 };
 
+/**
+ * Image characters move in their image map (8 frames each, 150 ms apart), so the body stays still: making ends
+ * with the speaker in the raised hands and a sparkle, discarding starts by taking it away with a puff.
+ */
+const IMAGE_CREATE: readonly Keyframe[] = [
+  { t: 0, p: { ...CARRY, scale: 0.3, opacity: 0 }, arms: "down", form: "speaker" },
+  { t: 1050, p: { ...CARRY, scale: 0.3, opacity: 0 } },
+  { t: 1200, p: CARRY, arms: "up", ease: "out", fx: [["sparkle", 0, 46]] },
+];
+const IMAGE_DISCARD: readonly Keyframe[] = [
+  HELD,
+  { t: 150, p: { ...CARRY, scale: 0.3, opacity: 0 }, arms: "down", ease: "in", fx: [["puff", 0, 46]] },
+  { t: 1200 },
+];
+
 /** The keyframes of an action for a character. */
-export function actionFrames(kind: CharacterKind, name: ActionName, ground?: GroundSpot): readonly Keyframe[] {
-  return name === "lift" || name === "putDown" ? liftFor(ground) : name === "create" ? CREATE[kind] : DISCARD[kind];
+export function actionFrames(kind: ActionKind, name: ActionName, ground?: GroundSpot): readonly Keyframe[] {
+  if (name === "lift" || name === "putDown") return liftFor(ground);
+  if (kind === "image") return name === "create" ? IMAGE_CREATE : IMAGE_DISCARD;
+  return name === "create" ? CREATE[kind] : DISCARD[kind];
 }
 
 /**
@@ -419,13 +447,13 @@ export function actionFrames(kind: CharacterKind, name: ActionName, ground?: Gro
  * speaker's sound. The lift frames scale every sideways position with the ground spot, so the share is the same
  * for any spot.
  */
-export function liftTravel(kind: CharacterKind, name: "lift" | "putDown", ms: number): number {
+export function liftTravel(kind: ActionKind, name: "lift" | "putDown", ms: number): number {
   const x = actionAt(kind, name, ms).prop.x;
   return Math.max(0, Math.min(1, 1 - x / DEFAULT_GROUND.x));
 }
 
 /** Length of an action in milliseconds. */
-export function actionDuration(kind: CharacterKind, name: ActionName): number {
+export function actionDuration(kind: ActionKind, name: ActionName): number {
   const frames = actionFrames(kind, name);
   return frames[frames.length - 1].t;
 }
@@ -478,7 +506,7 @@ function blend<T extends object>(from: T, to: T, ratio: number): T {
 const riding = (state: Resolved): PropState => (state.ride ? { ...state.prop, x: state.prop.x + state.stance.shiftX, y: state.prop.y + state.stance.hop } : state.prop);
 
 /** The character and the prop `ms` milliseconds into an action. After the end it stays on the last keyframe. */
-export function actionAt(kind: CharacterKind, name: ActionName, ms: number, ground?: GroundSpot): ActionMoment {
+export function actionAt(kind: ActionKind, name: ActionName, ms: number, ground?: GroundSpot): ActionMoment {
   if (name === "putDown") {
     const length = actionDuration(kind, "lift");
     return { ...actionAt(kind, "lift", length - Math.max(0, Math.min(length, ms)), ground), done: ms >= length };

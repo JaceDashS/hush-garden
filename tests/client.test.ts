@@ -40,8 +40,9 @@ test("server messages are validated and unknown ones are dropped", () => {
 test("settings fall back to defaults and keep valid values", () => {
   const device = deviceLanguage();
   assert.deepEqual(normalizeSettings(null), { ...DEFAULT_SETTINGS, language: device });
-  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon", language: "xx", natureSounds: "maybe" }), { volume: 1, cue: "tone", consent: false, character: "bunny", name: "", language: device, natureSounds: "ask" });
-  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda", name: " Momo ", language: "ja", natureSounds: "no" }), { volume: 0.25, cue: "dip", consent: true, character: "panda", name: "Momo", language: "ja", natureSounds: "no" });
+  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon", language: "xx", natureSounds: "maybe" }), { volume: 1, cue: "tone", consent: false, character: "bunny", customCharacter: "", name: "", language: device, natureSounds: "ask" });
+  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", name: " Momo ", language: "ja", natureSounds: "no" }), { volume: 0.25, cue: "dip", consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", name: "Momo", language: "ja", natureSounds: "no" });
+  assert.equal(normalizeSettings({ customCharacter: "../x" }).customCharacter, "");
   assert.equal(normalizeSettings({ name: "admin" }).name, "");
 });
 
@@ -379,4 +380,43 @@ test("feedback supports guests and members, preserves canonical app identity and
   assert.deepEqual(calls.at(-1)?.body, { content: "member", sourceAppId: 12 });
   limited = true;
   await assert.rejects(client.submitFeedback("retry", ""), /RATE_LIMITED/);
+});
+
+test("image characters on the socket", () => {
+  const id = "3f2c".padEnd(32, "0");
+  const joined = parseServerMessage(JSON.stringify({ t: "join", player: { id: "p", x: 1, y: 1, character: "fox", custom: id } }));
+  assert.ok(joined && joined.t === "join" && joined.player.custom === id && joined.player.character === "fox");
+  assert.deepEqual(parseServerMessage(JSON.stringify({ t: "look", id: "p", character: "fox", custom: null })), { t: "look", id: "p", character: "fox" });
+  const bad = parseServerMessage(JSON.stringify({ t: "join", player: { id: "q", x: 1, y: 1, character: "cat", custom: "../x" } }));
+  assert.ok(bad && bad.t === "join" && !("custom" in bad.player));
+  assert.equal(parseServerMessage(JSON.stringify({ t: "look" })), null);
+});
+
+test("character API calls", async () => {
+  const calls: { path: string; body?: unknown }[] = [];
+  const id = "a".repeat(32);
+  const listed = { characters: [{ id, name: "Mochi", status: "approved", createdAt: "t", reviewedBy: { id: "r", username: "jace" }, reviewedAt: "t", rejectReason: null }, { id: "bad", name: "x", status: "approved" }], canUpload: true, limit: 5 };
+  const client = new HushClient({
+    async send<T>(path: string, body?: unknown): Promise<T> {
+      calls.push({ path, body });
+      if (path === "/hush-garden/enter") return { ticket: "t", place: "", name: "", user: null, canChat: false, canEdit: false } as T;
+      if (path === "/hush-garden/characters/upload") return { characters: listed.characters } as T;
+      return listed as T;
+    },
+    async forget() {},
+    async hasCredentials() { return true; },
+  });
+  const mine = await client.myCharacters();
+  assert.equal(mine.characters.length, 1);
+  assert.equal(mine.characters[0].reviewedBy?.username, "jace");
+  assert.equal(mine.canUpload, true);
+  await client.uploadCharacter(" Mochi ", "iVBOR");
+  await client.deleteCharacter(id);
+  await client.enter(null, "fox", "Momo", undefined, id);
+  await client.enter(null, "fox", "Momo");
+  assert.deepEqual(calls.map((call) => call.path), ["/hush-garden/characters/mine", "/hush-garden/characters/upload", "/hush-garden/characters/mine", "/hush-garden/characters/delete", "/hush-garden/characters/mine", "/hush-garden/enter", "/hush-garden/enter"]);
+  assert.deepEqual(calls[1].body, { name: "Mochi", png: "iVBOR" });
+  assert.deepEqual(calls[3].body, { id });
+  assert.equal((calls[5].body as { customCharacter?: string }).customCharacter, id);
+  assert.equal("customCharacter" in (calls[6].body as object), false);
 });

@@ -176,7 +176,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  * receives a checked name, or "" to go back to the account name; `nameError` is the server's refusal, if any.
  * `open` is false while the card is kept prepared but not shown.
  */
-export function SettingsCard({ client, open = true, settings, user, online, shownName, nameError, nature, onDownloadNature, developer, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { client: HushClient; settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; nature: PatchPhase | null; onDownloadNature: () => void; developer?: React.ReactNode; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
+export function SettingsCard({ client, open = true, settings, user, online, shownName, nameError, nature, onDownloadNature, developer, custom, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { client: HushClient; settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; nature: PatchPhase | null; onDownloadNature: () => void; developer?: React.ReactNode; custom?: React.ReactNode; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
   const t = useT();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [name, setName] = useState(settings.name);
@@ -219,8 +219,9 @@ export function SettingsCard({ client, open = true, settings, user, online, show
           </Group>
           {developer}
           <Group title={t("settings.character")}>
-            <CharacterPicker value={settings.character} onChange={(character) => onChange({ ...settings, character })} />
+            <CharacterPicker value={settings.character} onChange={(character) => onChange({ ...settings, character, customCharacter: "" })} />
           </Group>
+          {!!custom && <Group title={t("custom.title")}>{custom}</Group>}
           <Group title={t("settings.language")}>
             <Chips label={t("settings.language")} value={settings.language} options={LANGUAGES.map((language) => ({ value: language, label: LANGUAGE_NAMES[language] }))} onChange={(language) => onChange({ ...settings, language })} />
           </Group>

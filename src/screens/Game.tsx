@@ -15,6 +15,7 @@ import { getDeviceId } from "../deviceId";
 import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User } from "../api/types";
 import type { GardenAudio } from "../audio/engine";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
+import { MyCharacters } from "../components/MyCharacters";
 import { ConsentCard, LoginCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
 import { dismissToast, showMessage, showToast } from "../toasts";
 import { loadNotices, showNotices } from "../api/notices";
@@ -23,7 +24,7 @@ import { SOUND_KEY_CODE, SoundButton } from "../components/SoundButton";
 import { SpeakerEditor } from "../components/SpeakerEditor";
 import { clearPatch, startPatch, usePatchState } from "../audio/patchSession";
 import { API_ORIGIN } from "../config";
-import { actionDuration, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
+import { actionDuration, actionKindOf, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
 import { PICK_UP_TILES } from "../domain/characters";
 import { BUBBLE_MS, CHAT_MAX_LENGTH, cleanMessage, cueFor } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
@@ -102,9 +103,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
    */
   const carriedAt = useMemo((): Point => {
     if (!action?.spot || (action.name !== "lift" && action.name !== "putDown")) return me;
-    const travel = liftTravel(settings.character, action.name, clock - action.startedAt);
+    const travel = liftTravel(actionKindOf(settings.character, settings.customCharacter), action.name, clock - action.startedAt);
     return { x: action.spot.x + (me.x - action.spot.x) * travel, y: action.spot.y + (me.y - action.spot.y) * travel };
-  }, [action, clock, me, settings.character]);
+  }, [action, clock, me, settings.character, settings.customCharacter]);
   const speakers = useMemo(() => (carryId ? placed.map((speaker) => (speaker.id === carryId ? { ...speaker, x: carriedAt.x, y: carriedAt.y } : speaker)) : placed), [placed, carryId, carriedAt]);
   const placedRef = useRef(placed);
   placedRef.current = placed;
@@ -120,6 +121,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const socket = useRef<GardenSocket | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const onSettingsRef = useRef(onSettings);
+  onSettingsRef.current = onSettings;
   const targets = useRef<Record<string, Point>>({});
   const alive = useRef(true);
 
@@ -370,6 +373,16 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         case "speakers":
           setPublicSpeakers(message.speakers);
           break;
+        case "look":
+          if (message.id === myId.current) {
+            // The character image in use was deleted: back to the drawn character.
+            if (settingsRef.current.customCharacter && !message.custom) {
+              const nextSettings = { ...settingsRef.current, customCharacter: "" };
+              settingsRef.current = nextSettings;
+              onSettingsRef.current(nextSettings);
+            }
+          } else setOthers((current) => (current[message.id] ? { ...current, [message.id]: { ...current[message.id], character: message.character, custom: message.custom } } : current));
+          break;
         case "chat": {
           const mine = message.id === myId.current;
           setBubbles((current) => ({ ...current, [mine ? "me" : message.id]: { text: (mine ? "" : message.name + ": ") + message.text, until: Date.now() + BUBBLE_MS } }));
@@ -401,7 +414,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     setEnterError("");
     try {
       const coordinates = await requestCoordinates();
-      const result = await client.enter(coordinates, settingsRef.current.character, settingsRef.current.name, await getDeviceId());
+      const result = await client.enter(coordinates, settingsRef.current.character, settingsRef.current.name, await getDeviceId(), settingsRef.current.customCharacter || undefined);
       if (!alive.current) return;
       setEntry(result);
       if (result.user && typeof result.characterName === "string") {
@@ -491,7 +504,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       acting.current = false;
       setAction(undefined);
       after();
-    }, actionDuration(settingsRef.current.character, name));
+    }, actionDuration(actionKindOf(settingsRef.current.character, settingsRef.current.customCharacter), name));
   }, []);
 
   /** Lifts a speaker the character stands next to. */
@@ -577,10 +590,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   const myName = online ? entry?.name ?? "…" : settings.name || t("name.me");
   const actors: Actor[] = useMemo(() => {
-    const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, name: player.name, label: player.place, bubble: bubbles[player.id]?.text, kind: player.character, facing: motion[player.id]?.facing, walking: motion[player.id]?.walking }));
-    list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, facing, walking, carrying: action ? undefined : carried ? lookOf(carried.sound) : undefined, action });
+    const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, name: player.name, label: player.place, bubble: bubbles[player.id]?.text, kind: player.character, custom: player.custom, facing: motion[player.id]?.facing, walking: motion[player.id]?.walking }));
+    list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, custom: settings.customCharacter || undefined, facing, walking, carrying: action ? undefined : carried ? lookOf(carried.sound) : undefined, action });
     return list;
-  }, [others, motion, bubbles, me, myName, place, facing, walking, settings.character, carried, action]);
+  }, [others, motion, bubbles, me, myName, place, facing, walking, settings.character, settings.customCharacter, carried, action]);
 
   /** The speaker close enough to lift, if the hands are free. */
   const liftable = useMemo(() => {
@@ -613,6 +626,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const settingsHandlers = useRef({ onSettings, changeName, togglePlay, logout, onExit, downloadNature, developer });
   settingsHandlers.current = { onSettings, changeName, togglePlay, logout, onExit, downloadNature, developer };
   const settingsOpen = panel === "settings";
+  const loggedIn = !!(entry?.user ?? client.currentUser);
   const settingsCard = useMemo(
     () => (
       <SettingsCard
@@ -636,6 +650,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             </View>
           ) : undefined
         }
+        custom={<MyCharacters client={client} loggedIn={loggedIn} open={settingsOpen} settings={settings} onChange={(next) => settingsHandlers.current.onSettings(next)} />}
         onChange={(next) => settingsHandlers.current.onSettings(next)}
         onName={(name) => settingsHandlers.current.changeName(name)}
         onPresets={() => setPanel("presets")}
@@ -645,7 +660,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         onClose={() => setPanel(null)}
       />
     ),
-    [settingsOpen, settings, entry?.user, online, myName, nameError, t, patch?.phase],
+    [settingsOpen, settings, entry?.user, online, myName, nameError, t, patch?.phase, client, loggedIn],
   );
   const lostText = online && link === "lost" ? t(enterError || "notice.lost") : online && link === "replaced" ? t("notice.replaced") : "";
   // While the connection is lost (or taken over), a lasting toast says so; it goes when the cause is gone.
