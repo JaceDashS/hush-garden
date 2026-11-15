@@ -34,7 +34,7 @@ export const NO_TOUCH_SCROLL = (Platform.OS === "web" ? { touchAction: "none", u
 const KNOB_TRAVEL = 170;
 
 export function T({ children, size = 14, weight = "500", tone = "ink", style, lines }: { children: React.ReactNode; size?: number; weight?: TextStyle["fontWeight"]; tone?: "ink" | "muted" | "danger" | "white"; style?: StyleProp<TextStyle>; lines?: number }) {
-  return <Text numberOfLines={lines} style={[{ fontSize: size, fontWeight: weight, color: colors[tone], lineHeight: Math.round(size * 1.4) }, style]}>{children}</Text>;
+  return <Text selectable={false} numberOfLines={lines} style={[{ fontSize: size, fontWeight: weight, color: colors[tone], lineHeight: Math.round(size * 1.4) }, style]}>{children}</Text>;
 }
 
 export function Btn({ title, onPress, variant = "plain", disabled, small, testID, style }: { title: string; onPress: () => void; variant?: "primary" | "plain" | "mint" | "danger"; disabled?: boolean; small?: boolean; testID?: string; style?: StyleProp<ViewStyle> }) {

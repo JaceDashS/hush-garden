@@ -322,3 +322,10 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Steps: Apply the entry response; change the name online; reconnect on another device.
 - Expected result: Momo replaces the local name; successful rename is saved; save failure is shown. Guests and private offline mode do not fetch an account profile.
 - Design: [Account Character Name Restore](../../../design/app/10-garden.md#account-character-name-restore).
+
+## No Text Selection Scenario
+- Input: The web app on the home screen, and separately the chat field with typed text.
+- Steps: Drag across the "Hush Garden" title; then drag across the text in the chat field.
+- Expected result: The title drag selects nothing (`getSelection()` is empty, computed `user-select` is `none`). The chat drag selects the text.
+- Design: [No Text Selection](../../../design/app/10-garden.md#no-text-selection).
+- Verification: The title drag was checked in headless Chromium against the local dev server on 2026-11-15. The chat field drag was not run.

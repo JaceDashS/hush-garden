@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Platform, View, type ViewStyle } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { HushClient } from "./api/client";
 import { createTransport } from "./api/transport";
@@ -49,6 +49,20 @@ function Home({ character, onCharacter, onPick }: { character: CharacterKind; on
 }
 
 const noticeLabel = (language: Settings["language"]) => translate(language, "notice.label");
+
+const NO_SELECT_WEB = (Platform.OS === "web" ? { userSelect: "none", WebkitUserSelect: "none" } : null) as ViewStyle | null;
+
+// Prevent drag-selection of UI text on the web while keeping text inputs selectable.
+if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("hg-no-select")) {
+  const style = document.createElement("style");
+  style.id = "hg-no-select";
+  style.textContent = "*,*::before,*::after{user-select:none!important;-webkit-user-select:none!important;}input,textarea{user-select:text!important;-webkit-user-select:text!important;}";
+  document.head.appendChild(style);
+  document.addEventListener("selectstart", (event) => {
+    const el = event.target instanceof Element ? event.target : null;
+    if (!el?.closest("input, textarea")) event.preventDefault();
+  });
+}
 
 export default function App() {
   const client = useMemo(() => new HushClient(createTransport(API_ORIGIN)), []);
@@ -101,7 +115,7 @@ export default function App() {
   };
 
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider style={[{ flex: 1 }, NO_SELECT_WEB]}>
       <LanguageProvider language={settings.language}>
       <StatusBar style="dark" />
       {!ready ? (

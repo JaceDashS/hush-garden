@@ -158,6 +158,11 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - One codebase builds the web app (hosted on Vercel), the Android app and the Windows desktop app. The iPhone app is configured but not built yet.
 - In the phone apps sound keeps playing while the app is in the background or the screen is off, with play and pause on the lock screen. A phone browser tab may be paused by the system; background play needs the app.
 
+## No Text Selection
+
+- Dragging across labels, buttons or the garden on the web never selects text, so a drag that moves a knob or the character does not highlight words. Text fields (name, chat) stay selectable and copyable.
+- Design: [No Text Selection](../../design/app/10-garden.md#no-text-selection)
+
 ## Example
 
 - Input: A player in the private garden stands 2 tiles from a new brown noise speaker (noise volume 0.7, OSC A volume 0.5), then walks 10 tiles away.

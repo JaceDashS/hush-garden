@@ -319,3 +319,11 @@ stateDiagram-v2
 ## Account Character Name Restore
 - Input: Authenticated enter response with characterName. Output: settings.name replaced by the server nickname, including empty fallback. Code: src/api/types.ts Entry and src/screens/Game.tsx entry handling. NAME_SAVE_FAILED is displayed for failed socket saves.
 - Scenario: Input another device with stale name; steps enter the public garden after login; expected result settings and displayed name follow the account profile. Private offline use remains device-local.
+
+## No Text Selection
+- Input: A pointer drag on the web page.
+- Output: No selection outside `input` and `textarea`; text fields select as usual. Native apps get `selectable={false}` on every `T` text.
+- Code: `src/App.tsx` adds the `hg-no-select` style (`user-select: none` on every element, `text` on `input` and `textarea`) and a `selectstart` listener that cancels selections not started in a text field, once at module load; `SafeAreaProvider` also gets the web-only `NO_SELECT_WEB` style. `src/ui.tsx` → `T` sets `selectable={false}`.
+- Scenario: Input a drag across the "Hush Garden" title in Chromium; steps press, move 340 px right, release; result `getSelection()` is empty. The same drag inside the chat field selects the typed text.
+- Spec: [No Text Selection](../../specs/app/10-garden.md#no-text-selection)
+- Scenarios: [No Text Selection Scenario](../../testing/scenarios/app/10-garden.md#no-text-selection-scenario)
