@@ -251,7 +251,7 @@ export function SettingsCard({ open = true, settings, user, online, shownName, n
           </Group>
           <Group title={t("settings.platform")}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <Btn small title={t("settings.mainPage")} onPress={() => void Linking.openURL(`${SITE_ORIGIN}/apps`)} testID="main-page" />
+              <Btn small title={t("settings.mainPage")} onPress={() => { const url = `${SITE_ORIGIN}/about`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="about-developer" />
               <Btn small title={t("settings.feedback")} onPress={() => void Linking.openURL(`${SITE_ORIGIN}/feedback/${APP_ID}`)} testID="feedback" />
             </View>
           </Group>
