@@ -116,7 +116,7 @@ export function cleanSpeakerName(name: unknown): string {
 
 /** Fallback display/placeholder name derived from the speaker's sound source. */
 export function defaultSpeakerName(sound: SpeakerSound, t: (key: TextKey) => string): string {
-  return t((sound.source === "synth" ? "source.synth" : "source." + sound.source) as TextKey);
+  return t((sound.source === "synth" ? "speaker.default" : "source." + sound.source) as TextKey);
 }
 
 /** Places a new speaker with minimum (silent) volume. Returns the same list when the garden is full. */

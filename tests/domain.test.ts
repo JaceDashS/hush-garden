@@ -181,7 +181,7 @@ test("speakers can be added, moved, edited and removed", () => {
   assert.equal(speakers[0].name, "Rain");
   speakers = updateSpeaker(speakers, "s1", { name: "" });
   assert.equal(speakers[0].name, "");
-  assert.equal(defaultSpeakerName(speakers[0].sound, (key) => key), "source.synth");
+  assert.equal(defaultSpeakerName(speakers[0].sound, (key) => key), "speaker.default");
   assert.equal(defaultSpeakerName(withSource(speakers[0].sound, "rain"), (key) => key), "source.rain");
   assert.equal(baseLevel(speakers[0].sound), 0.2);
   assert.deepEqual(removeSpeaker(speakers, "s1"), []);
