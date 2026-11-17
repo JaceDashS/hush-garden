@@ -185,6 +185,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   };
   useEffect(() => audio.setListener(me), [audio, me]);
   useEffect(() => audio.setVolume(settings.volume), [audio, settings.volume]);
+  useEffect(() => audio.setMono(settings.mono), [audio, settings.mono]);
 
   const place = online ? entry?.place ?? "" : t("status.mine");
   const togglePlay = useCallback(async () => {
@@ -704,7 +705,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               gaugeLabel={t("status.downloading")}
             /></View>}
             <View pointerEvents="box-none" style={{ flex: 1, flexDirection: "row", justifyContent: "flex-end", gap: 6 }}>
-              <SoundButton compact={!wide} playing={playing} volume={settings.volume} onToggle={() => void togglePlay()} onVolume={(volume) => onSettings({ ...settings, volume })} />
+              <SoundButton compact={!wide} playing={playing} volume={settings.volume} mono={settings.mono} onToggle={() => void togglePlay()} onVolume={(volume) => onSettings({ ...settings, volume })} onMono={(mono) => onSettings({ ...settings, mono })} />
               <IconBtn label={t("top.settings")} onPress={() => setPanel("settings")} testID="open-settings">
                 <GearIcon />
               </IconBtn>

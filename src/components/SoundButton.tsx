@@ -1,6 +1,6 @@
 /**
- * Top bar sound control. Compact screens reveal a vertical volume slider on the first press;
- * subsequent presses toggle sound. Wide screens reveal the horizontal slider on mouse hover.
+ * Top bar sound control. Compact screens reveal a vertical volume slider on the first press and M/S
+ * channel buttons to the left; wide screens reveal the horizontal slider to the left and M/S below on hover.
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Platform, Pressable, View, useWindowDimensions } from "react-native";
@@ -12,15 +12,41 @@ export const SOUND_KEY_CODE = "KeyM";
 const SIZE = 44;
 /** Closing waits this long after the pointer leaves, so a slip off the edge does not fold it at once. */
 const CLOSE_DELAY_MS = 250;
-/** The button grows to the left in this time, and folds back the same way. */
+/** The button grows in this time, and folds back the same way. */
 const UNFOLD_MS = 240;
 const DROP_HEIGHT = 170;
 /** Width the button gains: padding, slider, gap and percentage. */
 const EXTRA_WIDTH = 12 + 112 + 6 + 34 + 4;
+const CHANNEL_BTN = 34;
 
 type HoverEvent = { nativeEvent: { pointerType?: string } };
 
-export function SoundButton({ compact = false, playing, volume, onToggle, onVolume }: { compact?: boolean; playing: boolean; volume: number; onToggle: () => void; onVolume: (volume: number) => void }) {
+function ChannelChip({ label, accessibilityLabel, selected, onPress, testID }: { label: "M" | "S"; accessibilityLabel: string; selected: boolean; onPress: () => void; testID: string }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected }}
+      testID={testID}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: CHANNEL_BTN,
+        height: CHANNEL_BTN,
+        borderRadius: CHANNEL_BTN / 2,
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 2,
+        borderColor: selected ? colors.mintDeep : colors.panelEdge,
+        backgroundColor: selected ? colors.mint : colors.white,
+        transform: [{ translateY: pressed ? 1 : 0 }],
+      })}
+    >
+      <T size={13} weight="800">{label}</T>
+    </Pressable>
+  );
+}
+
+export function SoundButton({ compact = false, playing, volume, mono, onToggle, onVolume, onMono }: { compact?: boolean; playing: boolean; volume: number; mono: boolean; onToggle: () => void; onVolume: (volume: number) => void; onMono: (mono: boolean) => void }) {
   const t = useT();
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -75,12 +101,11 @@ export function SoundButton({ compact = false, playing, volume, onToggle, onVolu
   const label = t(playing ? "top.soundOff" : "top.soundOn");
   const hoverProps = { onPointerEnter: enter, onPointerLeave: leave } as object;
   return (
-    // Keep the round button's footprint while the slider unfolds beside or below it.
-    <View ref={container} style={{ width: SIZE, height: SIZE, zIndex: 10 }}>
+    // Keep the round button's footprint while the slider and M/S buttons unfold beside or below it.
+    <View ref={container} {...hoverProps} style={{ width: SIZE, height: SIZE, zIndex: 10 }}>
       {compact && expanded && Platform.OS !== "web" && <Pressable accessibilityLabel={t("settings.volume")} onPress={() => setExpanded(false)} style={{ position: "absolute", left: -viewport.width, top: -viewport.height, width: viewport.width * 2, height: viewport.height * 2 }} />}
       <Animated.View
         testID="sound-button"
-        {...hoverProps}
         style={{ position: "absolute", right: 0, top: 0, height: compact ? unfold.interpolate({ inputRange: [0, 1], outputRange: [SIZE, SIZE + DROP_HEIGHT] }) : SIZE, width: unfold.interpolate({ inputRange: [0, 1], outputRange: [SIZE, compact ? SIZE : SIZE + EXTRA_WIDTH] }), flexDirection: "row", justifyContent: "flex-end", overflow: "hidden", borderRadius: SIZE / 2, backgroundColor: colors.white, borderWidth: 2, borderBottomWidth: 4, borderColor: colors.panelEdge }}
       >
         {/* Keep the slider at full width while its container unfolds. */}
@@ -95,6 +120,34 @@ export function SoundButton({ compact = false, playing, volume, onToggle, onVolu
         <Pressable accessibilityRole="button" accessibilityLabel={compact && !expanded ? t("settings.volume") : label} aria-expanded={compact ? expanded : undefined} accessibilityState={compact ? { expanded } : undefined} testID="toggle-sound" onPress={() => { if (compact && !expanded) setExpanded(true); else onToggle(); }} style={({ pressed }) => ({ width: SIZE - 4, height: SIZE - 6, alignItems: "center", justifyContent: "center", transform: [{ translateY: pressed ? 1 : 0 }] })}>
           <SpeakerIcon on={playing} />
         </Pressable>
+      </Animated.View>
+
+      {/* Master Mono / Stereo toggle: below the sound button on desktop, to its left on mobile. */}
+      <Animated.View
+        testID="sound-channel-popup"
+        pointerEvents={open ? "auto" : "none"}
+        aria-hidden={!open}
+        accessibilityElementsHidden={!open}
+        importantForAccessibility={open ? "auto" : "no-hide-descendants"}
+        style={{
+          position: "absolute",
+          ...(compact
+            ? { right: SIZE + 6, top: 0, height: SIZE, flexDirection: "row" as const, transform: [{ translateX: unfold.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }
+            : { right: 0, top: SIZE + 6, width: SIZE, flexDirection: "column" as const, transform: [{ translateY: unfold.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }),
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 3,
+          gap: 4,
+          borderRadius: SIZE / 2,
+          backgroundColor: colors.white,
+          borderWidth: 2,
+          borderBottomWidth: 4,
+          borderColor: colors.panelEdge,
+          opacity: unfold,
+        }}
+      >
+        <ChannelChip label="M" accessibilityLabel={t("channel.mono")} selected={mono} onPress={() => onMono(true)} testID="sound-mono" />
+        <ChannelChip label="S" accessibilityLabel={t("channel.stereo")} selected={!mono} onPress={() => onMono(false)} testID="sound-stereo" />
       </Animated.View>
     </View>
   );

@@ -24,6 +24,8 @@ export function deviceLanguage(): Language {
 export interface Settings {
   /** Master volume, 0 to 1. */
   volume: number;
+  /** Mixes all master audio down to mono when true; stereo when false. */
+  mono: boolean;
   /** How a nearby chat is hinted. */
   cue: CueMode;
   /** The user agreed to location use for the public garden. */
@@ -46,13 +48,14 @@ export interface Settings {
   natureSounds: "ask" | "yes" | "no";
 }
 
-export const DEFAULT_SETTINGS: Settings = { volume: 0.8, cue: "tone", consent: false, character: DEFAULT_CHARACTER, customCharacter: "", name: "", language: "ko", natureSounds: "ask" };
+export const DEFAULT_SETTINGS: Settings = { volume: 0.8, mono: false, cue: "tone", consent: false, character: DEFAULT_CHARACTER, customCharacter: "", name: "", language: "ko", natureSounds: "ask" };
 
 /** Turns stored JSON into valid settings; unknown or broken values fall back to defaults. A missing language becomes the device language. */
 export function normalizeSettings(value: unknown): Settings {
   const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   return {
     volume: typeof v.volume === "number" && Number.isFinite(v.volume) ? Math.max(0, Math.min(1, v.volume)) : DEFAULT_SETTINGS.volume,
+    mono: v.mono === true,
     cue: v.cue === "dip" || v.cue === "off" || v.cue === "tone" ? v.cue : DEFAULT_SETTINGS.cue,
     consent: v.consent === true,
     character: normalizeCharacter(v.character),

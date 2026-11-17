@@ -40,8 +40,8 @@ test("server messages are validated and unknown ones are dropped", () => {
 test("settings fall back to defaults and keep valid values", () => {
   const device = deviceLanguage();
   assert.deepEqual(normalizeSettings(null), { ...DEFAULT_SETTINGS, language: device });
-  assert.deepEqual(normalizeSettings({ volume: 7, cue: "loud", consent: "yes", character: "dragon", language: "xx", natureSounds: "maybe" }), { volume: 1, cue: "tone", consent: false, character: "bunny", customCharacter: "", name: "", language: device, natureSounds: "ask" });
-  assert.deepEqual(normalizeSettings({ volume: 0.25, cue: "dip", consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", name: " Momo ", language: "ja", natureSounds: "no" }), { volume: 0.25, cue: "dip", consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", name: "Momo", language: "ja", natureSounds: "no" });
+  assert.deepEqual(normalizeSettings({ volume: 7, mono: "yes", cue: "loud", consent: "yes", character: "dragon", language: "xx", natureSounds: "maybe" }), { volume: 1, mono: false, cue: "tone", consent: false, character: "bunny", customCharacter: "", name: "", language: device, natureSounds: "ask" });
+  assert.deepEqual(normalizeSettings({ volume: 0.25, mono: true, cue: "dip", consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", name: " Momo ", language: "ja", natureSounds: "no" }), { volume: 0.25, mono: true, cue: "dip", consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", name: "Momo", language: "ja", natureSounds: "no" });
   assert.equal(normalizeSettings({ customCharacter: "../x" }).customCharacter, "");
   assert.equal(normalizeSettings({ name: "admin" }).name, "");
 });

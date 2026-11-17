@@ -106,6 +106,7 @@ export default function App() {
   /** Runs inside the button press, which browsers require before any sound may start. */
   const pick = (next: "mine" | "public" | "test") => {
     audio.setVolume(settings.volume);
+    audio.setMono(settings.mono);
     void audio.start().catch(() => undefined);
     setMode(next);
   };

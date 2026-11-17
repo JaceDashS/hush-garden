@@ -81,6 +81,7 @@ export class GardenAudio {
   private wetPan!: StereoPannerNode;
   private master!: GainNode;
   private volume = 0.8;
+  private mono = false;
   private mixAnalyser: AnalyserNode | null = null;
   private spectrumData: Float32Array | null = null;
 
@@ -119,6 +120,7 @@ export class GardenAudio {
       this.master.connect(intoLimiter);
       intoLimiter.connect(limiter);
       limiter.connect(context.destination);
+      this.applyMono();
     }
     if (this.context.state !== "running") await this.context.resume();
     this.refresh();
@@ -179,6 +181,18 @@ export class GardenAudio {
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
     if (this.context) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, GLIDE);
+  }
+
+  /** Downmixes all master audio to mono when true, or restores stereo when false. */
+  setMono(mono: boolean): void {
+    this.mono = mono;
+    if (this.context) this.applyMono();
+  }
+
+  private applyMono(): void {
+    if (!this.context) return;
+    this.master.channelCount = this.mono ? 1 : 2;
+    this.master.channelCountMode = this.mono ? "explicit" : "max";
   }
 
   /** Plays the hint that someone nearby spoke. */
