@@ -220,6 +220,10 @@ const ko = {
   "custom.failed": "요청을 처리하지 못했습니다.",
   "custom.loading": "불러오는 중…",
   "custom.none": "아직 올린 캐릭터가 없습니다.",
+  "channel.label": "소리 출력",
+  "channel.stereo": "스테레오",
+  "channel.mono": "모노",
+  "channel.help": "모노는 위치에 따른 좌우 소리를 끄고 소리 자체도 모노로 들려줍니다.",
   "notice.replaced": "다른 창에서 같은 정원에 들어와 이 연결은 닫혔습니다.",
 } as const;
 
@@ -436,6 +440,10 @@ const en: Record<TextKey, string> = {
   "custom.failed": "The request failed.",
   "custom.loading": "Loading…",
   "custom.none": "No characters uploaded yet.",
+  "channel.label": "Audio output",
+  "channel.stereo": "Stereo",
+  "channel.mono": "Mono",
+  "channel.help": "Mono turns off left-right panning and mixes the sound itself to mono.",
   "notice.replaced": "This garden was opened again in another window, so this connection was closed.",
 };
 
@@ -650,6 +658,10 @@ const ja: Record<TextKey, string> = {
   "custom.failed": "リクエストを処理できませんでした。",
   "custom.loading": "読み込み中…",
   "custom.none": "まだアップロードしたキャラクターはありません。",
+  "channel.label": "音声出力",
+  "channel.stereo": "ステレオ",
+  "channel.mono": "モノラル",
+  "channel.help": "モノラルは位置による左右の偏りをなくし、音自体もモノラルにします。",
   "notice.replaced": "別のウィンドウで同じ庭に入ったため、この接続は閉じられました。",
 };
 
@@ -864,6 +876,10 @@ const zh: Record<TextKey, string> = {
   "custom.failed": "请求处理失败。",
   "custom.loading": "正在加载…",
   "custom.none": "还没有上传角色。",
+  "channel.label": "声音输出",
+  "channel.stereo": "立体声",
+  "channel.mono": "单声道",
+  "channel.help": "单声道会关闭随位置变化的左右声道效果，并将声音本身转为单声道。",
   "notice.replaced": "在另一个窗口重新进入了花园，因此此连接已关闭。",
 };
 

@@ -42,9 +42,9 @@ Automated tests: `tests/domain.test.ts` and `tests/client.test.ts` (`npm test`).
 - Test: "overlapping speakers never exceed one full speaker".
 
 ## Speaker On The Right Sounds Right
-- Input: a speaker to the right on screen.
-- Result: positive balance.
-- Test: "a speaker to the right on screen pans right".
+- Input: a speaker to the right on screen, in stereo and switched to mono.
+- Result: positive balance in stereo; `pan === 0` with unchanged distance gain in mono, and `mono` is preserved across source switches.
+- Test: "a speaker to the right on screen pans right", "a mono speaker keeps distance gain, disables panning, and preserves its mode across sources".
 
 ## Sound Values Are Clamped
 - Input: noise volume 2, a stored radius, an unknown noise colour, five oscillators, high cut below low cut; and `null`.

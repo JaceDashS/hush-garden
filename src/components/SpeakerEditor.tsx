@@ -8,7 +8,7 @@
 import React, { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, baseLevel, defaultOscillator, isSynth, lookOf, reachOf, withSource, type Oscillator, type NatureSound, type NatureSource, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
+import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, baseLevel, defaultOscillator, isMono, isSynth, lookOf, reachOf, withMono, withSource, type Oscillator, type NatureSound, type NatureSource, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
 import { SHADOW_TINT, SourceArt, WavePicture } from "../game/sprites";
 import { useT } from "../i18n";
 import { Btn, Chips, DragLockContext, HIDDEN_READY, IconBtn, Input, Knob, Prepared, Slider, T, Tabs, colors } from "../ui";
@@ -16,6 +16,7 @@ import { DEFAULT_TEMPO, RECORDINGS, TEMPO, hasTempo } from "../domain/recordings
 import { EqGraph, type Spectrum } from "./EqGraph";
 
 type Tab = "sound" | "osc" | "eq";
+const CHANNELS = ["stereo", "mono"] as const;
 
 /** Panel names and colours in the order of the stored oscillators. */
 const PANELS = [
@@ -148,6 +149,17 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, nature
               )}
               <Slider label={t(synth ? "noise.level" : "source.level")} value={baseLevel(sound)} min={0} max={1} format={percent} onChange={setBaseLevel} testID="base-level" />
               <T size={12} tone="muted">{t("editor.reach", { n: reachOf(sound).toFixed(1) })}</T>
+              <View style={{ gap: 6, paddingTop: 6, borderTopWidth: 2, borderTopColor: colors.track }}>
+                <T size={12.5} tone="muted" weight="700">{t("channel.label")}</T>
+                <Chips
+                  label={t("channel.label")}
+                  value={isMono(sound) ? "mono" : "stereo"}
+                  options={CHANNELS.map((channel) => ({ value: channel, label: t(("channel." + channel) as "channel.stereo") }))}
+                  onChange={(channel) => onChange({ ...speaker, sound: withMono(sound, channel === "mono") })}
+                  testID="speaker-channel"
+                />
+                <T size={12} tone="muted">{t("channel.help")}</T>
+              </View>
           </View>
           <View style={pane(shown === "osc")} pointerEvents={shown === "osc" ? "auto" : "none"}>
               {sound.oscillators.length === 0 && <T size={12.5} tone="muted">{t("osc.empty")}</T>}

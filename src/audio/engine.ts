@@ -11,7 +11,7 @@
 import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type AudioNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
 import { bandCoefficients, type EqBand } from "../domain/equalizer";
-import { baseLevel, isSynth, loudnessOf, mixFor, reachOf, type NoiseColor, type Speaker, type SpeakerSound } from "../domain/sound";
+import { baseLevel, isMono, isSynth, loudnessOf, mixFor, reachOf, type NoiseColor, type Speaker, type SpeakerSound } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { LIMIT_RANGE, limiterCurve } from "./limiter";
 import { SoundLibrary, type SoundFiles } from "./library";
@@ -52,6 +52,8 @@ interface Voice {
   nodes: { disconnect(): void }[];
   /** Volume of the noise (synthesiser) or of the recording (nature source). */
   baseGain: GainNode;
+  /** Sums the base source and oscillators, and downmixes to 1 channel when the speaker is mono. */
+  sum: GainNode;
   /** Plays a nature source's recording into baseGain. */
   player: NaturePlayer | null;
   tones: { oscillator: OscillatorNode; gain: GainNode }[];
@@ -333,13 +335,20 @@ export class GardenAudio {
     noise?.start(at, loopOffset(NOISE_SECONDS));
     for (const tone of tones) tone.oscillator.start(at);
     player?.start();
-    return { shape: this.shapeOf(sound), key: "", sources, nodes, baseGain, player, tones, bands, shaped: tail, level, pan };
+    return { shape: this.shapeOf(sound), key: "", sources, nodes, baseGain, sum, player, tones, bands, shaped: tail, level, pan };
   }
 
   /** Applies sound values to an existing voice. Values glide, so dragging a slider is heard without clicks. */
   private tune(context: AudioContext, voice: Voice, sound: SpeakerSound): void {
     const now = context.currentTime;
     const set = (param: { setTargetAtTime(value: number, start: number, constant: number): unknown }, value: number) => param.setTargetAtTime(value, now, GLIDE / 2);
+    const mono = isMono(sound);
+    voice.sum.channelCount = mono ? 1 : 2;
+    voice.sum.channelCountMode = mono ? "explicit" : "max";
+    voice.sum.channelInterpretation = "speakers";
+    voice.level.channelCount = 2;
+    voice.level.channelCountMode = mono && !isSynth(sound) ? "explicit" : "max";
+    voice.level.channelInterpretation = "speakers";
     set(voice.baseGain.gain, baseLevel(sound));
     if (!isSynth(sound) && sound.tempo != null) voice.player?.setTempo(sound.tempo);
     voice.tones.forEach((tone, index) => {

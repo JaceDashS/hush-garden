@@ -36,7 +36,7 @@ Hush Garden masks surrounding noise. The player walks a small quarter-view garde
 - A speaker is loudest next to it and fades smoothly to silence at its reach.
 - Speakers in range are heard together. The mix is turned down as a whole only when it would be louder than one speaker at full volume.
 - Speakers with the same sound are heard as separate sources: standing between them never crackles or sounds metallic.
-- A speaker to the left on screen sounds from the left, and likewise for the right.
+- A speaker to the left on screen sounds from the left, and likewise for the right. A speaker may be switched between stereo (the default) and mono: in mono, left/right panning is turned off and the speaker's sound itself is downmixed to mono.
 - Low sound helps masking, so the default sound carries a low tone: oscillator A starts as a 55 Hz sine. There is no separate bass control.
 - Sound never starts before the player presses a button.
 

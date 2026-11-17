@@ -83,13 +83,13 @@ export function Input({ label, value, onChangeText, secure, onSubmit, testID, ma
   );
 }
 
-export function Chips<V extends string>({ label, value, options, onChange }: { label: string; value: V; options: readonly { value: V; label: string }[]; onChange: (value: V) => void }) {
+export function Chips<V extends string>({ label, value, options, onChange, testID }: { label: string; value: V; options: readonly { value: V; label: string }[]; onChange: (value: V) => void; testID?: string }) {
   return (
     <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
       {options.map((option) => {
         const selected = option.value === value;
         return (
-          <Pressable key={option.value} accessibilityRole="radio" accessibilityLabel={option.label} accessibilityState={{ selected }} onPress={() => onChange(option.value)} style={{ paddingHorizontal: 12, minHeight: 32, justifyContent: "center", borderRadius: 999, borderWidth: 2, borderColor: selected ? colors.mintDeep : colors.panelEdge, backgroundColor: selected ? colors.mint : colors.white }}>
+          <Pressable key={option.value} accessibilityRole="radio" accessibilityLabel={option.label} accessibilityState={{ selected }} testID={testID ? testID + "-" + option.value : undefined} onPress={() => onChange(option.value)} style={{ paddingHorizontal: 12, minHeight: 32, justifyContent: "center", borderRadius: 999, borderWidth: 2, borderColor: selected ? colors.mintDeep : colors.panelEdge, backgroundColor: selected ? colors.mint : colors.white }}>
             <T size={13} weight="700">{option.label}</T>
           </Pressable>
         );

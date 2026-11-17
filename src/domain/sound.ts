@@ -36,6 +36,8 @@ export interface SynthSound {
   oscillators: Oscillator[];
   /** One five-band curve: low cut, low shelf, bell, high shelf and high cut. */
   eq: Equalizer;
+  /** When true, the speaker disables left/right panning and plays in mono. Omitted when stereo. */
+  mono?: boolean;
 }
 
 /**
@@ -52,6 +54,8 @@ export interface NatureSound {
   level: number;
   oscillators: Oscillator[];
   eq: Equalizer;
+  /** When true, the speaker disables left/right panning and downmixes its recording to mono. Omitted when stereo. */
+  mono?: boolean;
 }
 
 export type SpeakerSound = SynthSound | NatureSound;
@@ -61,6 +65,7 @@ export type SourceLook = NoiseColor | NatureSource;
 
 export const isSynth = (sound: SpeakerSound): sound is SynthSound => sound.source === "synth";
 export const isNatureSource = (value: unknown): value is NatureSource => NATURE_SOURCES.includes(value as NatureSource);
+export const isMono = (sound: SpeakerSound): boolean => sound.mono === true;
 export const lookOf = (sound: SpeakerSound): SourceLook => (isSynth(sound) ? sound.noise.color : sound.source);
 /** Volume of the noise (synthesiser) or of the recording (nature source): the one volume of the Sound tab. */
 export const baseLevel = (sound: SpeakerSound): number => (isSynth(sound) ? sound.noise.level : sound.level);
@@ -68,22 +73,32 @@ export const baseLevel = (sound: SpeakerSound): number => (isSynth(sound) ? soun
 export const loudnessOf = (sound: SpeakerSound): number => Math.max(baseLevel(sound), ...sound.oscillators.map((oscillator) => oscillator.level));
 
 /** A nature sound with its default recording, and the default tempo when the source has one. */
-export function natureSound(source: NatureSource, rest: Pick<NatureSound, "level" | "oscillators" | "eq">): NatureSound {
+export function natureSound(source: NatureSource, rest: Pick<NatureSound, "level" | "oscillators" | "eq" | "mono">): NatureSound {
   return { source, recording: defaultRecording(source), ...(hasTempo(source) ? { tempo: DEFAULT_TEMPO } : null), ...rest };
 }
 
+/** Returns `sound` set to mono or stereo while keeping every other setting intact. */
+export function withMono(sound: SpeakerSound, mono: boolean): SpeakerSound {
+  if (mono) return { ...sound, mono: true };
+  const copy = { ...sound };
+  delete copy.mono;
+  return copy;
+}
+
 /**
- * The sound after choosing a source in the editor. The Sound tab volume (noise or recording) and the equalizer
- * always stay. Going from the synthesiser to a nature source empties the oscillators, since a nature source has
- * none by default; between nature sources they stay; going back to the synthesiser keeps them and takes the
- * default noise colour. A new nature source starts with its first recording (and the default tempo).
+ * The sound after choosing a source in the editor. The Sound tab volume (noise or recording), the channel mode
+ * (stereo or mono) and the equalizer always stay. Going from the synthesiser to a nature source empties the
+ * oscillators, since a nature source has none by default; between nature sources they stay; going back to the
+ * synthesiser keeps them and takes the default noise colour. A new nature source starts with its first recording
+ * (and the default tempo).
  */
 export function withSource(sound: SpeakerSound, source: SoundSource): SpeakerSound {
   if (source === sound.source) return sound;
   const level = baseLevel(sound);
   const { eq } = sound;
-  if (source === "synth") return { source, noise: { color: defaultSound().noise.color, level }, oscillators: sound.oscillators, eq };
-  return natureSound(source, { level, oscillators: isSynth(sound) ? [] : sound.oscillators, eq });
+  const mono = sound.mono ? { mono: true } : null;
+  if (source === "synth") return { source, noise: { color: defaultSound().noise.color, level }, oscillators: sound.oscillators, eq, ...mono };
+  return natureSound(source, { level, oscillators: isSynth(sound) ? [] : sound.oscillators, eq, ...mono });
 }
 
 export interface Speaker {
@@ -155,6 +170,7 @@ export function normalizeSound(value: unknown): SpeakerSound {
       level: unit(o.level, 0.2) * overall,
     };
   });
+  const mono = v.mono === true ? { mono: true } : null;
   // A nature source has no default oscillator and no noise; it never had a bass drone. Thunder became a rain
   // recording; a stored thunder plays rain with that recording.
   const source = v.source === "thunder" ? "rain" : v.source;
@@ -162,7 +178,7 @@ export function normalizeSound(value: unknown): SpeakerSound {
     const level = typeof v.level === "number" ? unit(v.level, base.noise.level) * overall : legacy ? overall : base.noise.level;
     const recording = recordingOf(source, v.source === "thunder" ? THUNDER_RECORDING : v.recording);
     const tempo = hasTempo(source) ? { tempo: Math.round(num(v.tempo, TEMPO, DEFAULT_TEMPO)) } : null;
-    return { source, recording, ...tempo, level, oscillators: stored.slice(0, MAX_OSCILLATORS), eq: normalizeEqualizer(v.eq) };
+    return { source, recording, ...tempo, level, oscillators: stored.slice(0, MAX_OSCILLATORS), eq: normalizeEqualizer(v.eq), ...mono };
   }
   const noise = record(v.noise);
   const bass = record(v.bass);
@@ -176,6 +192,7 @@ export function normalizeSound(value: unknown): SpeakerSound {
     noise: { color: NOISE_COLORS.includes(noise.color as NoiseColor) ? (noise.color as NoiseColor) : base.noise.color, level: unit(noise.level, legacy ? 0.8 : base.noise.level) * overall },
     oscillators: silentOnTones ? hum : [...fromBass, ...stored].slice(0, MAX_OSCILLATORS),
     eq: normalizeEqualizer(v.eq, v.filter),
+    ...mono,
   };
 }
 
@@ -218,7 +235,7 @@ export function mixFor(listener: Point, speakers: readonly Speaker[]): SpeakerLe
   const levels = speakers.map((speaker) => {
     const tiles = distance(listener, speaker);
     const reach = reachOf(speaker.sound);
-    return { id: speaker.id, distanceGain: gainAt(tiles, reach), loudness: loudnessAt(tiles, speaker.sound), pan: panFor(listener, speaker, reach) };
+    return { id: speaker.id, distanceGain: gainAt(tiles, reach), loudness: loudnessAt(tiles, speaker.sound), pan: isMono(speaker.sound) ? 0 : panFor(listener, speaker, reach) };
   });
   const power = Math.sqrt(levels.reduce((sum, level) => sum + level.loudness * level.loudness, 0));
   const scale = power > 1 ? 1 / power : 1;

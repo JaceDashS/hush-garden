@@ -10,7 +10,7 @@ import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
 import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { DEFAULT_TEMPO, RECORDINGS, TEMPO, defaultRecording } from "../src/domain/recordings.ts";
-import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, baseLevel, defaultSound, gainAt, isSynth, lookOf, loudnessAt, loudnessOf, mixFor, normalizeSound, reachOf, waveShape, withSource, type Speaker, type SpeakerSound, type SynthSound } from "../src/domain/sound.ts";
+import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, baseLevel, defaultSound, gainAt, isMono, isSynth, lookOf, loudnessAt, loudnessOf, mixFor, normalizeSound, reachOf, waveShape, withMono, withSource, type Speaker, type SpeakerSound, type SynthSound } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
 
 /** A brown noise at the given volume with no oscillators, so its loudest part is the noise. */
@@ -80,6 +80,22 @@ test("overlapping speakers never exceed one full speaker", () => {
 test("a speaker to the right on screen pans right", () => {
   const [level] = mixFor({ x: 10, y: 10 }, [speaker("a", 13, 7)]);
   assert.ok(level.pan > 0);
+});
+
+test("a mono speaker keeps distance gain, disables panning, and preserves its mode across sources", () => {
+  const mono = withMono(defaultSound(), true);
+  assert.equal(isMono(mono), true);
+  assert.deepEqual(normalizeSound(mono), mono);
+  assert.equal("mono" in normalizeSound({ ...defaultSound(), mono: false }), false);
+  assert.equal("mono" in withMono(mono, false), false);
+  const rain = withSource(mono, "rain");
+  assert.equal(isMono(rain), true);
+  assert.equal(isMono(withSource(rain, "synth")), true);
+  const [stereoLevel] = mixFor({ x: 10, y: 10 }, [speaker("s", 13, 7)]);
+  const [monoLevel] = mixFor({ x: 10, y: 10 }, [speaker("m", 13, 7, mono)]);
+  assert.ok(stereoLevel.pan > 0);
+  assert.equal(monoLevel.pan, 0);
+  assert.equal(monoLevel.gain, stereoLevel.gain);
 });
 
 test("a nature source has oscillators and an equalizer but no noise and no default oscillator", () => {
