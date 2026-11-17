@@ -6,6 +6,40 @@ export type CharacterKind = (typeof CHARACTER_KINDS)[number];
 
 export const DEFAULT_CHARACTER: CharacterKind = "bunny";
 
+/** Body colour of each drawn character; also used as the default chat ripple colour. */
+export const CHARACTER_COLORS: Record<CharacterKind, string> = {
+  bunny: "#ffd1dc",
+  cat: "#ffd9a0",
+  bear: "#d9b08c",
+  frog: "#b4e39a",
+  chick: "#fff0a0",
+  fox: "#ffb27a",
+  penguin: "#8fa8c8",
+  pig: "#ffc2cf",
+  panda: "#ffffff",
+  mouse: "#d8d8e6",
+};
+
+/** Selectable chat ripple colours in Settings (in addition to "" for character default). */
+export const CHAT_RIPPLE_COLORS: readonly string[] = [
+  "#ffd1dc",
+  "#ffd9a0",
+  "#d9b08c",
+  "#b4e39a",
+  "#fff0a0",
+  "#ffb27a",
+  "#8fa8c8",
+  "#ffc2cf",
+  "#ffffff",
+  "#d8d8e6",
+  "#8fd6b4",
+  "#ff9eb5",
+];
+
+export function resolveChatColor(character: CharacterKind, chatColor?: string): string {
+  return chatColor && /^#[0-9a-fA-F]{6}$/.test(chatColor) ? chatColor : CHARACTER_COLORS[character];
+}
+
 /** Any stored or received value becomes a known character; unknown values become the default. */
 export function normalizeCharacter(value: unknown): CharacterKind {
   return CHARACTER_KINDS.includes(value as CharacterKind) ? (value as CharacterKind) : DEFAULT_CHARACTER;

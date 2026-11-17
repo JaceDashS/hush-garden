@@ -1,10 +1,10 @@
 /** The quarter-view garden: ground, sound shadows, trees, speakers and characters, with the camera following the player. */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { PanResponder, Platform, View } from "react-native";
+import { Animated, Easing, PanResponder, Platform, View } from "react-native";
 import { CARRY, NEUTRAL, actionAt, actionDuration, actionKindOf, type ActionMoment, type ActionName, type GroundSpot } from "../domain/actions";
 import type { CharacterKind } from "../domain/characters";
 import { lookOf, loudnessAt, type SourceLook, type Speaker } from "../domain/sound";
-import { distance, joystickToInput, nextZoom, toScreen, type Point } from "../domain/world";
+import { TILE_HEIGHT, TILE_WIDTH, distance, joystickToInput, nextZoom, toScreen, type Point } from "../domain/world";
 import { T, colors } from "../ui";
 import { CHARACTER_FEET, CHARACTER_SIZE, Character } from "./characters";
 import { ImageCharacter, SheetLoading, useSheet } from "./imageCharacter";
@@ -41,6 +41,60 @@ export interface Marker {
   offsetX: number;
   offsetY: number;
   content: React.ReactNode;
+}
+
+export interface ChatRipple {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+}
+
+const CHAT_RIPPLE_W = 5 * TILE_WIDTH * Math.SQRT2;
+const CHAT_RIPPLE_H = 5 * TILE_HEIGHT * Math.SQRT2;
+
+function ChatRippleView({ ripple }: { ripple: ChatRipple }) {
+  const rings = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
+  useEffect(() => {
+    const anims = rings.map((ring, index) =>
+      Animated.sequence([
+        Animated.delay(index * 180),
+        Animated.timing(ring, { toValue: 1, duration: 1350, easing: Easing.out(Easing.quad), useNativeDriver: Platform.OS !== "web" }),
+      ]),
+    );
+    const group = Animated.parallel(anims);
+    group.start();
+    return () => group.stop();
+  }, [rings]);
+  const at = place(ripple);
+  const border = Math.max(3, CHAT_RIPPLE_W * 0.018);
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: at.left - CHAT_RIPPLE_W / 2, top: at.top - CHAT_RIPPLE_H / 2, width: CHAT_RIPPLE_W, height: CHAT_RIPPLE_H }}>
+      {rings.map((ring, index) => {
+        const scale = ring.interpolate({ inputRange: [0, 1], outputRange: [0.06, 1] });
+        const opacity = ring.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.85, 0] });
+        return (
+          <Animated.View
+            key={index}
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              top: (CHAT_RIPPLE_H - CHAT_RIPPLE_W) / 2,
+              width: CHAT_RIPPLE_W,
+              height: CHAT_RIPPLE_W,
+              borderRadius: CHAT_RIPPLE_W / 2,
+              borderWidth: border,
+              borderColor: ripple.color,
+              backgroundColor: ripple.color + "1f",
+              opacity,
+              transform: [{ scaleY: CHAT_RIPPLE_H / CHAT_RIPPLE_W }, { scale }],
+            }}
+          />
+        );
+      })}
+    </View>
+  );
 }
 
 const JOYSTICK_RADIUS = 52;
@@ -144,7 +198,7 @@ const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.a
  * `carriedId` is the speaker a character holds: it is drawn in that character's hands, not on the ground, while
  * its sound shadow follows the position it has in `speakers`. `markers` are pressable things placed in the garden.
  */
-export function Scene({ me, actors, speakers, carriedId, heldIds, markers, onInput }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; carriedId?: string | null; heldIds?: ReadonlySet<string>; markers?: readonly Marker[]; onInput: (input: Point) => void }) {
+export function Scene({ me, actors, speakers, carriedId, heldIds, chatRipples, markers, onInput }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; carriedId?: string | null; heldIds?: ReadonlySet<string>; chatRipples?: readonly ChatRipple[]; markers?: readonly Marker[]; onInput: (input: Point) => void }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
   const [stick, setStick] = useState<{ x: number; y: number; dx: number; dy: number } | null>(null);
@@ -221,6 +275,9 @@ export function Scene({ me, actors, speakers, carriedId, heldIds, markers, onInp
             </View>
           );
         })}
+        {(chatRipples ?? []).map((ripple) => (
+          <ChatRippleView key={ripple.id} ripple={ripple} />
+        ))}
         {TREES.map((tree) => {
           const at = place(tree);
           return (

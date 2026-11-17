@@ -35,7 +35,15 @@ export function parseServerMessage(text: string): ServerMessage | null {
       return Array.isArray(m.moves) ? { t: "moves", moves: m.moves.filter(isPlayer).map((v) => ({ id: v.id as string, x: v.x as number, y: v.y as number })) } : null;
     case "chat":
       if (typeof m.id !== "string" || typeof m.text !== "string" || !isPoint(m)) return null;
-      return { t: "chat", id: m.id, name: typeof m.name === "string" ? m.name : "", text: m.text, x: m.x as number, y: m.y as number };
+      return {
+        t: "chat",
+        id: m.id,
+        name: typeof m.name === "string" ? m.name : "",
+        text: m.text,
+        ...(typeof m.color === "string" && /^#[0-9a-fA-F]{6}$/.test(m.color) ? { color: m.color.toLowerCase() } : {}),
+        x: m.x as number,
+        y: m.y as number,
+      };
     case "speakers":
       return { t: "speakers", speakers: normalizeSpeakers(m.speakers) };
     case "hold":
@@ -132,8 +140,8 @@ export class GardenSocket {
     }, wait);
   }
 
-  chat(text: string): void {
-    this.sendJson({ t: "chat", text });
+  chat(text: string, color?: string): void {
+    this.sendJson({ t: "chat", text, ...(color ? { color } : {}) });
   }
 
   /** Asks the server to change the character name. An empty name returns to the account name. */

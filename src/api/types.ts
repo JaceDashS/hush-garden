@@ -62,7 +62,7 @@ export type ServerMessage =
   | { t: "leave"; id: string }
   | { t: "rename"; id: string; name: string }
   | { t: "moves"; moves: { id: string; x: number; y: number }[] }
-  | { t: "chat"; id: string; name: string; text: string; x: number; y: number }
+  | { t: "chat"; id: string; name: string; text: string; color?: string; x: number; y: number }
   | { t: "speakers"; speakers: Speaker[] }
   | { t: "hold"; playerId: string; id: string; facing?: 1 | -1 }
   | { t: "holdDenied"; id: string }

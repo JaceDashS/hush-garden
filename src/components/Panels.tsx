@@ -8,6 +8,7 @@ import { canDrawBubbleOverlay, hideFloatingBubble, isFloatingBubbleShowing, isFl
 import { SITE_ORIGIN } from "../config";
 import type { CueMode } from "../domain/chat";
 import { BUILT_IN_PRESETS, MAX_PRESETS, type MyGarden } from "../domain/garden";
+import { CHARACTER_COLORS, CHAT_RIPPLE_COLORS } from "../domain/characters";
 import { NAME_MAX_LENGTH, checkName } from "../domain/names";
 import { LANGUAGES, LANGUAGE_NAMES, type TextKey } from "../domain/text";
 import { useT } from "../i18n";
@@ -249,6 +250,35 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
           {developer}
           <Group title={t("settings.character")}>
             <CharacterPicker value={settings.character} onChange={(character) => onChange({ ...settings, character, customCharacter: "" })} />
+          </Group>
+          <Group title={t("settings.chatColor")}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityLabel={t("settings.chatColorAuto")}
+                accessibilityState={{ selected: !settings.chatColor }}
+                testID="chat-color-auto"
+                onPress={() => onChange({ ...settings, chatColor: "" })}
+                style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, minHeight: 32, borderRadius: 999, borderWidth: 2, borderColor: !settings.chatColor ? colors.mintDeep : colors.panelEdge, backgroundColor: !settings.chatColor ? colors.mint : colors.white }}
+              >
+                <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: CHARACTER_COLORS[settings.character], borderWidth: 1.5, borderColor: colors.ink }} />
+                <T size={12.5} weight="700">{t("settings.chatColorAuto")}</T>
+              </Pressable>
+              {CHAT_RIPPLE_COLORS.map((hex) => {
+                const selected = settings.chatColor === hex;
+                return (
+                  <Pressable
+                    key={hex}
+                    accessibilityRole="radio"
+                    accessibilityLabel={hex}
+                    accessibilityState={{ selected }}
+                    testID={"chat-color-" + hex.slice(1)}
+                    onPress={() => onChange({ ...settings, chatColor: hex })}
+                    style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: hex, borderWidth: selected ? 3 : 2, borderColor: selected ? colors.mintDeep : colors.ink }}
+                  />
+                );
+              })}
+            </View>
           </Group>
           {!!custom && <Group title={t("custom.title")}>{custom}</Group>}
           <Group title={t("settings.language")}>

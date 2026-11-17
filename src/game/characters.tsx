@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { View } from "react-native";
 import Svg, { Circle, Ellipse, G, Path, Polygon } from "react-native-svg";
 import type { Stance } from "../domain/actions";
-import { WALK_FRAME_MS, nextWalkFrame, poseFor, type CharacterKind, type Pose } from "../domain/characters";
+import { CHARACTER_COLORS, WALK_FRAME_MS, nextWalkFrame, poseFor, type CharacterKind, type Pose } from "../domain/characters";
 
 export const CHARACTER_SIZE = { width: 56, height: 64 };
 
@@ -22,16 +22,16 @@ interface Look {
 }
 
 const LOOKS: Record<CharacterKind, Look> = {
-  bunny: { body: "#ffd1dc", belly: "#ffffff", ears: "long", earInner: "#ffffff", face: "plain" },
-  cat: { body: "#ffd9a0", belly: "#fff6e6", ears: "point", earInner: "#ffb3c6", face: "whiskers" },
-  bear: { body: "#d9b08c", belly: "#f3dfc8", ears: "round", earInner: "#f3dfc8", face: "muzzle" },
-  frog: { body: "#b4e39a", belly: "#effbd9", ears: "none", face: "frog" },
-  chick: { body: "#fff0a0", belly: "#fffbe0", ears: "none", face: "beak", accent: "#ffb347" },
-  fox: { body: "#ffb27a", belly: "#ffffff", ears: "point", earInner: "#ffffff", face: "muzzle" },
-  penguin: { body: "#8fa8c8", belly: "#ffffff", ears: "none", face: "beak", accent: "#ffb347" },
-  pig: { body: "#ffc2cf", belly: "#ffe3ea", ears: "point", earInner: "#ff9eb5", face: "snout" },
-  panda: { body: "#ffffff", belly: "#ffffff", ears: "round", ear: INK, face: "patches" },
-  mouse: { body: "#d8d8e6", belly: "#f4f4fa", ears: "round", earInner: "#ffc2cf", face: "whiskers" },
+  bunny: { body: CHARACTER_COLORS.bunny, belly: "#ffffff", ears: "long", earInner: "#ffffff", face: "plain" },
+  cat: { body: CHARACTER_COLORS.cat, belly: "#fff6e6", ears: "point", earInner: "#ffb3c6", face: "whiskers" },
+  bear: { body: CHARACTER_COLORS.bear, belly: "#f3dfc8", ears: "round", earInner: "#f3dfc8", face: "muzzle" },
+  frog: { body: CHARACTER_COLORS.frog, belly: "#effbd9", ears: "none", face: "frog" },
+  chick: { body: CHARACTER_COLORS.chick, belly: "#fffbe0", ears: "none", face: "beak", accent: "#ffb347" },
+  fox: { body: CHARACTER_COLORS.fox, belly: "#ffffff", ears: "point", earInner: "#ffffff", face: "muzzle" },
+  penguin: { body: CHARACTER_COLORS.penguin, belly: "#ffffff", ears: "none", face: "beak", accent: "#ffb347" },
+  pig: { body: CHARACTER_COLORS.pig, belly: "#ffe3ea", ears: "point", earInner: "#ff9eb5", face: "snout" },
+  panda: { body: CHARACTER_COLORS.panda, belly: "#ffffff", ears: "round", ear: INK, face: "patches" },
+  mouse: { body: CHARACTER_COLORS.mouse, belly: "#f4f4fa", ears: "round", earInner: "#ffc2cf", face: "whiskers" },
 };
 
 function Ears({ look, sway }: { look: Look; sway: number }) {

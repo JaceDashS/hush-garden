@@ -32,11 +32,10 @@ export interface Settings {
   consent: boolean;
   /** The character the player chose. */
   character: CharacterKind;
-  /**
-   * The player's own approved character image in use, by id, or empty. It is drawn instead of `character`;
-   * `character` stays the drawn character used when the image is not available.
-   */
+  /** Custom character image id, or empty. */
   customCharacter: string;
+  /** Chat ripple colour (#rrggbb), or "" to match the chosen character's colour. */
+  chatColor: string;
   /** The character name the player typed. Empty means the account name, or "Guest". */
   name: string;
   /** The language of the screens. */
@@ -48,7 +47,7 @@ export interface Settings {
   natureSounds: "ask" | "yes" | "no";
 }
 
-export const DEFAULT_SETTINGS: Settings = { volume: 0.8, mono: false, cue: "tone", consent: false, character: DEFAULT_CHARACTER, customCharacter: "", name: "", language: "ko", natureSounds: "ask" };
+export const DEFAULT_SETTINGS: Settings = { volume: 0.8, mono: false, cue: "tone", consent: false, character: DEFAULT_CHARACTER, customCharacter: "", chatColor: "", name: "", language: "ko", natureSounds: "ask" };
 
 /** Turns stored JSON into valid settings; unknown or broken values fall back to defaults. A missing language becomes the device language. */
 export function normalizeSettings(value: unknown): Settings {
@@ -60,6 +59,7 @@ export function normalizeSettings(value: unknown): Settings {
     consent: v.consent === true,
     character: normalizeCharacter(v.character),
     customCharacter: isCharacterId(v.customCharacter) ? v.customCharacter : "",
+    chatColor: typeof v.chatColor === "string" && /^#[0-9a-fA-F]{6}$/.test(v.chatColor) ? v.chatColor.toLowerCase() : "",
     name: nameOrEmpty(v.name),
     language: normalizeLanguage(v.language, deviceLanguage()),
     natureSounds: v.natureSounds === "yes" || v.natureSounds === "no" ? v.natureSounds : "ask",

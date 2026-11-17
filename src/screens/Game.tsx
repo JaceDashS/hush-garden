@@ -27,13 +27,13 @@ import { SpeakerEditor } from "../components/SpeakerEditor";
 import { clearPatch, startPatch, usePatchState } from "../audio/patchSession";
 import { API_ORIGIN } from "../config";
 import { actionDuration, actionKindOf, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
-import { PICK_UP_TILES } from "../domain/characters";
+import { PICK_UP_TILES, resolveChatColor } from "../domain/characters";
 import { BUBBLE_MS, CHAT_MAX_LENGTH, appendChatEntry, cleanMessage, cueFor, type ChatEntry } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
 import { MAX_SPEAKERS, audibleCount, defaultSound, lookOf, type SourceLook, type Speaker } from "../domain/sound";
 import type { TextKey } from "../domain/text";
 import { GARDEN_SIZE, clampToGarden, distance, keysToInput, step, toGarden, type Point } from "../domain/world";
-import { Scene, groundSpotFor, type Actor, type Marker } from "../game/Scene";
+import { Scene, groundSpotFor, type Actor, type ChatRipple, type Marker } from "../game/Scene";
 import { useT } from "../i18n";
 import { requestCoordinates } from "../location";
 import type { Settings } from "../settings";
@@ -107,6 +107,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const carryIdRef = useRef(carryId);
   carryIdRef.current = carryId;
   const [bubbles, setBubbles] = useState<Record<string, { text: string; until: number }>>({});
+  const [chatRipples, setChatRipples] = useState<ChatRipple[]>([]);
   const [chatLog, setChatLog] = useState<ChatEntry[]>([]);
   const nextChatId = useRef(0);
   const [draft, setDraft] = useState("");
@@ -525,8 +526,18 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           const mine = message.id === myId.current;
           const at = Date.now();
           nextChatId.current += 1;
+          const rippleId = `${at}-${nextChatId.current}`;
+          const rippleColor = mine
+            ? resolveChatColor(settingsRef.current.character, settingsRef.current.chatColor)
+            : message.color || resolveChatColor(othersRef.current[message.id]?.character ?? "bunny");
+          const rippleAt = mine ? meRef.current : othersRef.current[message.id] ?? { x: message.x, y: message.y };
+          setChatRipples((current) => [...current, { id: rippleId, x: rippleAt.x, y: rippleAt.y, color: rippleColor }]);
+          setTimeout(() => {
+            if (!alive.current) return;
+            setChatRipples((current) => current.filter((item) => item.id !== rippleId));
+          }, 1850);
           setBubbles((current) => ({ ...current, [mine ? "me" : message.id]: { text: (mine ? "" : message.name + ": ") + message.text, until: at + BUBBLE_MS } }));
-          setChatLog((current) => appendChatEntry(current, { id: `${at}-${nextChatId.current}`, senderId: message.id, name: message.name, text: message.text, at, mine }));
+          setChatLog((current) => appendChatEntry(current, { id: rippleId, senderId: message.id, name: message.name, text: message.text, at, mine }));
           if (!mine) {
             const cue = cueFor(meRef.current, message);
             if (cue) {
@@ -710,7 +721,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const sendChat = () => {
     const text = cleanMessage(draft);
     if (text) {
-      socket.current?.chat(text);
+      socket.current?.chat(text, settingsRef.current.chatColor || undefined);
       setDraft("");
     }
     chatInput.current?.blur();
@@ -842,7 +853,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: wide ? "row" : "column" }}>
       <View style={{ flex: 1 }}>
-        <Scene me={me} actors={actors} speakers={speakers} carriedId={carryId} heldIds={heldIds} markers={markers} onInput={(input) => (joystick.current = input)} />
+        <Scene me={me} actors={actors} speakers={speakers} carriedId={carryId} heldIds={heldIds} chatRipples={chatRipples} markers={markers} onInput={(input) => (joystick.current = input)} />
 
         <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, top: insets.top + 8, paddingHorizontal: 10, gap: 6 }}>
           <View pointerEvents="box-none" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
