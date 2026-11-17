@@ -173,6 +173,7 @@ test("sound values are clamped and broken input falls back to defaults", () => {
 
 test("speakers can be added, moved, edited and removed", () => {
   let speakers = addSpeaker([], { x: 3, y: 4 }, "s1");
+  assert.equal(loudnessOf(speakers[0].sound), 0);
   speakers = moveSpeaker(speakers, "s1", { x: 99, y: -5 });
   assert.ok(speakers[0].x <= GARDEN_SIZE && speakers[0].y >= 0);
   speakers = updateSpeaker(speakers, "s1", { name: "  Rain  ", sound: noiseAt(0.2) });

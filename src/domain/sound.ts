@@ -146,6 +146,16 @@ export function defaultSound(): SynthSound {
   };
 }
 
+/** Silent version of the default sound used when a player first creates a new speaker. */
+export function quietSound(): SynthSound {
+  const base = defaultSound();
+  return {
+    ...base,
+    noise: { ...base.noise, level: 0 },
+    oscillators: base.oscillators.map((osc) => ({ ...osc, level: 0 })),
+  };
+}
+
 /**
  * Turns any stored or received value into a valid sound: missing fields get defaults and numbers are clamped.
  * Sounds saved before the bass drone was removed carry `bass`; it becomes a sine oscillator of the same loudness

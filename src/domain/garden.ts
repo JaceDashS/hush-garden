@@ -1,6 +1,6 @@
 /** Speaker layout editing and presets. Used by the public garden editor and by the private offline garden. */
 import { NEUTRAL_Q, flatEqualizer, type EqBand } from "./equalizer";
-import { MAX_SPEAKERS, defaultSound, normalizeSound, type Speaker, type SpeakerSound, type SynthSound } from "./sound";
+import { MAX_SPEAKERS, defaultSound, normalizeSound, quietSound, type Speaker, type SpeakerSound, type SynthSound } from "./sound";
 import { GARDEN_SIZE, clampToGarden, type Point } from "./world";
 
 export interface Preset {
@@ -108,10 +108,10 @@ export function cleanName(name: unknown): string {
   return text || "Speaker";
 }
 
-/** Places a new speaker with the default sound. Returns the same list when the garden is full. */
+/** Places a new speaker with minimum (silent) volume. Returns the same list when the garden is full. */
 export function addSpeaker(speakers: readonly Speaker[], at: Point, id: string): Speaker[] {
   if (speakers.length >= MAX_SPEAKERS) return [...speakers];
-  return [...speakers, { id, name: "Speaker " + (speakers.length + 1), ...clampToGarden(at), sound: defaultSound() }];
+  return [...speakers, { id, name: "Speaker " + (speakers.length + 1), ...clampToGarden(at), sound: quietSound() }];
 }
 
 export function moveSpeaker(speakers: readonly Speaker[], id: string, to: Point): Speaker[] {
