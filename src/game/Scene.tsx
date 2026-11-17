@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, PanResponder, Platform, View } from "react-native";
 import { CARRY, NEUTRAL, actionAt, actionDuration, actionKindOf, type ActionMoment, type ActionName, type GroundSpot } from "../domain/actions";
 import type { CharacterKind } from "../domain/characters";
+import { CHAT_RANGE } from "../domain/chat";
 import { lookOf, loudnessAt, type SourceLook, type Speaker } from "../domain/sound";
 import { TILE_HEIGHT, TILE_WIDTH, distance, joystickToInput, nextZoom, toScreen, type Point } from "../domain/world";
 import { T, colors } from "../ui";
@@ -50,8 +51,8 @@ export interface ChatRipple {
   color: string;
 }
 
-const CHAT_RIPPLE_W = 5 * TILE_WIDTH * Math.SQRT2;
-const CHAT_RIPPLE_H = 5 * TILE_HEIGHT * Math.SQRT2;
+const CHAT_RIPPLE_W = CHAT_RANGE * TILE_WIDTH * Math.SQRT2;
+const CHAT_RIPPLE_H = CHAT_RANGE * TILE_HEIGHT * Math.SQRT2;
 
 function ChatRippleView({ ripple }: { ripple: ChatRipple }) {
   const rings = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
