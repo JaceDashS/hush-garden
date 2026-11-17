@@ -6,7 +6,7 @@ import { characterPrompt } from "../src/domain/characterPrompt.ts";
 import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor, scrollToShow, stepCharacter } from "../src/domain/characters.ts";
 import { LANGUAGES, TEXTS, languageForLocale, normalizeLanguage, translate, type TextKey } from "../src/domain/text.ts";
 import { checkName, isReservedName } from "../src/domain/names.ts";
-import { CHAT_RANGE, appendChatEntry, cleanMessage, cueFor, formatChatTime } from "../src/domain/chat.ts";
+import { CHAT_RANGE, CHAT_ROW_HEIGHT, DEFAULT_CHAT_ROWS, MAX_CHAT_ROWS, MIN_CHAT_ROWS, appendChatEntry, cleanMessage, cueFor, formatChatTime, snapChatRows } from "../src/domain/chat.ts";
 import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { DEFAULT_TEMPO, RECORDINGS, TEMPO, defaultRecording } from "../src/domain/recordings.ts";
@@ -606,4 +606,11 @@ test("chat log formats minute timestamps and caps length", () => {
   log = appendChatEntry(log, { id: "3", senderId: "a", name: "Alice", text: "yo", at: at + 120_000, mine: false }, 2);
   assert.deepEqual(log.map((item) => item.id), ["2", "3"]);
   assert.equal(formatChatTime(log[0].at), "09:05");
+
+  assert.equal(DEFAULT_CHAT_ROWS, 5);
+  assert.equal(snapChatRows(5, -CHAT_ROW_HEIGHT), 6);
+  assert.equal(snapChatRows(5, -CHAT_ROW_HEIGHT * 0.4), 5);
+  assert.equal(snapChatRows(5, CHAT_ROW_HEIGHT * 2), 3);
+  assert.equal(snapChatRows(5, CHAT_ROW_HEIGHT * 20), MIN_CHAT_ROWS);
+  assert.equal(snapChatRows(5, -CHAT_ROW_HEIGHT * 20), MAX_CHAT_ROWS);
 });

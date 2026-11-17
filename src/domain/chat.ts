@@ -8,6 +8,10 @@ export const CHAT_MAX_LENGTH = 200;
 export const BUBBLE_MS = 6000;
 /** Maximum number of chat messages kept in the on-screen log. */
 export const CHAT_LOG_LIMIT = 100;
+export const DEFAULT_CHAT_ROWS = 5;
+export const MIN_CHAT_ROWS = 2;
+export const MAX_CHAT_ROWS = 12;
+export const CHAT_ROW_HEIGHT = 22;
 
 export interface ChatEntry {
   id: string;
@@ -16,6 +20,12 @@ export interface ChatEntry {
   text: string;
   at: number;
   mine: boolean;
+}
+
+/** Snaps a vertical drag delta (`dy < 0` expands upward) to discrete row counts. */
+export function snapChatRows(startRows: number, dy: number, rowHeight = CHAT_ROW_HEIGHT, min = MIN_CHAT_ROWS, max = MAX_CHAT_ROWS): number {
+  const snapped = startRows + Math.round(-dy / rowHeight);
+  return Math.max(min, Math.min(max, snapped));
 }
 
 /** Formats an epoch timestamp as local HH:MM. */

@@ -69,6 +69,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [walking, setWalking] = useState(false);
   const [playing, setPlaying] = useState(audio.running);
   const [panel, setPanel] = useState<Panel>(null);
+  const panelRef = useRef<Panel>(null);
+  panelRef.current = panel;
   /** The speaker in the character's hands. */
   const [carryId, setCarryId] = useState<string | null>(null);
   /** The action being played. The character cannot walk or start another one until it ends. */
@@ -97,7 +99,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const nextChatId = useRef(0);
   const [draft, setDraft] = useState("");
   const chatInput = useRef<React.ComponentRef<typeof TextInput>>(null);
-  const desktopChat = Platform.OS === "web" && typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
   const placed = online ? publicSpeakers : garden.speakers;
   /**
@@ -232,6 +233,15 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       if (event.key === "Escape" && !event.repeat) {
         event.preventDefault();
         setPanel((open) => (open ? null : typing(event) ? open : "settings"));
+        return;
+      }
+      if (event.key === "Enter" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (typing(event)) return;
+        if (!panelRef.current && chatInput.current) {
+          event.preventDefault();
+          keys.current.clear();
+          chatInput.current.focus();
+        }
         return;
       }
       if (typing(event)) return;
@@ -565,10 +575,11 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   // --- chat and account --------------------------------------------------------------------------------------
   const sendChat = () => {
     const text = cleanMessage(draft);
-    if (!text) return;
-    socket.current?.chat(text);
-    setDraft("");
-    if (desktopChat) chatInput.current?.focus();
+    if (text) {
+      socket.current?.chat(text);
+      setDraft("");
+    }
+    chatInput.current?.blur();
   };
 
   /** Saves the character name. Online, the server decides and answers with a rename or an error. */
@@ -708,7 +719,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               {entry?.canChat ? (
                 <>
                   <View style={{ flex: 1 }}>
-                    <Input inputRef={chatInput} autoFocus={desktopChat} submitBehavior={desktopChat ? "submit" : undefined} label={t("chat.label")} placeholder={t("chat.placeholder")} value={draft} maxLength={CHAT_MAX_LENGTH} onChangeText={setDraft} onSubmit={sendChat} testID="chat-input" />
+                    <Input inputRef={chatInput} label={t("chat.label")} placeholder={t("chat.placeholder")} value={draft} maxLength={CHAT_MAX_LENGTH} onChangeText={setDraft} onSubmit={sendChat} testID="chat-input" />
                   </View>
                   <Btn variant="primary" title={t("chat.send")} disabled={!draft.trim()} onPress={sendChat} testID="chat-send" />
                 </>
