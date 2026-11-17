@@ -175,13 +175,30 @@ export function Slider({ label, value, min, max, onChange, log, format = (v) => 
  * A round knob in the manner of synthesiser panels. Dragging up or to the right raises the value and dragging
  * down or to the left lowers it, so it works with a mouse and with a thumb. `log` spreads frequencies by octave.
  */
-export function Knob({ label, value, min, max, onChange, log, format = (v) => String(Math.round(v)), size = 64, color = colors.mintDeep, testID }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; log?: boolean; format?: (value: number) => string; size?: number; color?: string; testID?: string }) {
+export function Knob({ label, value, min, max, onChange, log, format = (v) => String(Math.round(v)), size = 64, color = colors.mintDeep, scrollStep = 0.1, testID }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void; log?: boolean; format?: (value: number) => string; size?: number; color?: string; scrollStep?: number; testID?: string }) {
   const lock = useDragLock();
+  const knobRef = useRef<React.ComponentRef<typeof View>>(null);
   const toRatio = (v: number) => Math.max(0, Math.min(1, log ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min)));
   const fromRatio = (ratio: number) => (log ? min * Math.pow(max / min, ratio) : min + (max - min) * ratio);
   const ratio = toRatio(value);
-  const latest = useRef({ ratio, fromRatio, onChange, lock });
-  latest.current = { ratio, fromRatio, onChange, lock };
+  const latest = useRef({ value, min, max, scrollStep, ratio, fromRatio, onChange, lock });
+  latest.current = { value, min, max, scrollStep, ratio, fromRatio, onChange, lock };
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const node = knobRef.current as unknown as HTMLElement | null;
+    if (!node?.addEventListener) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const s = latest.current;
+      const dir = event.deltaY < 0 ? 1 : -1;
+      const stepped = Math.round((s.value + dir * s.scrollStep) * 1000) / 1000;
+      s.onChange(Math.max(s.min, Math.min(s.max, stepped)));
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    return () => node.removeEventListener("wheel", onWheel);
+  }, []);
   const start = useRef(0);
   const responder = useRef(
     PanResponder.create({
@@ -217,6 +234,7 @@ export function Knob({ label, value, min, max, onChange, log, format = (v) => St
   return (
     <View style={{ alignItems: "center", gap: 2, minWidth: size + 12 }}>
       <View
+        ref={knobRef}
         testID={testID}
         accessibilityRole="adjustable"
         accessibilityLabel={label}

@@ -16,15 +16,24 @@ export interface EqBand {
   gain: number;
   /** Width of a bell, steepness of a shelf, resonance of a cut. */
   q: number;
+  /** When false, this band is bypassed. Omitted when enabled. */
+  enabled?: boolean;
 }
 
 export interface Equalizer {
-  bands: [EqBand, EqBand, EqBand];
+  /** When false, the whole equalizer is bypassed. Omitted when enabled. */
+  enabled?: boolean;
+  bands: EqBand[];
 }
 
-/** Number of points on the equalizer. */
+/** Number of points on the equalizer by default, and its allowed range. */
 export const BAND_COUNT = 3;
+export const MIN_BANDS = 3;
+export const MAX_BANDS = 5;
 export const BAND_INDEXES: readonly number[] = [0, 1, 2];
+
+export const isEqEnabled = (eq: Equalizer): boolean => eq.enabled !== false;
+export const isBandEnabled = (band: EqBand): boolean => band.enabled !== false;
 
 export const EQ_LIMITS = {
   gain: [-24, 12],
@@ -66,6 +75,7 @@ function normalizeBand(value: unknown, fallback: EqBand): EqBand {
     frequency: num(v.frequency, EQ_LIMITS.frequency, fallback.frequency),
     gain: num(v.gain, EQ_LIMITS.gain, fallback.gain),
     q: num(v.q, EQ_LIMITS.q, fallback.q),
+    ...(v.enabled === false ? { enabled: false } : {}),
   };
 }
 
@@ -77,9 +87,14 @@ function normalizeBand(value: unknown, fallback: EqBand): EqBand {
  */
 export function normalizeEqualizer(value: unknown, legacyFilter?: unknown): Equalizer {
   const v = record(value);
+  const enabledFlag = v.enabled === false ? { enabled: false as const } : {};
   if (Array.isArray(v.bands)) {
-    const bands = v.bands as unknown[];
-    return { bands: [0, 1, 2].map((index) => normalizeBand(bands[index], DEFAULT_BANDS[index])) as Equalizer["bands"] };
+    const raw = (v.bands as unknown[]).slice(0, MAX_BANDS);
+    const count = Math.max(MIN_BANDS, raw.length);
+    return {
+      ...enabledFlag,
+      bands: Array.from({ length: count }, (_, index) => normalizeBand(raw[index], DEFAULT_BANDS[index] ?? DEFAULT_BANDS[1])),
+    };
   }
   const old = record(legacyFilter);
   const lowShelf = record(v.lowShelf);
@@ -136,6 +151,7 @@ export function bandCoefficients(band: EqBand, sampleRate: number): { b: [number
 
 /** Magnitude in dB of one band at `hz`. */
 export function bandDb(band: EqBand, hz: number, sampleRate = 48000): number {
+  if (band.enabled === false) return 0;
   const { b, a } = bandCoefficients(band, sampleRate);
   const w = (2 * Math.PI * hz) / sampleRate;
   const c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
@@ -146,6 +162,7 @@ export function bandDb(band: EqBand, hz: number, sampleRate = 48000): number {
 
 /** Combined gain in dB of the whole equalizer at each frequency. This is the curve drawn on the graph. */
 export function equalizerResponse(eq: Equalizer, frequencies: readonly number[], sampleRate = 48000): number[] {
+  if (eq.enabled === false) return frequencies.map(() => 0);
   return frequencies.map((hz) => eq.bands.reduce((sum, band) => sum + bandDb(band, hz, sampleRate), 0));
 }
 
@@ -178,7 +195,19 @@ export function handleOf(eq: Equalizer, index: number): { hz: number; db: number
 
 /** Changes one band, keeping every value inside its limits. */
 export function updateBand(eq: Equalizer, index: number, patch: Partial<EqBand>): Equalizer {
-  return normalizeEqualizer({ bands: eq.bands.map((band, i) => (i === index ? { ...band, ...patch } : band)) });
+  return normalizeEqualizer({ ...eq, bands: eq.bands.map((band, i) => (i === index ? { ...band, ...patch } : band)) });
+}
+
+/** Adds a bell band up to MAX_BANDS. */
+export function addBand(eq: Equalizer): Equalizer {
+  if (eq.bands.length >= MAX_BANDS) return eq;
+  return normalizeEqualizer({ ...eq, bands: [...eq.bands, { type: "bell", frequency: 1000, gain: 0, q: 1 }] });
+}
+
+/** Removes a band while keeping at least MIN_BANDS. */
+export function removeBand(eq: Equalizer, index: number): Equalizer {
+  if (eq.bands.length <= MIN_BANDS) return eq;
+  return normalizeEqualizer({ ...eq, bands: eq.bands.filter((_, i) => i !== index) });
 }
 
 /** Moves one band's handle to a frequency and gain. Cuts keep their gain because they only move sideways. */

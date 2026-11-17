@@ -10,15 +10,14 @@
  */
 import { AudioContext, type AnalyserNode, type AudioBuffer, type AudioBufferSourceNode, type AudioNode, type BiquadFilterNode, type GainNode, type OscillatorNode, type StereoPannerNode } from "react-native-audio-api";
 import { CUE_TIMING, type Cue, type CueMode } from "../domain/chat";
-import { bandCoefficients, type EqBand } from "../domain/equalizer";
+import { bandCoefficients, MAX_BANDS, type EqBand } from "../domain/equalizer";
 import { baseLevel, isMono, isSynth, loudnessOf, mixFor, reachOf, type NoiseColor, type Speaker, type SpeakerSound } from "../domain/sound";
 import { distance, type Point } from "../domain/world";
 import { LIMIT_RANGE, limiterCurve } from "./limiter";
 import { SoundLibrary, type SoundFiles } from "./library";
 import { NaturePlayer } from "./naturePlayer";
-import { fillNoise, loopOffset } from "./noise";
+import { NOISE_CHUNK_SECONDS, NOISE_CROSSFADE_SECONDS, createNoiseState, fillNoiseChunk } from "./noise";
 
-const NOISE_SECONDS = 6;
 /** Gain changes glide with this time constant so walking never clicks. */
 const GLIDE = 0.08;
 /** A voice is built slightly before its speaker becomes audible and kept slightly after. */
@@ -39,8 +38,72 @@ interface BandSlot {
   current: { filter: ReturnType<AudioContext["createIIRFilter"]>; gain: GainNode } | null;
   key: string;
   wanted: EqBand | null;
+  hasWanted: boolean;
   lastSwap: number;
   timer: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * Generates independent 5-second random noise chunks per voice and overlaps them with an
+ * equal-power crossfade so multiple speakers never comb-filter or click at loop boundaries.
+ */
+class NoiseStream {
+  private readonly state = createNoiseState();
+  private readonly active = new Set<AudioBufferSourceNode>();
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private nextAt = 0;
+  private chunkIndex = 0;
+  private stopped = false;
+
+  constructor(
+    private readonly context: AudioContext,
+    private readonly color: NoiseColor,
+    private readonly target: AudioNode,
+  ) {}
+
+  start(at: number): void {
+    this.nextAt = at;
+    this.pump();
+    this.timer = setInterval(() => this.pump(), 500);
+  }
+
+  private pump(): void {
+    if (this.stopped) return;
+    const horizon = this.context.currentTime + NOISE_CHUNK_SECONDS;
+    while (this.nextAt <= horizon) {
+      this.scheduleNext();
+    }
+  }
+
+  private scheduleNext(): void {
+    const totalSeconds = NOISE_CHUNK_SECONDS + NOISE_CROSSFADE_SECONDS;
+    const frames = Math.max(1, Math.floor(this.context.sampleRate * totalSeconds));
+    const buffer = this.context.createBuffer(1, frames, this.context.sampleRate);
+    fillNoiseChunk(this.color, buffer.getChannelData(0), this.state, this.context.sampleRate, this.chunkIndex > 0);
+    const source = this.context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.target);
+    this.active.add(source);
+    source.onended = () => {
+      this.active.delete(source);
+      try { source.disconnect(); } catch { /* already disconnected */ }
+    };
+    const startAt = Math.max(this.context.currentTime, this.nextAt);
+    source.start(startAt);
+    this.nextAt = startAt + NOISE_CHUNK_SECONDS;
+    this.chunkIndex += 1;
+  }
+
+  stop(): void {
+    this.stopped = true;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    for (const source of this.active) {
+      try { source.stop(); } catch { /* already stopped */ }
+      try { source.disconnect(); } catch { /* already disconnected */ }
+    }
+    this.active.clear();
+  }
 }
 
 interface Voice {
@@ -56,6 +119,8 @@ interface Voice {
   sum: GainNode;
   /** Plays a nature source's recording into baseGain. */
   player: NaturePlayer | null;
+  /** Streams independent 5s crossfaded noise chunks into baseGain for synthesiser voices. */
+  noiseStream: NoiseStream | null;
   tones: { oscillator: OscillatorNode; gain: GainNode }[];
   bands: BandSlot[];
   /** The end of the equalizer chain: what this speaker sounds like before distance and pan. */
@@ -70,7 +135,6 @@ const waves = (sound: SpeakerSound) => sound.oscillators.map((o) => o.wave).join
 
 export class GardenAudio {
   private context: AudioContext | null = null;
-  private buffers = new Map<NoiseColor, AudioBuffer>();
   private voices = new Map<string, Voice>();
   private speakers: Speaker[] = [];
   private library: SoundLibrary | null = null;
@@ -136,7 +200,6 @@ export class GardenAudio {
     for (const id of [...this.voices.keys()]) this.drop(id);
     const context = this.context;
     this.context = null;
-    this.buffers.clear();
     this.mixAnalyser = null;
     await context?.close();
   }
@@ -287,16 +350,6 @@ export class GardenAudio {
     for (const id of [...this.voices.keys()]) if (!wanted.has(id)) this.drop(id);
   }
 
-  private noise(context: AudioContext, color: NoiseColor): AudioBuffer {
-    let buffer = this.buffers.get(color);
-    if (!buffer) {
-      buffer = context.createBuffer(1, Math.floor(context.sampleRate * NOISE_SECONDS), context.sampleRate);
-      fillNoise(color, buffer.getChannelData(0));
-      this.buffers.set(color, buffer);
-    }
-    return buffer;
-  }
-
   /** Creates the nodes of one speaker, silent; tune() then sets every value. */
   private build(context: AudioContext, speaker: Speaker): Voice {
     const { sound } = speaker;
@@ -317,21 +370,14 @@ export class GardenAudio {
     baseGain.gain.value = 0;
     baseGain.connect(sum);
     nodes.push(baseGain);
-    const noise = isSynth(sound) ? context.createBufferSource() : null;
-    if (noise && isSynth(sound)) {
-      noise.buffer = this.noise(context, sound.noise.color);
-      noise.loop = true;
-      noise.connect(baseGain);
-      sources.push(noise);
-      nodes.push(noise);
-    }
+    const noiseStream = isSynth(sound) ? new NoiseStream(context, sound.noise.color, baseGain) : null;
     const player = !isSynth(sound) && this.library && this.hasRecording(sound) ? new NaturePlayer(context, this.library, sound.recording, baseGain, sound.tempo ?? null) : null;
     const tones = sound.oscillators.map((item) => {
       const oscillator = context.createOscillator();
       oscillator.type = item.wave;
       return { oscillator, gain: feed(oscillator) };
     });
-    const bands: BandSlot[] = sound.eq.bands.map(() => ({ input: context.createGain(), output: context.createGain(), current: null, key: "", wanted: null, lastSwap: -1, timer: null }));
+    const bands: BandSlot[] = Array.from({ length: MAX_BANDS }, () => ({ input: context.createGain(), output: context.createGain(), current: null, key: "", wanted: null, hasWanted: false, lastSwap: -1, timer: null }));
     const level = context.createGain();
     // A new voice starts silent and glides in.
     level.gain.value = 0;
@@ -346,10 +392,10 @@ export class GardenAudio {
     pan.connect(this.bus);
     nodes.push(sum, ...bands.flatMap((band) => [band.input, band.output]), level, pan);
     const at = context.currentTime;
-    noise?.start(at, loopOffset(NOISE_SECONDS));
+    noiseStream?.start(at);
     for (const tone of tones) tone.oscillator.start(at);
     player?.start();
-    return { shape: this.shapeOf(sound), key: "", sources, nodes, baseGain, sum, player, tones, bands, shaped: tail, level, pan };
+    return { shape: this.shapeOf(sound), key: "", sources, nodes, baseGain, sum, player, noiseStream, tones, bands, shaped: tail, level, pan };
   }
 
   /** Applies sound values to an existing voice. Values glide, so dragging a slider is heard without clicks. */
@@ -369,32 +415,37 @@ export class GardenAudio {
       set(tone.oscillator.frequency, sound.oscillators[index].frequency);
       set(tone.gain.gain, sound.oscillators[index].level * 0.3);
     });
-    voice.bands.forEach((slot, index) => this.tuneBand(context, slot, sound.eq.bands[index]));
+    const eqEnabled = sound.eq.enabled !== false;
+    voice.bands.forEach((slot, index) => {
+      const band = eqEnabled && index < sound.eq.bands.length && sound.eq.bands[index].enabled !== false ? sound.eq.bands[index] : null;
+      this.tuneBand(context, slot, band);
+    });
   }
 
-  /** Puts a band's new filter in place, at most once every BAND_SWAP seconds. */
-  private tuneBand(context: AudioContext, slot: BandSlot, band: EqBand): void {
-    const key = JSON.stringify(band);
+  /** Puts a band's new filter (or bypass when null) in place, at most once every BAND_SWAP seconds. */
+  private tuneBand(context: AudioContext, slot: BandSlot, band: EqBand | null): void {
+    const key = band ? JSON.stringify(band) : "bypass";
     if (key === slot.key && !slot.timer) return;
     slot.wanted = band;
+    slot.hasWanted = true;
     if (slot.timer) return;
     const wait = slot.lastSwap + BAND_SWAP - context.currentTime;
     if (wait > 0) {
       slot.timer = setTimeout(() => {
         slot.timer = null;
-        if (this.context === context && slot.wanted) this.swapBand(context, slot, slot.wanted);
+        if (this.context === context && slot.hasWanted) this.swapBand(context, slot, slot.wanted);
       }, wait * 1000);
       return;
     }
     this.swapBand(context, slot, band);
   }
 
-  private swapBand(context: AudioContext, slot: BandSlot, band: EqBand): void {
-    const key = JSON.stringify(band);
+  private swapBand(context: AudioContext, slot: BandSlot, band: EqBand | null): void {
+    const key = band ? JSON.stringify(band) : "bypass";
     if (key === slot.key) return;
     slot.key = key;
     slot.lastSwap = context.currentTime;
-    const { b, a } = bandCoefficients(band, context.sampleRate);
+    const { b, a } = band ? bandCoefficients(band, context.sampleRate) : { b: [1, 0, 0] as [number, number, number], a: [1, 0, 0] as [number, number, number] };
     const filter = context.createIIRFilter(b, a);
     const gain = context.createGain();
     const now = context.currentTime;
@@ -419,6 +470,7 @@ export class GardenAudio {
     if (!voice) return;
     this.voices.delete(id);
     voice.player?.stop();
+    voice.noiseStream?.stop();
     for (const slot of voice.bands) {
       if (slot.timer) clearTimeout(slot.timer);
       slot.timer = null;

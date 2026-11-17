@@ -7,7 +7,8 @@ import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharact
 import { LANGUAGES, TEXTS, languageForLocale, normalizeLanguage, translate, type TextKey } from "../src/domain/text.ts";
 import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, CHAT_ROW_HEIGHT, DEFAULT_CHAT_ROWS, MAX_CHAT_ROWS, MIN_CHAT_ROWS, appendChatEntry, cleanMessage, cueFor, formatChatTime, snapChatRows } from "../src/domain/chat.ts";
-import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
+import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, MAX_BANDS, MIN_BANDS, NEUTRAL_Q, addBand, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, removeBand, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
+import { NOISE_CHUNK_SECONDS, NOISE_CROSSFADE_SECONDS, createNoiseState, fillNoiseChunk } from "../src/audio/noise.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { DEFAULT_TEMPO, RECORDINGS, TEMPO, defaultRecording } from "../src/domain/recordings.ts";
 import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, baseLevel, defaultSound, gainAt, isMono, isSynth, lookOf, loudnessAt, loudnessOf, mixFor, normalizeSound, reachOf, waveShape, withMono, withSource, type Speaker, type SpeakerSound, type SynthSound } from "../src/domain/sound.ts";
@@ -613,4 +614,43 @@ test("chat log formats minute timestamps and caps length", () => {
   assert.equal(snapChatRows(5, CHAT_ROW_HEIGHT * 2), 3);
   assert.equal(snapChatRows(5, CHAT_ROW_HEIGHT * 20), MIN_CHAT_ROWS);
   assert.equal(snapChatRows(5, -CHAT_ROW_HEIGHT * 20), MAX_CHAT_ROWS);
+});
+
+test("equalizer supports global/band bypass and up to 5 bands", () => {
+  let eq = updateBand(flatEqualizer(), 1, { gain: 6 });
+  const freqs = graphFrequencies(16);
+  assert.ok(equalizerResponse(eq, freqs).some((db) => db > 1));
+
+  // Per-band bypass zeroes that band's contribution while preserving settings.
+  eq = updateBand(eq, 1, { enabled: false });
+  assert.ok(equalizerResponse(eq, freqs).every((db) => Math.abs(db) < 1e-4));
+  eq = updateBand(eq, 1, { enabled: undefined });
+  assert.ok(equalizerResponse(eq, freqs).some((db) => db > 1));
+
+  // Global bypass zeroes the entire curve.
+  eq = { ...eq, enabled: false };
+  assert.ok(equalizerResponse(eq, freqs).every((db) => db === 0));
+  eq = { ...eq, enabled: undefined };
+
+  // Add up to MAX_BANDS (5) and remove down to MIN_BANDS (1).
+  eq = addBand(addBand(addBand(eq)));
+  assert.equal(eq.bands.length, MAX_BANDS);
+  while (eq.bands.length > MIN_BANDS) eq = removeBand(eq, 0);
+  assert.equal(eq.bands.length, MIN_BANDS);
+  assert.equal(removeBand(eq, 0).bands.length, MIN_BANDS);
+});
+
+test("noise chunks carry filter state and apply equal-power crossfade", () => {
+  const sampleRate = 1000;
+  const frames = Math.floor(sampleRate * (NOISE_CHUNK_SECONDS + NOISE_CROSSFADE_SECONDS));
+  const state = createNoiseState();
+  const c1 = new Float32Array(frames);
+  const c2 = new Float32Array(frames);
+  fillNoiseChunk("brown", c1, state, sampleRate, false);
+  const stateAfterFirst = state.last;
+  fillNoiseChunk("brown", c2, state, sampleRate, true);
+  assert.notEqual(state.last, stateAfterFirst);
+  // First chunk starts at full scale (no fade-in), second chunk fades in from 0.
+  assert.equal(Math.abs(c2[0]), 0);
+  assert.equal(c1[c1.length - 1] < 0.05, true);
 });

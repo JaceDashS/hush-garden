@@ -6,10 +6,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Platform, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
-import { BAND_INDEXES, BAND_TYPES, EQ_LIMITS, dbToY, equalizerResponse, graphFrequencies, handleOf, hzToX, isCut, moveBand, setBandType, updateBand, xToHz, yToDb, type BandType, type Equalizer } from "../domain/equalizer";
+import { BAND_TYPES, EQ_LIMITS, MAX_BANDS, MIN_BANDS, addBand, dbToY, equalizerResponse, graphFrequencies, handleOf, hzToX, isBandEnabled, isCut, isEqEnabled, moveBand, removeBand, setBandType, updateBand, xToHz, yToDb, type BandType, type Equalizer } from "../domain/equalizer";
 import type { TextKey } from "../domain/text";
 import { useT } from "../i18n";
-import { Chips, Knob, NO_TOUCH_SCROLL, T, colors, useDragLock } from "../ui";
+import { Btn, Chips, Knob, NO_TOUCH_SCROLL, T, colors, useDragLock } from "../ui";
 
 const HEIGHT = 180;
 const POINTS = 96;
@@ -20,7 +20,7 @@ const GRAB_PIXELS = Platform.OS === "web" ? 20 : 36;
 function bandAt(eq: Equalizer, width: number, x: number, y: number): number | null {
   let best: number | null = null;
   let bestGap = GRAB_PIXELS;
-  for (const band of BAND_INDEXES) {
+  for (let band = 0; band < eq.bands.length; band++) {
     const handle = handleOf(eq, band);
     const gap = Math.hypot(hzToX(handle.hz) * width - x, dbToY(handle.db) * HEIGHT - y);
     if (gap < bestGap) {
@@ -35,7 +35,7 @@ const SPECTRUM_MS = 80;
 const SPECTRUM_DB = [-100, -10] as const;
 
 const TYPE_LABELS: Record<BandType, TextKey> = { bell: "eq.type.bell", lowcut: "eq.type.lowcut", lowshelf: "eq.type.lowshelf", highshelf: "eq.type.highshelf", highcut: "eq.type.highcut" };
-const BAND_COLORS = ["#e9728f", "#5fb893", "#6fa8dc"] as const;
+const BAND_COLORS = ["#e9728f", "#5fb893", "#6fa8dc", "#f6b26b", "#b48ead"] as const;
 const GRID_HZ = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
 const GRID_DB = [12, 0, -12, -24];
 
@@ -136,11 +136,35 @@ export function EqGraph({ eq, onChange, readSpectrum, active = true }: { eq: Equ
       .join(" ");
   }, [eq, frequencies, width]);
 
-  const handle = handleOf(eq, selected);
-  const band = eq.bands[selected];
+  const safeSelected = Math.min(selected, eq.bands.length - 1);
+  const eqEnabled = isEqEnabled(eq);
+  const handle = handleOf(eq, safeSelected);
+  const band = eq.bands[safeSelected];
+  const bandEnabled = isBandEnabled(band);
   const cut = isCut(band.type);
   return (
     <View style={{ gap: 6 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+        <Btn
+          small
+          variant={eqEnabled ? "mint" : "plain"}
+          title={t(eqEnabled ? "eq.on" : "eq.off")}
+          onPress={() => onChange({ ...eq, enabled: eqEnabled ? false : undefined })}
+          testID="eq-toggle"
+        />
+        {eq.bands.length < MAX_BANDS && (
+          <Btn
+            small
+            title={t("eq.addBand")}
+            onPress={() => {
+              const next = addBand(eq);
+              onChange(next);
+              setSelected(next.bands.length - 1);
+            }}
+            testID="eq-add-band"
+          />
+        )}
+      </View>
       <View
         ref={root}
         testID="eq-graph"
@@ -168,29 +192,52 @@ export function EqGraph({ eq, onChange, readSpectrum, active = true }: { eq: Equ
               <SvgText key={"t" + value} x={hzToX(value) * width + 3} y={HEIGHT - 4} fontSize={9} fill="rgba(255,250,242,0.55)">{value >= 1000 ? value / 1000 + "k" : String(value)}</SvgText>
             ))}
             {!!spectrum && <Path d={spectrum} fill="rgba(143,214,180,0.28)" stroke="rgba(143,214,180,0.6)" strokeWidth={1} />}
-            <Path d={curve} fill="none" stroke={colors.butter} strokeWidth={2.5} strokeLinejoin="round" />
-            {BAND_INDEXES.map((band, index) => {
-              const at = handleOf(eq, band);
-              const active = band === selected;
+            <Path d={curve} fill="none" stroke={colors.butter} strokeOpacity={eqEnabled ? 1 : 0.35} strokeWidth={2.5} strokeLinejoin="round" />
+            {eq.bands.map((item, index) => {
+              const at = handleOf(eq, index);
+              const active = index === safeSelected;
+              const on = eqEnabled && isBandEnabled(item);
               return (
                 <React.Fragment key={index}>
-                  <Circle cx={hzToX(at.hz) * width} cy={dbToY(at.db) * HEIGHT} r={active ? 13 : 11} fill={BAND_COLORS[band]} stroke={colors.white} strokeWidth={active ? 3 : 1.5} />
-                  <SvgText x={hzToX(at.hz) * width} y={dbToY(at.db) * HEIGHT + 3.5} fontSize={10} fontWeight="700" fill={colors.white} textAnchor="middle">{String(index + 1)}</SvgText>
+                  <Circle cx={hzToX(at.hz) * width} cy={dbToY(at.db) * HEIGHT} r={active ? 13 : 11} fill={BAND_COLORS[index % BAND_COLORS.length]} fillOpacity={on ? 1 : 0.35} stroke={colors.white} strokeOpacity={on ? 1 : 0.55} strokeWidth={active ? 3 : 1.5} />
+                  <SvgText x={hzToX(at.hz) * width} y={dbToY(at.db) * HEIGHT + 3.5} fontSize={10} fontWeight="700" fill={colors.white} fillOpacity={on ? 1 : 0.6} textAnchor="middle">{String(index + 1)}</SvgText>
                 </React.Fragment>
               );
             })}
           </Svg>
         )}
       </View>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <T size={12.5} weight="800">{t("eq.point", { n: selected + 1 }) + " · " + t(TYPE_LABELS[band.type])}</T>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", flex: 1 }}>
+          <T size={12.5} weight="800">{t("eq.point", { n: safeSelected + 1 }) + " · " + t(TYPE_LABELS[band.type])}</T>
+          <Btn
+            small
+            variant={bandEnabled ? "mint" : "plain"}
+            title={t(bandEnabled ? "eq.bandOn" : "eq.bandOff")}
+            onPress={() => onChange(updateBand(eq, safeSelected, { enabled: bandEnabled ? false : undefined }))}
+            testID="eq-band-toggle"
+          />
+          {eq.bands.length > MIN_BANDS && (
+            <Btn
+              small
+              variant="danger"
+              title={t("eq.removeBand")}
+              onPress={() => {
+                const next = removeBand(eq, safeSelected);
+                onChange(next);
+                setSelected(Math.min(safeSelected, next.bands.length - 1));
+              }}
+              testID="eq-band-remove"
+            />
+          )}
+        </View>
         <T size={12.5} weight="700" tone="muted">{hz(handle.hz) + (cut ? "" : " · " + db(handle.db))}</T>
       </View>
       <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
         <View style={{ flex: 1, minWidth: 0 }} testID="eq-type">
-          <Chips label={t("eq.type")} value={band.type} options={BAND_TYPES.map((type) => ({ value: type, label: t(TYPE_LABELS[type]) }))} onChange={(type) => onChange(setBandType(eq, selected, type))} />
+          <Chips label={t("eq.type")} value={band.type} options={BAND_TYPES.map((type) => ({ value: type, label: t(TYPE_LABELS[type]) }))} onChange={(type) => onChange(setBandType(eq, safeSelected, type))} />
         </View>
-        <Knob label={t("eq.q")} log value={band.q} min={EQ_LIMITS.q[0]} max={EQ_LIMITS.q[1]} format={(value) => value.toFixed(2)} color={BAND_COLORS[selected]} onChange={(q) => onChange(updateBand(eq, selected, { q }))} testID="eq-q" />
+        <Knob label={t("eq.q")} log value={band.q} min={EQ_LIMITS.q[0]} max={EQ_LIMITS.q[1]} format={(value) => value.toFixed(2)} color={BAND_COLORS[safeSelected % BAND_COLORS.length]} onChange={(q) => onChange(updateBand(eq, safeSelected, { q }))} testID="eq-q" />
       </View>
       <T size={11.5} tone="muted">{t("eq.help")}</T>
     </View>

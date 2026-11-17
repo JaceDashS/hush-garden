@@ -67,7 +67,7 @@ function OscillatorPanel({ index, oscillator, onChange, onRemove }: { index: num
             })}
           </View>
         </View>
-        <Knob label={t("osc.frequency")} log value={oscillator.frequency} min={LIMITS.oscillatorFrequency[0]} max={LIMITS.oscillatorFrequency[1]} format={hz} color={panel.color} onChange={(frequency) => onChange({ frequency })} testID={"oscillator-frequency-" + index} />
+        <Knob label={t("osc.frequency")} log value={oscillator.frequency} min={LIMITS.oscillatorFrequency[0]} max={LIMITS.oscillatorFrequency[1]} format={hz} color={panel.color} scrollStep={Math.max(1, Math.round(oscillator.frequency * 0.02))} onChange={(frequency) => onChange({ frequency })} testID={"oscillator-frequency-" + index} />
         <Knob label={t("osc.level")} value={oscillator.level} min={0} max={1} format={percent} color={panel.color} onChange={(level) => onChange({ level })} testID={"oscillator-level-" + index} />
       </View>
     </View>
