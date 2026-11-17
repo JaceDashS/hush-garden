@@ -1,5 +1,5 @@
 import type { CharacterKind } from "../domain/characters";
-import type { Speaker } from "../domain/sound";
+import type { SourceLook, Speaker } from "../domain/sound";
 
 export interface User {
   id: string;
@@ -49,6 +49,8 @@ export interface RemotePlayer {
   character: CharacterKind;
   /** An approved character image of that player, drawn instead of `character` once loaded. */
   custom?: string;
+  /** Speaker id currently held by this player, if any. */
+  carrying?: string;
   x: number;
   y: number;
 }
@@ -62,6 +64,10 @@ export type ServerMessage =
   | { t: "moves"; moves: { id: string; x: number; y: number }[] }
   | { t: "chat"; id: string; name: string; text: string; x: number; y: number }
   | { t: "speakers"; speakers: Speaker[] }
+  | { t: "hold"; playerId: string; id: string; facing?: 1 | -1 }
+  | { t: "holdDenied"; id: string }
+  | { t: "release"; playerId: string; id: string; x?: number; y?: number; facing?: 1 | -1 }
+  | { t: "action"; playerId: string; name: "create" | "discard"; look: SourceLook; facing?: 1 | -1 }
   /** A player's character image was deleted: draw `character` from now on. */
   | { t: "look"; id: string; character: CharacterKind; custom?: string }
   | { t: "error"; error: string };

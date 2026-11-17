@@ -95,6 +95,17 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [others, setOthers] = useState<Record<string, RemotePlayer>>({});
   /** Which way each other player faces and whether it is walking, derived from its reported movement. */
   const [motion, setMotion] = useState<Record<string, { facing: 1 | -1; walking: boolean }>>({});
+  const [remoteActions, setRemoteActions] = useState<Record<string, Actor["action"]>>({});
+  const remoteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pendingHold = useRef<Speaker | null>(null);
+  const othersRef = useRef(others);
+  othersRef.current = others;
+  const motionRef = useRef(motion);
+  motionRef.current = motion;
+  const facingRef = useRef(facing);
+  facingRef.current = facing;
+  const carryIdRef = useRef(carryId);
+  carryIdRef.current = carryId;
   const [bubbles, setBubbles] = useState<Record<string, { text: string; until: number }>>({});
   const [chatLog, setChatLog] = useState<ChatEntry[]>([]);
   const nextChatId = useRef(0);
@@ -111,7 +122,26 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     const travel = liftTravel(actionKindOf(settings.character, settings.customCharacter), action.name, clock - action.startedAt);
     return { x: action.spot.x + (me.x - action.spot.x) * travel, y: action.spot.y + (me.y - action.spot.y) * travel };
   }, [action, clock, me, settings.character, settings.customCharacter]);
-  const speakers = useMemo(() => (carryId ? placed.map((speaker) => (speaker.id === carryId ? { ...speaker, x: carriedAt.x, y: carriedAt.y } : speaker)) : placed), [placed, carryId, carriedAt]);
+  const heldByOther = useMemo(() => {
+    const map = new Map<string, RemotePlayer>();
+    for (const player of Object.values(others)) {
+      if (player.carrying) map.set(player.carrying, player);
+    }
+    return map;
+  }, [others]);
+  const heldIds = useMemo(() => {
+    const set = new Set<string>(heldByOther.keys());
+    if (carryId) set.add(carryId);
+    return set;
+  }, [heldByOther, carryId]);
+  const speakers = useMemo(() => {
+    if (!carryId && heldByOther.size === 0) return placed;
+    return placed.map((speaker) => {
+      if (speaker.id === carryId) return { ...speaker, x: carriedAt.x, y: carriedAt.y };
+      const holder = heldByOther.get(speaker.id);
+      return holder ? { ...speaker, x: holder.x, y: holder.y } : speaker;
+    });
+  }, [placed, carryId, carriedAt, heldByOther]);
   const placedRef = useRef(placed);
   placedRef.current = placed;
   const gardenRef = useRef(garden);
@@ -358,6 +388,22 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  /** Plays a one-shot action animation for another visitor in the garden. */
+  const playRemote = useCallback((playerId: string, kind: ReturnType<typeof actionKindOf>, name: ActionName, look: SourceLook, ground?: GroundSpot) => {
+    clearTimeout(remoteTimers.current[playerId]);
+    setRemoteActions((current) => ({ ...current, [playerId]: { name, startedAt: Date.now(), look, ground } }));
+    remoteTimers.current[playerId] = setTimeout(() => {
+      delete remoteTimers.current[playerId];
+      if (!alive.current) return;
+      setRemoteActions((current) => {
+        if (!current[playerId]) return current;
+        const next = { ...current };
+        delete next[playerId];
+        return next;
+      });
+    }, actionDuration(kind, name));
+  }, []);
+
   // --- public garden connection ------------------------------------------------------------------------------
   const receive = useCallback(
     (message: ServerMessage) => {
@@ -369,6 +415,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           setMe(start);
           setPublicSpeakers(message.speakers);
           setOthers(Object.fromEntries(message.players.map((player) => [player.id, player])));
+          for (const timer of Object.values(remoteTimers.current)) clearTimeout(timer);
+          remoteTimers.current = {};
+          setRemoteActions({});
+          pendingHold.current = null;
           targets.current = {};
           setLink("online");
           break;
@@ -378,6 +428,14 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
         case "leave":
           delete targets.current[message.id];
+          clearTimeout(remoteTimers.current[message.id]);
+          delete remoteTimers.current[message.id];
+          setRemoteActions((current) => {
+            if (!current[message.id]) return current;
+            const next = { ...current };
+            delete next[message.id];
+            return next;
+          });
           setOthers((current) => {
             const next = { ...current };
             delete next[message.id];
@@ -395,6 +453,63 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
         case "speakers":
           setPublicSpeakers(message.speakers);
+          break;
+        case "hold": {
+          if (message.playerId === myId.current) {
+            const pending = pendingHold.current;
+            pendingHold.current = null;
+            const speaker = pending?.id === message.id ? pending : placedRef.current.find((item) => item.id === message.id);
+            if (speaker && pending?.id === message.id && !acting.current) {
+              setCarryId(speaker.id);
+              acting.current = true;
+              const kind = actionKindOf(settingsRef.current.character, settingsRef.current.customCharacter);
+              const ground = groundSpotFor(meRef.current, speaker, facingRef.current);
+              setAction({ name: "lift", startedAt: Date.now(), look: lookOf(speaker.sound), ground, spot: { x: speaker.x, y: speaker.y } });
+              setTimeout(() => {
+                if (!alive.current) return;
+                acting.current = false;
+                setAction(undefined);
+              }, actionDuration(kind, "lift"));
+            }
+          } else {
+            setOthers((current) => (current[message.playerId] ? { ...current, [message.playerId]: { ...current[message.playerId], carrying: message.id } } : current));
+            const other = othersRef.current[message.playerId];
+            const speaker = placedRef.current.find((item) => item.id === message.id);
+            if (other && speaker) {
+              const otherFacing = message.facing ?? motionRef.current[message.playerId]?.facing ?? 1;
+              playRemote(message.playerId, actionKindOf(other.character, other.custom), "lift", lookOf(speaker.sound), groundSpotFor(other, speaker, otherFacing));
+            }
+          }
+          break;
+        }
+        case "holdDenied":
+          if (pendingHold.current?.id === message.id) {
+            pendingHold.current = null;
+            flash("notice.speakerHeld");
+          } else if (carryIdRef.current === message.id) {
+            setCarryId(null);
+            setEditing(false);
+            flash("notice.speakerHeld");
+          }
+          break;
+        case "release":
+          if (message.playerId !== myId.current) {
+            setOthers((current) => (current[message.playerId] ? { ...current, [message.playerId]: { ...current[message.playerId], carrying: undefined } } : current));
+            if (message.x != null && message.y != null) {
+              const other = othersRef.current[message.playerId];
+              const speaker = placedRef.current.find((item) => item.id === message.id);
+              if (other && speaker) {
+                const otherFacing = message.facing ?? motionRef.current[message.playerId]?.facing ?? 1;
+                playRemote(message.playerId, actionKindOf(other.character, other.custom), "putDown", lookOf(speaker.sound), groundSpotFor(other, { x: message.x, y: message.y }, otherFacing));
+              }
+            }
+          }
+          break;
+        case "action":
+          if (message.playerId !== myId.current) {
+            const other = othersRef.current[message.playerId];
+            if (other) playRemote(message.playerId, actionKindOf(other.character, other.custom), message.name, message.look);
+          }
           break;
         case "look":
           if (message.id === myId.current) {
@@ -430,7 +545,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
       }
     },
-    [audio, flash],
+    [audio, flash, playRemote],
   );
 
   const connect = useCallback(async () => {
@@ -535,7 +650,12 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   /** Lifts a speaker the character stands next to. */
   const lift = (speaker: Speaker) => {
-    if (acting.current || carryId) return;
+    if (acting.current || carryId || pendingHold.current) return;
+    if (online) {
+      pendingHold.current = speaker;
+      socket.current?.hold(speaker.id, facing);
+      return;
+    }
     setCarryId(speaker.id);
     // The speaker leaves the ground from where it stands, so the lift starts exactly on the drawn speaker.
     play("lift", lookOf(speaker.sound), () => undefined, groundSpotFor(meRef.current, speaker, facing), { x: speaker.x, y: speaker.y });
@@ -550,6 +670,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     // The spot is fixed when the button is pressed, so the animation ends exactly where the speaker then stands.
     const ahead = toGarden({ x: facing * 40, y: 14 });
     const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
+    if (online) socket.current?.release(id, spot, facing);
     play("putDown", lookOf(carried.sound), () => {
       setCarryId(null);
       if (placedRef.current.some((speaker) => speaker.id === id)) changeSpeakers(moveSpeaker(placedRef.current, id, spot), id);
@@ -558,13 +679,15 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   /** Makes a new speaker; when the character's animation ends, the speaker is in its hands. */
   const create = () => {
-    if (acting.current || carryId) return;
+    if (acting.current || carryId || pendingHold.current) return;
     if (placed.length >= MAX_SPEAKERS) return flash("notice.maxSpeakers", { n: MAX_SPEAKERS });
+    if (online) socket.current?.action("create", lookOf(defaultSound()), facing);
     play("create", lookOf(defaultSound()), () => {
       if (placedRef.current.length >= MAX_SPEAKERS) return;
       const id = newId();
       changeSpeakers(addSpeaker(placedRef.current, meRef.current, id), id);
       setCarryId(id);
+      if (online) socket.current?.hold(id, facing);
     });
   };
 
@@ -573,6 +696,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (acting.current || !carried) return;
     const id = carried.id;
     setEditing(false);
+    if (online) socket.current?.action("discard", lookOf(carried.sound), facing);
     play("discard", lookOf(carried.sound), () => {
       setCarryId(null);
       if (!online) return onGarden({ ...gardenRef.current, speakers: removeSpeaker(placedRef.current, id) });
@@ -617,16 +741,33 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   const myName = online ? entry?.name ?? "…" : settings.name || t("name.me");
   const actors: Actor[] = useMemo(() => {
-    const list: Actor[] = Object.values(others).map((player) => ({ id: player.id, x: player.x, y: player.y, name: player.name, label: player.place, bubble: bubbles[player.id]?.text, kind: player.character, custom: player.custom, facing: motion[player.id]?.facing, walking: motion[player.id]?.walking }));
+    const list: Actor[] = Object.values(others).map((player) => {
+      const remoteAction = remoteActions[player.id];
+      const held = player.carrying ? placed.find((speaker) => speaker.id === player.carrying) : undefined;
+      return {
+        id: player.id,
+        x: player.x,
+        y: player.y,
+        name: player.name,
+        label: player.place,
+        bubble: bubbles[player.id]?.text,
+        kind: player.character,
+        custom: player.custom,
+        facing: motion[player.id]?.facing,
+        walking: motion[player.id]?.walking,
+        carrying: remoteAction ? undefined : held ? lookOf(held.sound) : undefined,
+        action: remoteAction,
+      };
+    });
     list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, custom: settings.customCharacter || undefined, facing, walking, carrying: action ? undefined : carried ? lookOf(carried.sound) : undefined, action });
     return list;
-  }, [others, motion, bubbles, me, myName, place, facing, walking, settings.character, settings.customCharacter, carried, action]);
+  }, [others, remoteActions, placed, motion, bubbles, me, myName, place, facing, walking, settings.character, settings.customCharacter, carried, action]);
 
   /** The speaker close enough to lift, if the hands are free. */
   const liftable = useMemo(() => {
     if (!canEdit || carryId || action) return null;
-    return placed.map((speaker) => ({ speaker, gap: distance(speaker, me) })).filter((item) => item.gap <= PICK_UP_TILES).sort((a, b) => a.gap - b.gap)[0]?.speaker ?? null;
-  }, [canEdit, carryId, action, placed, me]);
+    return placed.filter((speaker) => !heldIds.has(speaker.id)).map((speaker) => ({ speaker, gap: distance(speaker, me) })).filter((item) => item.gap <= PICK_UP_TILES).sort((a, b) => a.gap - b.gap)[0]?.speaker ?? null;
+  }, [canEdit, carryId, action, placed, heldIds, me]);
 
   const markers: Marker[] = [];
   if (liftable) markers.push({ id: "lift", x: liftable.x, y: liftable.y, offsetX: 66, offsetY: -34, content: <Btn small variant="mint" title={t("near.lift")} onPress={() => lift(liftable)} testID="speaker-lift" /> });
@@ -701,7 +842,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: wide ? "row" : "column" }}>
       <View style={{ flex: 1 }}>
-        <Scene me={me} actors={actors} speakers={speakers} carriedId={carryId} markers={markers} onInput={(input) => (joystick.current = input)} />
+        <Scene me={me} actors={actors} speakers={speakers} carriedId={carryId} heldIds={heldIds} markers={markers} onInput={(input) => (joystick.current = input)} />
 
         <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, top: insets.top + 8, paddingHorizontal: 10, gap: 6 }}>
           <View pointerEvents="box-none" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>

@@ -35,6 +35,13 @@ test("server messages are validated and unknown ones are dropped", () => {
   assert.equal(parseServerMessage(JSON.stringify({ t: "rename", id: "p" })), null);
   const moves = parseServerMessage(JSON.stringify({ t: "moves", moves: [{ id: "p", x: 1, y: 1 }, { id: "q", x: "a", y: 1 }] }));
   assert.ok(moves && moves.t === "moves" && moves.moves.length === 1);
+  const carryingHello = parseServerMessage(JSON.stringify({ t: "hello", id: "me", x: 1, y: 2, canChat: true, players: [{ id: "p", x: 3, y: 4, carrying: "spk-1" }], speakers: [] }));
+  assert.ok(carryingHello && carryingHello.t === "hello" && carryingHello.players[0].carrying === "spk-1");
+  assert.deepEqual(parseServerMessage(JSON.stringify({ t: "hold", playerId: "p", id: "spk-1", facing: -1 })), { t: "hold", playerId: "p", id: "spk-1", facing: -1 });
+  assert.deepEqual(parseServerMessage(JSON.stringify({ t: "holdDenied", id: "spk-1" })), { t: "holdDenied", id: "spk-1" });
+  assert.deepEqual(parseServerMessage(JSON.stringify({ t: "release", playerId: "p", id: "spk-1", x: 4, y: 5, facing: 1 })), { t: "release", playerId: "p", id: "spk-1", x: 4, y: 5, facing: 1 });
+  assert.deepEqual(parseServerMessage(JSON.stringify({ t: "action", playerId: "p", name: "create", look: "pink", facing: 1 })), { t: "action", playerId: "p", name: "create", look: "pink", facing: 1 });
+  assert.equal(parseServerMessage(JSON.stringify({ t: "action", playerId: "p", name: "jump", look: "pink" })), null);
 });
 
 test("settings fall back to defaults and keep valid values", () => {

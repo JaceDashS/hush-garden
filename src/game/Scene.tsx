@@ -144,7 +144,7 @@ const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.a
  * `carriedId` is the speaker a character holds: it is drawn in that character's hands, not on the ground, while
  * its sound shadow follows the position it has in `speakers`. `markers` are pressable things placed in the garden.
  */
-export function Scene({ me, actors, speakers, carriedId, markers, onInput }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; carriedId?: string | null; markers?: readonly Marker[]; onInput: (input: Point) => void }) {
+export function Scene({ me, actors, speakers, carriedId, heldIds, markers, onInput }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; carriedId?: string | null; heldIds?: ReadonlySet<string>; markers?: readonly Marker[]; onInput: (input: Point) => void }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [stick, setStick] = useState<{ x: number; y: number; dx: number; dy: number } | null>(null);
   const root = useRef<React.ComponentRef<typeof View>>(null);
@@ -216,7 +216,7 @@ export function Scene({ me, actors, speakers, carriedId, markers, onInput }: { m
           );
         })}
         {speakers.map((speaker) => {
-          if (speaker.id === carriedId) return null;
+          if (speaker.id === carriedId || heldIds?.has(speaker.id)) return null;
           const at = place(speaker);
           const playing = loudnessAt(distance(me, speaker), speaker.sound) > 0.01;
           return (

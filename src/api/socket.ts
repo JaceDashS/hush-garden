@@ -1,6 +1,7 @@
 import { normalizeCharacter } from "../domain/characters";
 import { isCharacterId } from "../domain/imageCharacters";
 import { normalizeSpeakers } from "../domain/garden";
+import type { SourceLook } from "../domain/sound";
 import type { Point } from "../domain/world";
 import type { ServerMessage } from "./types";
 
@@ -37,6 +38,23 @@ export function parseServerMessage(text: string): ServerMessage | null {
       return { t: "chat", id: m.id, name: typeof m.name === "string" ? m.name : "", text: m.text, x: m.x as number, y: m.y as number };
     case "speakers":
       return { t: "speakers", speakers: normalizeSpeakers(m.speakers) };
+    case "hold":
+      if (typeof m.playerId !== "string" || typeof m.id !== "string") return null;
+      return { t: "hold", playerId: m.playerId, id: m.id, ...(m.facing === 1 || m.facing === -1 ? { facing: m.facing } : {}) };
+    case "holdDenied":
+      return typeof m.id === "string" ? { t: "holdDenied", id: m.id } : null;
+    case "release":
+      if (typeof m.playerId !== "string" || typeof m.id !== "string") return null;
+      return {
+        t: "release",
+        playerId: m.playerId,
+        id: m.id,
+        ...(isPoint(m) ? { x: m.x as number, y: m.y as number } : {}),
+        ...(m.facing === 1 || m.facing === -1 ? { facing: m.facing } : {}),
+      };
+    case "action":
+      if (typeof m.playerId !== "string" || (m.name !== "create" && m.name !== "discard") || typeof m.look !== "string") return null;
+      return { t: "action", playerId: m.playerId, name: m.name, look: m.look as SourceLook, ...(m.facing === 1 || m.facing === -1 ? { facing: m.facing } : {}) };
     case "look":
       return typeof m.id === "string" ? { t: "look", id: m.id, character: normalizeCharacter(m.character), ...(isCharacterId(m.custom) ? { custom: m.custom } : {}) } : null;
     case "error":
@@ -48,7 +66,16 @@ export function parseServerMessage(text: string): ServerMessage | null {
 
 function toPlayer(value: unknown) {
   const v = value as Record<string, unknown>;
-  return { id: v.id as string, name: typeof v.name === "string" ? v.name : "", place: typeof v.place === "string" ? v.place : "", character: normalizeCharacter(v.character), ...(isCharacterId(v.custom) ? { custom: v.custom } : {}), x: v.x as number, y: v.y as number };
+  return {
+    id: v.id as string,
+    name: typeof v.name === "string" ? v.name : "",
+    place: typeof v.place === "string" ? v.place : "",
+    character: normalizeCharacter(v.character),
+    ...(isCharacterId(v.custom) ? { custom: v.custom } : {}),
+    ...(typeof v.carrying === "string" && v.carrying ? { carrying: v.carrying } : {}),
+    x: v.x as number,
+    y: v.y as number,
+  };
 }
 
 /** Close code the server sends when a newer visit from the same device replaced this one. */
@@ -112,6 +139,21 @@ export class GardenSocket {
   /** Asks the server to change the character name. An empty name returns to the account name. */
   rename(name: string): void {
     this.sendJson({ t: "rename", name });
+  }
+
+  /** Requests an exclusive hold on a public speaker before lifting it. */
+  hold(id: string, facing?: 1 | -1): void {
+    this.sendJson({ t: "hold", id, ...(facing ? { facing } : {}) });
+  }
+
+  /** Releases the currently held public speaker, optionally reporting its landing spot. */
+  release(id: string, spot?: Point, facing?: 1 | -1): void {
+    this.sendJson({ t: "release", id, ...(spot ? { x: spot.x, y: spot.y } : {}), ...(facing ? { facing } : {}) });
+  }
+
+  /** Broadcasts a create or discard animation to other visitors. */
+  action(name: "create" | "discard", look: SourceLook, facing?: 1 | -1): void {
+    this.sendJson({ t: "action", name, look, ...(facing ? { facing } : {}) });
   }
 
   private sendJson(payload: object): void {
