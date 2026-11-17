@@ -1,6 +1,7 @@
 /** Speaker layout editing and presets. Used by the public garden editor and by the private offline garden. */
 import { NEUTRAL_Q, flatEqualizer, type EqBand } from "./equalizer";
 import { MAX_SPEAKERS, defaultSound, normalizeSound, quietSound, type Speaker, type SpeakerSound, type SynthSound } from "./sound";
+import type { TextKey } from "./text";
 import { GARDEN_SIZE, clampToGarden, type Point } from "./world";
 
 export interface Preset {
@@ -71,7 +72,7 @@ export function normalizeSpeaker(value: unknown): Speaker | null {
   const v = value as Record<string, unknown>;
   if (typeof v.id !== "string" || !v.id || typeof v.x !== "number" || typeof v.y !== "number" || !Number.isFinite(v.x) || !Number.isFinite(v.y)) return null;
   const position = clampToGarden({ x: v.x, y: v.y });
-  return { id: v.id.slice(0, 64), name: cleanName(v.name), ...position, sound: normalizeSound(v.sound) };
+  return { id: v.id.slice(0, 64), name: cleanSpeakerName(v.name), ...position, sound: normalizeSound(v.sound) };
 }
 
 export function normalizeSpeakers(value: unknown): Speaker[] {
@@ -108,10 +109,20 @@ export function cleanName(name: unknown): string {
   return text || "Speaker";
 }
 
+/** Cleans an optional custom speaker name; empty string means "show default source name". */
+export function cleanSpeakerName(name: unknown): string {
+  return typeof name === "string" ? name.replace(/\s+/g, " ").trim().slice(0, NAME_MAX_LENGTH) : "";
+}
+
+/** Fallback display/placeholder name derived from the speaker's sound source. */
+export function defaultSpeakerName(sound: SpeakerSound, t: (key: TextKey) => string): string {
+  return t((sound.source === "synth" ? "source.synth" : "source." + sound.source) as TextKey);
+}
+
 /** Places a new speaker with minimum (silent) volume. Returns the same list when the garden is full. */
 export function addSpeaker(speakers: readonly Speaker[], at: Point, id: string): Speaker[] {
   if (speakers.length >= MAX_SPEAKERS) return [...speakers];
-  return [...speakers, { id, name: "Speaker " + (speakers.length + 1), ...clampToGarden(at), sound: quietSound() }];
+  return [...speakers, { id, name: "", ...clampToGarden(at), sound: quietSound() }];
 }
 
 export function moveSpeaker(speakers: readonly Speaker[], id: string, to: Point): Speaker[] {
@@ -121,7 +132,7 @@ export function moveSpeaker(speakers: readonly Speaker[], id: string, to: Point)
 export function updateSpeaker(speakers: readonly Speaker[], id: string, patch: { name?: string; sound?: SpeakerSound }): Speaker[] {
   return speakers.map((speaker) =>
     speaker.id === id
-      ? { ...speaker, name: patch.name === undefined ? speaker.name : cleanName(patch.name), sound: patch.sound ? normalizeSound(patch.sound) : speaker.sound }
+      ? { ...speaker, name: patch.name === undefined ? speaker.name : cleanSpeakerName(patch.name), sound: patch.sound ? normalizeSound(patch.sound) : speaker.sound }
       : speaker,
   );
 }

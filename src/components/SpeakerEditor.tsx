@@ -5,9 +5,10 @@
  * slider, a knob or an equalizer point is being dragged. All three tabs are kept laid out, so switching shows a
  * tab at once and fully drawn, and the editor itself appears only once it is ready.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import { NAME_MAX_LENGTH, cleanSpeakerName, defaultSpeakerName } from "../domain/garden";
 import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, baseLevel, defaultOscillator, isMono, isSynth, lookOf, reachOf, withMono, withSource, type Oscillator, type NatureSound, type NatureSource, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
 import { SHADOW_TINT, SourceArt, WavePicture } from "../game/sprites";
 import { useT } from "../i18n";
@@ -105,6 +106,10 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, nature
   const t = useT();
   const [tab, setTab] = useState<Tab>("sound");
   const [dragging, setDragging] = useState(false);
+  const [draftName, setDraftName] = useState(speaker.name);
+  useEffect(() => {
+    setDraftName((prev) => (cleanSpeakerName(prev) === speaker.name ? prev : speaker.name));
+  }, [speaker.id, speaker.name]);
   const sound = speaker.sound;
   const synth = isSynth(sound) ? sound : null;
   const shown: Tab = tab;
@@ -123,7 +128,17 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, nature
         <View style={{ paddingHorizontal: 12, paddingTop: 10, gap: 8 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <View style={{ flex: 1 }}>
-              <Input label={t("editor.name")} value={speaker.name} maxLength={24} onChangeText={(name) => onChange({ ...speaker, name })} testID="speaker-name" />
+              <Input
+                label={t("editor.name")}
+                placeholder={defaultSpeakerName(sound, t)}
+                value={draftName}
+                maxLength={NAME_MAX_LENGTH}
+                onChangeText={(nextName) => {
+                  setDraftName(nextName);
+                  onChange({ ...speaker, name: cleanSpeakerName(nextName) });
+                }}
+                testID="speaker-name"
+              />
             </View>
             <Btn small title={t("common.close")} onPress={onClose} testID="editor-close" />
           </View>

@@ -4,8 +4,10 @@ import { Animated, Easing, PanResponder, Platform, View } from "react-native";
 import { CARRY, NEUTRAL, actionAt, actionDuration, actionKindOf, type ActionMoment, type ActionName, type GroundSpot } from "../domain/actions";
 import type { CharacterKind } from "../domain/characters";
 import { CHAT_RANGE } from "../domain/chat";
+import { defaultSpeakerName } from "../domain/garden";
 import { lookOf, loudnessAt, type SourceLook, type Speaker } from "../domain/sound";
 import { TILE_HEIGHT, TILE_WIDTH, distance, joystickToInput, nextZoom, toScreen, type Point } from "../domain/world";
+import { useT } from "../i18n";
 import { T, colors } from "../ui";
 import { CHARACTER_FEET, CHARACTER_SIZE, Character } from "./characters";
 import { ImageCharacter, SheetLoading, useSheet } from "./imageCharacter";
@@ -200,6 +202,7 @@ const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.a
  * its sound shadow follows the position it has in `speakers`. `markers` are pressable things placed in the garden.
  */
 export function Scene({ me, actors, speakers, carriedId, heldIds, chatRipples, markers, onInput }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; carriedId?: string | null; heldIds?: ReadonlySet<string>; chatRipples?: readonly ChatRipple[]; markers?: readonly Marker[]; onInput: (input: Point) => void }) {
+  const t = useT();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const targetZoom = useRef(1);
   const zoomAnim = useRef(new Animated.Value(1)).current;
@@ -301,7 +304,7 @@ export function Scene({ me, actors, speakers, carriedId, heldIds, chatRipples, m
           return (
             <View key={speaker.id} pointerEvents="none" style={{ position: "absolute", left: at.left - 70, top: at.top - SPEAKER_SIZE.height - 14, width: 140, alignItems: "center", zIndex: depth(speaker) }}>
               <View style={{ height: 18, backgroundColor: "rgba(255,250,242,0.88)", borderRadius: 9, paddingHorizontal: 7, justifyContent: "center" }}>
-                <T size={10.5} weight="700" tone="muted" lines={1}>{speaker.name}</T>
+                <T size={10.5} weight="700" tone="muted" lines={1}>{speaker.name || defaultSpeakerName(speaker.sound, t)}</T>
               </View>
               <SourceArt look={lookOf(speaker.sound)} playing={playing} />
             </View>

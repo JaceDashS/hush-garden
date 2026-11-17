@@ -9,7 +9,7 @@ import { checkName, isReservedName } from "../src/domain/names.ts";
 import { CHAT_RANGE, CHAT_ROW_HEIGHT, DEFAULT_CHAT_ROWS, MAX_CHAT_ROWS, MIN_CHAT_ROWS, appendChatEntry, cleanMessage, cueFor, formatChatTime, snapChatRows } from "../src/domain/chat.ts";
 import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, MAX_BANDS, MIN_BANDS, NEUTRAL_Q, addBand, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, removeBand, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { NOISE_CHUNK_SECONDS, NOISE_CROSSFADE_SECONDS, createNoiseState, fillNoiseChunk } from "../src/audio/noise.ts";
-import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
+import { BUILT_IN_PRESETS, addSpeaker, applyPreset, defaultSpeakerName, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { DEFAULT_TEMPO, RECORDINGS, TEMPO, defaultRecording } from "../src/domain/recordings.ts";
 import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, baseLevel, defaultSound, gainAt, isMono, isSynth, lookOf, loudnessAt, loudnessOf, mixFor, normalizeSound, reachOf, waveShape, withMono, withSource, type Speaker, type SpeakerSound, type SynthSound } from "../src/domain/sound.ts";
 import { GARDEN_SIZE, MAX_ZOOM, MIN_ZOOM, joystickToInput, keysToInput, nextZoom, step, toGarden, toScreen } from "../src/domain/world.ts";
@@ -173,11 +173,16 @@ test("sound values are clamped and broken input falls back to defaults", () => {
 
 test("speakers can be added, moved, edited and removed", () => {
   let speakers = addSpeaker([], { x: 3, y: 4 }, "s1");
+  assert.equal(speakers[0].name, "");
   assert.equal(loudnessOf(speakers[0].sound), 0);
   speakers = moveSpeaker(speakers, "s1", { x: 99, y: -5 });
   assert.ok(speakers[0].x <= GARDEN_SIZE && speakers[0].y >= 0);
   speakers = updateSpeaker(speakers, "s1", { name: "  Rain  ", sound: noiseAt(0.2) });
   assert.equal(speakers[0].name, "Rain");
+  speakers = updateSpeaker(speakers, "s1", { name: "" });
+  assert.equal(speakers[0].name, "");
+  assert.equal(defaultSpeakerName(speakers[0].sound, (key) => key), "source.synth");
+  assert.equal(defaultSpeakerName(withSource(speakers[0].sound, "rain"), (key) => key), "source.rain");
   assert.equal(baseLevel(speakers[0].sound), 0.2);
   assert.deepEqual(removeSpeaker(speakers, "s1"), []);
 });
