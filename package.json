@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "build:android": "node scripts/build-android.mjs",
+    "build:ios": "node scripts/build-ios.mjs",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build"
   },

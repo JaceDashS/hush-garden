@@ -39,6 +39,7 @@ docs/.agent/
 .expo/
 .expo-native-owned
 dist-android/
+dist-ios/
 
 # Tauri build output
 src-tauri/target/

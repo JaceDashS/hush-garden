@@ -18,7 +18,10 @@ export default {
     ios: {
       bundleIdentifier: "com.jaces.hushgarden",
       supportsTablet: true,
-      infoPlist: { NSLocationWhenInUseUsageDescription: "Shows the name of your city above your character in the public garden." },
+      infoPlist: {
+        NSLocationWhenInUseUsageDescription: "Shows the name of your city above your character in the public garden.",
+        ITSAppUsesNonExemptEncryption: false,
+      },
     },
     web: { bundler: "metro", output: "single", name: "Hush Garden", backgroundColor: "#dff3ea", favicon: "./assets/icon.png" },
     plugins: [
