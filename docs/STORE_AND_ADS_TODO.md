@@ -53,14 +53,19 @@
 아래 순서대로 에이전트에게 요청하면 됩니다.
 
 1. **실제 광고 ID 및 `ads.txt` / `app-ads.txt` 연결**
-   - EAS Secrets / `.env` / Vercel 환경변수에 위 `EXPO_PUBLIC_ADMOB_*`, `EXPO_PUBLIC_ADSENSE_*` 값 등록.
-   - `services/hush-garden/public/ads.txt` (또는 Vercel 정적 서빙) 및 `services/web/public/app-ads.txt` 추가.
-2. **iOS ATT(앱 추적 투명성) & GDPR(UMP) 동의 팝업 연동**
+   - 우선 모바일 앱(AdMob)부터 EAS Secrets / `.env`에 `EXPO_PUBLIC_ADMOB_*` 값을 등록. (웹 `EXPO_PUBLIC_ADSENSE_*`는 Cloudflare Pages 이전 전까지 Vercel Hobby에 넣지 않고 비워둠 — Hobby 플랜은 비상업 전용)
+   - `services/hush-garden/public/ads.txt` 및 `services/web/public/app-ads.txt` 추가.
+2. **웹 정식 출시 및 AdSense 적용 시 Cloudflare Pages로 이전**
+   - Vercel Hobby(비상업 전용)에서 **Cloudflare Pages**로 웹 호스팅 이전 (무제한 대역폭·상업 이용/광고 허용).
+   - 커스텀 도메인(예: `hush-garden.jace-s.com`) 연결 후 AdSense 심사 진행.
+   - GitHub Actions에서 `npm run export:web` 빌드 후 `wrangler pages deploy dist`(Direct Upload)로 배포해 Cloudflare Pages Git 빌드 횟수 제한(월 500회)을 소모하지 않도록 구성.
+   - Cloudflare Pages 환경변수에 `EXPO_PUBLIC_ADSENSE_CLIENT`, `EXPO_PUBLIC_ADSENSE_SLOT` 등록.
+3. **iOS ATT(앱 추적 투명성) & GDPR(UMP) 동의 팝업 연동**
    - `expo-tracking-transparency` 또는 `react-native-google-mobile-ads`의 `AdsConsent.requestInfoUpdate()`를 앱 시작/배너 초기화 전에 호출하도록 `AdBanner.tsx` 보완.
-3. **실기기 백그라운드 오디오 안정화 점검**
+4. **실기기 백그라운드 오디오 안정화 점검**
    - Android/iOS 실기기에서 화면을 끈 채 30분 이상 재생 테스트:
      - `NoiseStream` (`src/audio/engine.ts`)과 `NaturePlayer` (`src/audio/naturePlayer.ts`)가 백그라운드 JS 타이머 스로틀링으로 끊기는지 확인.
      - 끊김이 확인되면 `NoiseStream`을 네이티브 오디오 스레드(C++ / Kotlin / Swift `AVAudioSourceNode`)로 이전.
    - Android 실기기에서 `플로팅 버블` 권한 허용, 드래그 스냅, 단일 탭 재생/일시정지, 더블탭 앱 복귀, `×` 닫기 동작 확인.
-4. **스토어 빌드 및 제출**
+5. **스토어 빌드 및 제출**
    - `npx eas build -p android --profile preview`로 APK 테스트 후 `npx eas build -p all --profile production`으로 스토어용 `.aab` / `.ipa` 빌드 및 제출.
