@@ -6,7 +6,7 @@ import { characterPrompt } from "../src/domain/characterPrompt.ts";
 import { CHARACTER_KINDS, STANDING, WALK_FRAMES, nextWalkFrame, normalizeCharacter, poseFor, scrollToShow, stepCharacter } from "../src/domain/characters.ts";
 import { LANGUAGES, TEXTS, languageForLocale, normalizeLanguage, translate, type TextKey } from "../src/domain/text.ts";
 import { checkName, isReservedName } from "../src/domain/names.ts";
-import { CHAT_RANGE, cleanMessage, cueFor } from "../src/domain/chat.ts";
+import { CHAT_RANGE, appendChatEntry, cleanMessage, cueFor, formatChatTime } from "../src/domain/chat.ts";
 import { BAND_COUNT, BAND_TYPES, EQ_LIMITS, NEUTRAL_Q, dbToY, equalizerResponse, flatEqualizer, graphFrequencies, handleOf, hzToX, moveBand, normalizeEqualizer, setBandType, updateBand, xToHz, yToDb, type Equalizer } from "../src/domain/equalizer.ts";
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { DEFAULT_TEMPO, RECORDINGS, TEMPO, defaultRecording } from "../src/domain/recordings.ts";
@@ -595,4 +595,15 @@ test("character prompt", () => {
     for (const count of [SHEET_ROWS.walk.frames, SHEET_ROWS.lift.frames, SHEET_ROWS.create.frames, SHEET_ROWS.discard.frames]) assert.ok(prompt.includes(String(count)), language + " " + count);
     assert.ok(prompt.includes(translate(language, "custom.title")), language + " names the settings group");
   }
+});
+
+test("chat log formats minute timestamps and caps length", () => {
+  const at = new Date(2026, 10, 17, 9, 4, 30).getTime();
+  assert.equal(formatChatTime(at), "09:04");
+
+  let log = appendChatEntry([], { id: "1", senderId: "a", name: "Alice", text: "hi", at, mine: false }, 2);
+  log = appendChatEntry(log, { id: "2", senderId: "b", name: "Bob", text: "hey", at: at + 60_000, mine: true }, 2);
+  log = appendChatEntry(log, { id: "3", senderId: "a", name: "Alice", text: "yo", at: at + 120_000, mine: false }, 2);
+  assert.deepEqual(log.map((item) => item.id), ["2", "3"]);
+  assert.equal(formatChatTime(log[0].at), "09:05");
 });

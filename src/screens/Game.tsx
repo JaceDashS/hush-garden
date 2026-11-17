@@ -16,6 +16,7 @@ import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User 
 import type { GardenAudio } from "../audio/engine";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
 import { MyCharacters } from "../components/MyCharacters";
+import { ChatLog } from "../components/ChatLog";
 import { ConsentCard, LoginCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
 import { dismissToast, showMessage, showToast } from "../toasts";
 import { loadNotices, showNotices } from "../api/notices";
@@ -26,7 +27,7 @@ import { clearPatch, startPatch, usePatchState } from "../audio/patchSession";
 import { API_ORIGIN } from "../config";
 import { actionDuration, actionKindOf, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
 import { PICK_UP_TILES } from "../domain/characters";
-import { BUBBLE_MS, CHAT_MAX_LENGTH, cleanMessage, cueFor } from "../domain/chat";
+import { BUBBLE_MS, CHAT_MAX_LENGTH, appendChatEntry, cleanMessage, cueFor, type ChatEntry } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
 import { MAX_SPEAKERS, audibleCount, defaultSound, lookOf, type SourceLook, type Speaker } from "../domain/sound";
 import type { TextKey } from "../domain/text";
@@ -92,6 +93,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   /** Which way each other player faces and whether it is walking, derived from its reported movement. */
   const [motion, setMotion] = useState<Record<string, { facing: 1 | -1; walking: boolean }>>({});
   const [bubbles, setBubbles] = useState<Record<string, { text: string; until: number }>>({});
+  const [chatLog, setChatLog] = useState<ChatEntry[]>([]);
+  const nextChatId = useRef(0);
   const [draft, setDraft] = useState("");
   const chatInput = useRef<React.ComponentRef<typeof TextInput>>(null);
   const desktopChat = Platform.OS === "web" && typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
@@ -385,7 +388,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
         case "chat": {
           const mine = message.id === myId.current;
-          setBubbles((current) => ({ ...current, [mine ? "me" : message.id]: { text: (mine ? "" : message.name + ": ") + message.text, until: Date.now() + BUBBLE_MS } }));
+          const at = Date.now();
+          nextChatId.current += 1;
+          setBubbles((current) => ({ ...current, [mine ? "me" : message.id]: { text: (mine ? "" : message.name + ": ") + message.text, until: at + BUBBLE_MS } }));
+          setChatLog((current) => appendChatEntry(current, { id: `${at}-${nextChatId.current}`, senderId: message.id, name: message.name, text: message.text, at, mine }));
           if (!mine) {
             const cue = cueFor(meRef.current, message);
             if (cue) {
@@ -696,17 +702,20 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         </View>
 
         {online && link === "online" && !showEditor && (
-          <View style={{ position: "absolute", left: 10, right: 10, bottom: insets.bottom + 10, flexDirection: "row", gap: 6, maxWidth: 520 }}>
-            {entry?.canChat ? (
-              <>
-                <View style={{ flex: 1 }}>
-                  <Input inputRef={chatInput} autoFocus={desktopChat} submitBehavior={desktopChat ? "submit" : undefined} label={t("chat.label")} placeholder={t("chat.placeholder")} value={draft} maxLength={CHAT_MAX_LENGTH} onChangeText={setDraft} onSubmit={sendChat} testID="chat-input" />
-                </View>
-                <Btn variant="primary" title={t("chat.send")} disabled={!draft.trim()} onPress={sendChat} testID="chat-send" />
-              </>
-            ) : (
-              <Btn small variant="mint" title={t("chat.login")} onPress={() => setPanel("login")} testID="chat-login" />
-            )}
+          <View pointerEvents="box-none" style={{ position: "absolute", left: 10, right: 10, bottom: insets.bottom + 10, maxWidth: 520, gap: 6 }}>
+            <ChatLog entries={chatLog} />
+            <View style={{ flexDirection: "row", gap: 6 }}>
+              {entry?.canChat ? (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <Input inputRef={chatInput} autoFocus={desktopChat} submitBehavior={desktopChat ? "submit" : undefined} label={t("chat.label")} placeholder={t("chat.placeholder")} value={draft} maxLength={CHAT_MAX_LENGTH} onChangeText={setDraft} onSubmit={sendChat} testID="chat-input" />
+                  </View>
+                  <Btn variant="primary" title={t("chat.send")} disabled={!draft.trim()} onPress={sendChat} testID="chat-send" />
+                </>
+              ) : (
+                <Btn small variant="mint" title={t("chat.login")} onPress={() => setPanel("login")} testID="chat-login" />
+              )}
+            </View>
           </View>
         )}
       </View>

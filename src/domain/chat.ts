@@ -6,6 +6,30 @@ export const CHAT_RANGE = 10;
 export const CHAT_MAX_LENGTH = 200;
 /** A speech bubble stays this long. */
 export const BUBBLE_MS = 6000;
+/** Maximum number of chat messages kept in the on-screen log. */
+export const CHAT_LOG_LIMIT = 100;
+
+export interface ChatEntry {
+  id: string;
+  senderId: string;
+  name: string;
+  text: string;
+  at: number;
+  mine: boolean;
+}
+
+/** Formats an epoch timestamp as local HH:MM. */
+export function formatChatTime(at: number): string {
+  const date = new Date(at);
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+/** Appends a chat entry while keeping at most `limit` most recent messages. */
+export function appendChatEntry(log: readonly ChatEntry[], entry: ChatEntry, limit = CHAT_LOG_LIMIT): ChatEntry[] {
+  if (limit <= 0) return [];
+  const next = [...log, entry];
+  return next.length > limit ? next.slice(next.length - limit) : next;
+}
 
 export type CueMode = "tone" | "dip" | "off";
 
