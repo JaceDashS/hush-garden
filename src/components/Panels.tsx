@@ -174,6 +174,14 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+function Section({ children }: { children: React.ReactNode }) {
+  return (
+    <View style={{ backgroundColor: colors.white, borderRadius: 16, borderWidth: 1.5, borderColor: colors.panelEdge, padding: 12, gap: 12 }}>
+      {children}
+    </View>
+  );
+}
+
 /**
  * Everything that is not handling a speaker lives here: sound on and off, volume, character, language, character name, chat
  * cue, presets, account and leaving the garden. `shownName` is the name currently above the character. `onName`
@@ -224,105 +232,119 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
     {feedbackOpen && open && <FeedbackDialog client={client} language={settings.language} signedIn={!!client.currentUser} onClose={() => setFeedbackOpen(false)} />}
     <Card title={t("settings.title")} style={{ maxHeight: "100%" }}>
       <DragLockContext.Provider value={setDragging}>
-        <ScrollView testID="settings-scroll" scrollEnabled={!dragging} style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 14, paddingRight: Platform.OS === "web" ? 6 : 0 }} keyboardShouldPersistTaps="handled">
-          <Group title={t("settings.sound")}>
-            <Slider label={t("settings.volume")} value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
-          </Group>
-          {bubbleSupported && (
-            <Group title={t("floating.title")}>
-              {!bubbleAllowed ? (
-                <Btn small variant="mint" title={t("floating.grant")} onPress={requestBubbleOverlayPermission} testID="floating-grant" />
-              ) : bubbleShown ? (
-                <Btn small title={t("floating.hide")} onPress={() => { hideFloatingBubble(); setBubbleShown(false); }} testID="floating-hide" />
-              ) : (
-                <Btn small variant="mint" title={t("floating.show")} onPress={() => void showFloatingBubble(playing).then((ok) => ok && setBubbleShown(true))} testID="floating-show" />
-              )}
-              <T size={12} tone="muted">{t("floating.help")}</T>
+        <ScrollView testID="settings-scroll" scrollEnabled={!dragging} style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 12, paddingRight: Platform.OS === "web" ? 6 : 0 }} keyboardShouldPersistTaps="handled">
+          <Section>
+            <Group title={t("settings.sound")}>
+              <Slider label={t("settings.volume")} value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
             </Group>
-          )}
-          <Group title={t("settings.nature")}>
-            {nature === "ready" ? (
-              <T size={13} tone="muted">{t("settings.natureReady")}</T>
-            ) : nature === "downloading" || nature === "checking" ? (
-              <T size={13} tone="muted">{t("settings.natureDownloading")}</T>
-            ) : (
-              <Btn variant="mint" title={t("settings.natureGet")} onPress={onDownloadNature} testID="settings-nature-download" />
-            )}
-          </Group>
-          {developer}
-          <Group title={t("settings.character")}>
-            <CharacterPicker value={settings.character} onChange={(character) => onChange({ ...settings, character, customCharacter: "" })} />
-          </Group>
-          <Group title={t("settings.chatColor")}>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityLabel={t("settings.chatColorAuto")}
-                accessibilityState={{ selected: !settings.chatColor }}
-                testID="chat-color-auto"
-                onPress={() => onChange({ ...settings, chatColor: "" })}
-                style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, minHeight: 32, borderRadius: 999, borderWidth: 2, borderColor: !settings.chatColor ? colors.mintDeep : colors.panelEdge, backgroundColor: !settings.chatColor ? colors.mint : colors.white }}
-              >
-                <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: CHARACTER_COLORS[settings.character], borderWidth: 1.5, borderColor: colors.ink }} />
-                <T size={12.5} weight="700">{t("settings.chatColorAuto")}</T>
-              </Pressable>
-              {CHAT_RIPPLE_COLORS.map((hex) => {
-                const selected = settings.chatColor === hex;
-                return (
-                  <Pressable
-                    key={hex}
-                    accessibilityRole="radio"
-                    accessibilityLabel={hex}
-                    accessibilityState={{ selected }}
-                    testID={"chat-color-" + hex.slice(1)}
-                    onPress={() => onChange({ ...settings, chatColor: hex })}
-                    style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: hex, borderWidth: selected ? 3 : 2, borderColor: selected ? colors.mintDeep : colors.ink }}
-                  />
-                );
-              })}
-            </View>
-          </Group>
-          {!!custom && <Group title={t("custom.title")}>{custom}</Group>}
-          <Group title={t("settings.language")}>
-            <Chips label={t("settings.language")} value={settings.language} options={LANGUAGES.map((language) => ({ value: language, label: LANGUAGE_NAMES[language] }))} onChange={(language) => onChange({ ...settings, language })} />
-          </Group>
-          <Group title={t("settings.nameNow", { name: shownName })}>
-            <View style={{ flexDirection: "row", gap: 6 }}>
-              <View style={{ flex: 1 }}>
-                <Input label={t("settings.name")} placeholder={t("settings.namePlaceholder")} value={name} maxLength={NAME_MAX_LENGTH} onChangeText={setName} onSubmit={saveName} testID="settings-name" />
-              </View>
-              <Btn variant="mint" title={t("settings.nameSave")} onPress={saveName} testID="settings-name-save" />
-            </View>
-            {!!(problem || nameError) && <T size={12.5} tone="danger">{problem ? t(problem, { n: NAME_MAX_LENGTH }) : nameError}</T>}
-          </Group>
-          <Group title={t("settings.cue")}>
-            <Chips label={t("settings.cue")} value={settings.cue} options={CUES.map((cue) => ({ value: cue, label: t(("cue." + cue) as TextKey) }))} onChange={(cue) => onChange({ ...settings, cue })} />
-            <T size={12} tone="muted">{t("settings.cueHelp")}</T>
-          </Group>
-          {online && (
-            <Group title={t("settings.account")}>
-              {user ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <T size={14} style={{ flex: 1 }} lines={1}>{user.name}</T>
-                  <Btn small title={t("settings.logout")} onPress={onLogout} testID="logout" />
+            <Group title={t("settings.cue")}>
+              <Chips label={t("settings.cue")} value={settings.cue} options={CUES.map((cue) => ({ value: cue, label: t(("cue." + cue) as TextKey) }))} onChange={(cue) => onChange({ ...settings, cue })} />
+              <T size={12} tone="muted">{t("settings.cueHelp")}</T>
+            </Group>
+            <Group title={t("settings.nature")}>
+              {nature === "ready" ? (
+                <T size={13} tone="muted">{t("settings.natureReady")}</T>
+              ) : nature === "downloading" || nature === "checking" ? (
+                <T size={13} tone="muted">{t("settings.natureDownloading")}</T>
+              ) : (
+                <Btn small variant="mint" title={t("settings.natureGet")} onPress={onDownloadNature} testID="settings-nature-download" />
+              )}
+            </Group>
+          </Section>
+
+          <Section>
+            <Group title={t("settings.nameNow", { name: shownName })}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <View style={{ flex: 1 }}>
+                  <Input label={t("settings.name")} placeholder={t("settings.namePlaceholder")} value={name} maxLength={NAME_MAX_LENGTH} onChangeText={setName} onSubmit={saveName} testID="settings-name" />
                 </View>
-              ) : (
-                <Btn small variant="mint" title={t("login.submit")} onPress={onLogin} testID="open-login" />
-              )}
+                <Btn small variant="mint" title={t("settings.nameSave")} onPress={saveName} testID="settings-name-save" />
+              </View>
+              {!!(problem || nameError) && <T size={12.5} tone="danger">{problem ? t(problem, { n: NAME_MAX_LENGTH }) : nameError}</T>}
             </Group>
-          )}
-          <Group title={t("settings.garden")}>
-            {!online && <Btn small title={t("settings.presets")} onPress={onPresets} testID="open-presets" />}
-            <Btn small variant="danger" title={t("settings.exit")} onPress={onExit} testID="exit" />
-          </Group>
-          <Group title={t("settings.platform")}>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <Btn small title={t("settings.mainPage")} onPress={() => { const url = `${SITE_ORIGIN}/about`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="about-developer" />
-              <Btn small title={t("settings.guide")} onPress={() => { const url = `${SITE_ORIGIN}/hush-garden/guide`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="hush-guide" />
-              <Btn small title={t("settings.privacy")} onPress={() => { const url = `${SITE_ORIGIN}/hush-garden/privacy`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="hush-privacy" />
-              <Btn small title={t("settings.feedback")} onPress={() => setFeedbackOpen(true)} testID="feedback" />
-            </View>
-          </Group>
+            <Group title={t("settings.character")}>
+              <CharacterPicker value={settings.character} onChange={(character) => onChange({ ...settings, character, customCharacter: "" })} />
+            </Group>
+            {!!custom && <Group title={t("custom.title")}>{custom}</Group>}
+            <Group title={t("settings.chatColor")}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityLabel={t("settings.chatColorAuto")}
+                  accessibilityState={{ selected: !settings.chatColor }}
+                  testID="chat-color-auto"
+                  onPress={() => onChange({ ...settings, chatColor: "" })}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, minHeight: 32, borderRadius: 999, borderWidth: 2, borderColor: !settings.chatColor ? colors.mintDeep : colors.panelEdge, backgroundColor: !settings.chatColor ? colors.mint : colors.white }}
+                >
+                  <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: CHARACTER_COLORS[settings.character], borderWidth: 1.5, borderColor: colors.ink }} />
+                  <T size={12.5} weight="700">{t("settings.chatColorAuto")}</T>
+                </Pressable>
+                {CHAT_RIPPLE_COLORS.map((hex) => {
+                  const selected = settings.chatColor === hex;
+                  return (
+                    <Pressable
+                      key={hex}
+                      accessibilityRole="radio"
+                      accessibilityLabel={hex}
+                      accessibilityState={{ selected }}
+                      testID={"chat-color-" + hex.slice(1)}
+                      onPress={() => onChange({ ...settings, chatColor: hex })}
+                      style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: hex, borderWidth: selected ? 3 : 2, borderColor: selected ? colors.mintDeep : colors.ink }}
+                    />
+                  );
+                })}
+              </View>
+            </Group>
+          </Section>
+
+          <Section>
+            {online && (
+              <Group title={t("settings.account")}>
+                {user ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <T size={14} style={{ flex: 1 }} lines={1}>{user.name}</T>
+                    <Btn small title={t("settings.logout")} onPress={onLogout} testID="logout" />
+                  </View>
+                ) : (
+                  <Btn small variant="mint" title={t("login.submit")} onPress={onLogin} testID="open-login" />
+                )}
+              </Group>
+            )}
+            <Group title={t("settings.garden")}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {!online && <Btn small title={t("settings.presets")} onPress={onPresets} testID="open-presets" />}
+                <Btn small variant="danger" title={t("settings.exit")} onPress={onExit} testID="exit" />
+              </View>
+            </Group>
+          </Section>
+
+          <Section>
+            <Group title={t("settings.language")}>
+              <Chips label={t("settings.language")} value={settings.language} options={LANGUAGES.map((language) => ({ value: language, label: LANGUAGE_NAMES[language] }))} onChange={(language) => onChange({ ...settings, language })} />
+            </Group>
+            {bubbleSupported && (
+              <Group title={t("floating.title")}>
+                {!bubbleAllowed ? (
+                  <Btn small variant="mint" title={t("floating.grant")} onPress={requestBubbleOverlayPermission} testID="floating-grant" />
+                ) : bubbleShown ? (
+                  <Btn small title={t("floating.hide")} onPress={() => { hideFloatingBubble(); setBubbleShown(false); }} testID="floating-hide" />
+                ) : (
+                  <Btn small variant="mint" title={t("floating.show")} onPress={() => void showFloatingBubble(playing).then((ok) => ok && setBubbleShown(true))} testID="floating-show" />
+                )}
+                <T size={12} tone="muted">{t("floating.help")}</T>
+              </Group>
+            )}
+            <Group title={t("settings.platform")}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                <Btn small title={t("settings.mainPage")} onPress={() => { const url = `${SITE_ORIGIN}/about`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="about-developer" />
+                <Btn small title={t("settings.guide")} onPress={() => { const url = `${SITE_ORIGIN}/hush-garden/guide`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="hush-guide" />
+                <Btn small title={t("settings.privacy")} onPress={() => { const url = `${SITE_ORIGIN}/hush-garden/privacy`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="hush-privacy" />
+                <Btn small title={t("settings.feedback")} onPress={() => setFeedbackOpen(true)} testID="feedback" />
+              </View>
+            </Group>
+          </Section>
+
+          {developer}
         </ScrollView>
       </DragLockContext.Provider>
       <Btn title={t("common.close")} onPress={onClose} testID="settings-close" />
