@@ -8,6 +8,32 @@ import { T, colors } from "../ui";
 
 const RESIZE_STYLE = (Platform.OS === "web" ? { touchAction: "none", userSelect: "none", cursor: "ns-resize" } : null) as ViewStyle | null;
 
+if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("hg-chat-scrollbar")) {
+  const style = document.createElement("style");
+  style.id = "hg-chat-scrollbar";
+  style.textContent = `
+    [data-testid="chat-log-list"] {
+      scrollbar-width: thin;
+      scrollbar-color: ${colors.panelEdge} transparent;
+    }
+    [data-testid="chat-log-list"]::-webkit-scrollbar {
+      width: 6px;
+    }
+    [data-testid="chat-log-list"]::-webkit-scrollbar-track {
+      background: rgba(234, 223, 206, 0.35);
+      border-radius: 999px;
+    }
+    [data-testid="chat-log-list"]::-webkit-scrollbar-thumb {
+      background: ${colors.panelEdge};
+      border-radius: 999px;
+    }
+    [data-testid="chat-log-list"]::-webkit-scrollbar-thumb:hover {
+      background: ${colors.muted};
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 function ChatLine({ entry, singleLine }: { entry: ChatEntry; singleLine?: boolean }) {
   const t = useT();
   const body = (
@@ -151,7 +177,7 @@ export function ChatLog({ entries }: { entries: readonly ChatEntry[] }) {
         <ScrollView
           ref={scrollRef}
           style={{ height: listHeight }}
-          contentContainerStyle={{ gap: 3 }}
+          contentContainerStyle={{ gap: 3, paddingRight: 4 }}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
           nestedScrollEnabled
           testID="chat-log-list"
