@@ -1,5 +1,6 @@
 /** Cards shown over the garden: location consent, login, presets and settings. */
 import { FeedbackDialog } from "./FeedbackDialog";
+import { WebDocDialog } from "./WebDocDialog";
 import React, { useEffect, useState } from "react";
 import { AppState, Linking, Platform, Pressable, ScrollView, View } from "react-native";
 import type { HushClient } from "../api/client";
@@ -191,6 +192,7 @@ function Section({ children }: { children: React.ReactNode }) {
 export function SettingsCard({ client, open = true, playing = false, settings, user, online, shownName, nameError, nature, onDownloadNature, developer, custom, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { client: HushClient; playing?: boolean; settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; nature: PatchPhase | null; onDownloadNature: () => void; developer?: React.ReactNode; custom?: React.ReactNode; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
   const t = useT();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [webDoc, setWebDoc] = useState<{ title: string; url: string } | null>(null);
   const [name, setName] = useState(settings.name);
   const bubbleSupported = isFloatingBubbleSupported();
   const [bubbleAllowed, setBubbleAllowed] = useState(false);
@@ -230,6 +232,7 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
   return (
     <>
     {feedbackOpen && open && <FeedbackDialog client={client} language={settings.language} signedIn={!!client.currentUser} onClose={() => setFeedbackOpen(false)} />}
+    {webDoc && open && <WebDocDialog title={webDoc.title} url={webDoc.url} language={settings.language} onClose={() => setWebDoc(null)} />}
     <Card title={t("settings.title")} style={{ maxHeight: "100%" }}>
       <DragLockContext.Provider value={setDragging}>
         <ScrollView testID="settings-scroll" scrollEnabled={!dragging} style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 12, paddingRight: Platform.OS === "web" ? 6 : 0 }} keyboardShouldPersistTaps="handled">
@@ -337,8 +340,8 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
             <Group title={t("settings.platform")}>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 <Btn small title={t("settings.mainPage")} onPress={() => { const url = `${SITE_ORIGIN}/about`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="about-developer" />
-                <Btn small title={t("settings.guide")} onPress={() => { const url = `${SITE_ORIGIN}/hush-garden/guide`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="hush-guide" />
-                <Btn small title={t("settings.privacy")} onPress={() => { const url = `${SITE_ORIGIN}/hush-garden/privacy`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="hush-privacy" />
+                <Btn small title={t("settings.guide")} onPress={() => setWebDoc({ title: t("settings.guide"), url: `${SITE_ORIGIN}/hush-garden/guide` })} testID="hush-guide" />
+                <Btn small title={t("settings.privacy")} onPress={() => setWebDoc({ title: t("settings.privacy"), url: `${SITE_ORIGIN}/hush-garden/privacy` })} testID="hush-privacy" />
                 <Btn small title={t("settings.feedback")} onPress={() => setFeedbackOpen(true)} testID="feedback" />
               </View>
             </Group>
