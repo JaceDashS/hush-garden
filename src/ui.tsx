@@ -384,3 +384,31 @@ export function Modal({ children, onClose, hidden = false }: { children: React.R
     </Prepared>
   );
 }
+
+/** Injects a pastel theme scrollbar rule once on web for the given CSS selector. */
+export function ensureWebScrollbarStyle(id: string, selector: string): void {
+  if (Platform.OS !== "web" || typeof document === "undefined" || document.getElementById(id)) return;
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = `
+    ${selector} {
+      scrollbar-width: thin;
+      scrollbar-color: ${colors.panelEdge} transparent;
+    }
+    ${selector}::-webkit-scrollbar {
+      width: 6px;
+    }
+    ${selector}::-webkit-scrollbar-track {
+      background: rgba(234, 223, 206, 0.35);
+      border-radius: 999px;
+    }
+    ${selector}::-webkit-scrollbar-thumb {
+      background: ${colors.panelEdge};
+      border-radius: 999px;
+    }
+    ${selector}::-webkit-scrollbar-thumb:hover {
+      background: ${colors.muted};
+    }
+  `;
+  document.head.appendChild(style);
+}

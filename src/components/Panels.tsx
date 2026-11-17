@@ -13,10 +13,12 @@ import { NAME_MAX_LENGTH, checkName } from "../domain/names";
 import { LANGUAGES, LANGUAGE_NAMES, type TextKey } from "../domain/text";
 import { useT } from "../i18n";
 import type { Settings } from "../settings";
-import { Btn, Card, Check, Chips, DragLockContext, Input, Slider, T, colors } from "../ui";
+import { Btn, Card, Check, Chips, DragLockContext, Input, Slider, T, colors, ensureWebScrollbarStyle } from "../ui";
 import type { PatchPhase } from "../audio/patch";
 import { CharacterPicker } from "./CharacterPicker";
 import { GoogleButton } from "./GoogleButton";
+
+ensureWebScrollbarStyle("hg-settings-scrollbar", '[data-testid="settings-scroll"]');
 
 /**
  * Asks whether to download the nature sounds, with their size. "Later" with "don't ask again" ticked stops the
@@ -222,7 +224,7 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
     {feedbackOpen && open && <FeedbackDialog client={client} language={settings.language} signedIn={!!client.currentUser} onClose={() => setFeedbackOpen(false)} />}
     <Card title={t("settings.title")} style={{ maxHeight: "100%" }}>
       <DragLockContext.Provider value={setDragging}>
-        <ScrollView scrollEnabled={!dragging} style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 14 }} keyboardShouldPersistTaps="handled">
+        <ScrollView testID="settings-scroll" scrollEnabled={!dragging} style={{ flexShrink: 1 }} contentContainerStyle={{ gap: 14, paddingRight: Platform.OS === "web" ? 6 : 0 }} keyboardShouldPersistTaps="handled">
           <Group title={t("settings.sound")}>
             <Slider label={t("settings.volume")} value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
           </Group>

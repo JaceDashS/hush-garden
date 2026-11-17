@@ -4,35 +4,11 @@ import { PanResponder, Platform, Pressable, ScrollView, View, type ViewStyle } f
 import Svg, { Line, Rect } from "react-native-svg";
 import { CHAT_ROW_HEIGHT, DEFAULT_CHAT_ROWS, formatChatTime, snapChatRows, type ChatEntry } from "../domain/chat";
 import { useT } from "../i18n";
-import { T, colors } from "../ui";
+import { T, colors, ensureWebScrollbarStyle } from "../ui";
 
 const RESIZE_STYLE = (Platform.OS === "web" ? { touchAction: "none", userSelect: "none", cursor: "ns-resize" } : null) as ViewStyle | null;
 
-if (Platform.OS === "web" && typeof document !== "undefined" && !document.getElementById("hg-chat-scrollbar")) {
-  const style = document.createElement("style");
-  style.id = "hg-chat-scrollbar";
-  style.textContent = `
-    [data-testid="chat-log-list"] {
-      scrollbar-width: thin;
-      scrollbar-color: ${colors.panelEdge} transparent;
-    }
-    [data-testid="chat-log-list"]::-webkit-scrollbar {
-      width: 6px;
-    }
-    [data-testid="chat-log-list"]::-webkit-scrollbar-track {
-      background: rgba(234, 223, 206, 0.35);
-      border-radius: 999px;
-    }
-    [data-testid="chat-log-list"]::-webkit-scrollbar-thumb {
-      background: ${colors.panelEdge};
-      border-radius: 999px;
-    }
-    [data-testid="chat-log-list"]::-webkit-scrollbar-thumb:hover {
-      background: ${colors.muted};
-    }
-  `;
-  document.head.appendChild(style);
-}
+ensureWebScrollbarStyle("hg-chat-scrollbar", '[data-testid="chat-log-list"]');
 
 function ChatLine({ entry, singleLine }: { entry: ChatEntry; singleLine?: boolean }) {
   const t = useT();
