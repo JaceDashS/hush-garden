@@ -45,22 +45,21 @@ function ChannelBubble({
   index: number;
   hoverProps: object;
 }) {
-  const step = BUBBLE_GAP + index * (BUBBLE_SIZE + BUBBLE_GAP);
   const centerOffset = (SIZE - BUBBLE_SIZE) / 2;
   const position = compact
     ? {
-        right: SIZE + step,
-        top: centerOffset,
+        right: SIZE + BUBBLE_GAP,
+        top: centerOffset + index * (BUBBLE_SIZE + BUBBLE_GAP),
         transform: [
-          { translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [14 + index * 10, 0] }) },
+          { translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [14 + index * 6, 0] }) },
           { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) },
         ],
       }
     : {
-        right: centerOffset,
-        top: SIZE + step,
+        right: (1 - index) * (BUBBLE_SIZE + BUBBLE_GAP),
+        top: SIZE + BUBBLE_GAP,
         transform: [
-          { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-14 - index * 10, 0] }) },
+          { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-14 - index * 6, 0] }) },
           { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) },
         ],
       };
@@ -194,9 +193,9 @@ export function SoundButton({ compact = false, playing, volume, mono, onToggle, 
         </Pressable>
       </Animated.View>
 
-      {/* Independent bouncing M / S bubbles: below on desktop, to the left on mobile. */}
-      <ChannelBubble label="M" accessibilityLabel={t("channel.mono")} selected={mono} onPress={() => onMono(true)} testID="sound-mono" anim={pop1} open={open} compact={compact} index={0} hoverProps={hoverProps} />
-      <ChannelBubble label="S" accessibilityLabel={t("channel.stereo")} selected={!mono} onPress={() => onMono(false)} testID="sound-stereo" anim={pop2} open={open} compact={compact} index={1} hoverProps={hoverProps} />
+      {/* Independent bouncing S / M bubbles: horizontal S M below on desktop, vertical S-top M-bottom to the left on mobile. */}
+      <ChannelBubble label="S" accessibilityLabel={t("channel.stereo")} selected={!mono} onPress={() => onMono(false)} testID="sound-stereo" anim={pop1} open={open} compact={compact} index={0} hoverProps={hoverProps} />
+      <ChannelBubble label="M" accessibilityLabel={t("channel.mono")} selected={mono} onPress={() => onMono(true)} testID="sound-mono" anim={pop2} open={open} compact={compact} index={1} hoverProps={hoverProps} />
     </View>
   );
 }
