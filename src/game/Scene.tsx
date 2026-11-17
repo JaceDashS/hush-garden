@@ -200,7 +200,8 @@ const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.a
  */
 export function Scene({ me, actors, speakers, carriedId, heldIds, chatRipples, markers, onInput }: { me: Point; actors: readonly Actor[]; speakers: readonly Speaker[]; carriedId?: string | null; heldIds?: ReadonlySet<string>; chatRipples?: readonly ChatRipple[]; markers?: readonly Marker[]; onInput: (input: Point) => void }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [zoom, setZoom] = useState(1);
+  const targetZoom = useRef(1);
+  const zoomAnim = useRef(new Animated.Value(1)).current;
   const [stick, setStick] = useState<{ x: number; y: number; dx: number; dy: number } | null>(null);
   const root = useRef<React.ComponentRef<typeof View>>(null);
   useEffect(() => {
@@ -210,11 +211,17 @@ export function Scene({ me, actors, speakers, carriedId, heldIds, chatRipples, m
     const onWheel = (event: WheelEvent) => {
       if (event.deltaY === 0) return;
       event.preventDefault();
-      setZoom((current) => nextZoom(current, event.deltaY));
+      targetZoom.current = nextZoom(targetZoom.current, event.deltaY);
+      Animated.timing(zoomAnim, {
+        toValue: targetZoom.current,
+        duration: 180,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
     };
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [zoomAnim]);
   const origin = useRef({ x: 0, y: 0 });
   const latest = useRef({ onInput });
   latest.current = { onInput };
@@ -263,7 +270,7 @@ export function Scene({ me, actors, speakers, carriedId, heldIds, chatRipples, m
       style={{ flex: 1, overflow: "hidden", backgroundColor: colors.sky }}
       {...responder.panHandlers}
     >
-      <View pointerEvents="box-none" style={{ position: "absolute", left: size.width / 2, top: size.height / 2, width: 0, height: 0, transform: [{ scale: zoom }] }}>
+      <Animated.View pointerEvents="box-none" style={{ position: "absolute", left: size.width / 2, top: size.height / 2, width: 0, height: 0, transform: [{ scale: zoomAnim }] }}>
       <View pointerEvents="box-none" style={{ position: "absolute", left: 0, top: 0, transform: [{ translateX: -camera.left }, { translateY: -camera.top }] }}>
         <Ground />
         {speakers.map((speaker) => {
@@ -309,7 +316,7 @@ export function Scene({ me, actors, speakers, carriedId, heldIds, chatRipples, m
           );
         })}
       </View>
-      </View>
+      </Animated.View>
       {stick && (
         <View pointerEvents="none" style={{ position: "absolute", left: stick.x - JOYSTICK_RADIUS, top: stick.y - JOYSTICK_RADIUS, width: JOYSTICK_RADIUS * 2, height: JOYSTICK_RADIUS * 2, borderRadius: JOYSTICK_RADIUS, backgroundColor: "rgba(255,250,242,0.55)", borderWidth: 3, borderColor: "rgba(74,64,56,0.35)" }}>
           <View style={{ position: "absolute", left: JOYSTICK_RADIUS - 3 - 22 + stick.dx, top: JOYSTICK_RADIUS - 3 - 22 + stick.dy, width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accent, borderWidth: 3, borderColor: colors.accentDeep }} />
