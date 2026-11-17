@@ -1,9 +1,10 @@
 /** Cards shown over the garden: location consent, login, presets and settings. */
 import { FeedbackDialog } from "./FeedbackDialog";
 import React, { useEffect, useState } from "react";
-import { Linking, Platform, Pressable, ScrollView, View } from "react-native";
+import { AppState, Linking, Platform, Pressable, ScrollView, View } from "react-native";
 import type { HushClient } from "../api/client";
 import { ApiError, type User } from "../api/types";
+import { canDrawBubbleOverlay, hideFloatingBubble, isFloatingBubbleShowing, isFloatingBubbleSupported, requestBubbleOverlayPermission, showFloatingBubble } from "../audio/floatingBubble";
 import { SITE_ORIGIN } from "../config";
 import type { CueMode } from "../domain/chat";
 import { BUILT_IN_PRESETS, MAX_PRESETS, type MyGarden } from "../domain/garden";
@@ -176,10 +177,26 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
  * receives a checked name, or "" to go back to the account name; `nameError` is the server's refusal, if any.
  * `open` is false while the card is kept prepared but not shown.
  */
-export function SettingsCard({ client, open = true, settings, user, online, shownName, nameError, nature, onDownloadNature, developer, custom, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { client: HushClient; settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; nature: PatchPhase | null; onDownloadNature: () => void; developer?: React.ReactNode; custom?: React.ReactNode; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
+export function SettingsCard({ client, open = true, playing = false, settings, user, online, shownName, nameError, nature, onDownloadNature, developer, custom, onChange, onName, onPresets, onLogin, onLogout, onExit, onClose }: { client: HushClient; playing?: boolean; settings: Settings; user: { name: string } | null; online: boolean; shownName: string; nameError: string; nature: PatchPhase | null; onDownloadNature: () => void; developer?: React.ReactNode; custom?: React.ReactNode; onChange: (settings: Settings) => void; onName: (name: string) => void; onPresets: () => void; onLogin: () => void; onLogout: () => void; onExit: () => void; onClose: () => void; open?: boolean }) {
   const t = useT();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [name, setName] = useState(settings.name);
+  const bubbleSupported = isFloatingBubbleSupported();
+  const [bubbleAllowed, setBubbleAllowed] = useState(false);
+  const [bubbleShown, setBubbleShown] = useState(false);
+  const refreshBubble = () => {
+    if (!bubbleSupported) return;
+    void canDrawBubbleOverlay().then(setBubbleAllowed);
+    void isFloatingBubbleShowing().then(setBubbleShown);
+  };
+  useEffect(() => {
+    if (!bubbleSupported || !open) return;
+    refreshBubble();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshBubble();
+    });
+    return () => sub.remove();
+  }, [bubbleSupported, open]);
   // The card is prepared before it is opened, so each opening starts from the saved name with no error shown.
   useEffect(() => {
     if (!open) return;
@@ -208,6 +225,18 @@ export function SettingsCard({ client, open = true, settings, user, online, show
           <Group title={t("settings.sound")}>
             <Slider label={t("settings.volume")} value={settings.volume} min={0} max={1} format={(v) => Math.round(v * 100) + "%"} onChange={(volume) => onChange({ ...settings, volume })} testID="settings-volume" />
           </Group>
+          {bubbleSupported && (
+            <Group title={t("floating.title")}>
+              {!bubbleAllowed ? (
+                <Btn small variant="mint" title={t("floating.grant")} onPress={requestBubbleOverlayPermission} testID="floating-grant" />
+              ) : bubbleShown ? (
+                <Btn small title={t("floating.hide")} onPress={() => { hideFloatingBubble(); setBubbleShown(false); }} testID="floating-hide" />
+              ) : (
+                <Btn small variant="mint" title={t("floating.show")} onPress={() => void showFloatingBubble(playing).then((ok) => ok && setBubbleShown(true))} testID="floating-show" />
+              )}
+              <T size={12} tone="muted">{t("floating.help")}</T>
+            </Group>
+          )}
           <Group title={t("settings.nature")}>
             {nature === "ready" ? (
               <T size={13} tone="muted">{t("settings.natureReady")}</T>

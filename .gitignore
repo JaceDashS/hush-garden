@@ -34,8 +34,8 @@ scripts/debug/
 docs/.agent/
 .cxx/
 
-android/
-ios/
+/android/
+/ios/
 .expo/
 .expo-native-owned
 dist-android/

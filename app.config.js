@@ -35,6 +35,7 @@ export default {
         },
       ],
       "./plugins/with-short-cmake-path.cjs",
+      "./plugins/with-floating-bubble.cjs",
     ],
   },
 };

@@ -227,6 +227,11 @@ const ko = {
   "channel.stereo": "스테레오",
   "channel.mono": "모노",
   "channel.help": "모노는 위치에 따른 좌우 소리를 끄고 소리 자체도 모노로 들려줍니다.",
+  "floating.title": "플로팅 버블",
+  "floating.show": "플로팅 버블 켜기",
+  "floating.hide": "플로팅 버블 끄기",
+  "floating.grant": "다른 앱 위에 표시 권한 허용",
+  "floating.help": "다른 앱을 쓰는 동안에도 작은 버블로 재생/일시정지를 제어할 수 있습니다. 두 번 누르면 앱으로 돌아옵니다.",
   "notice.replaced": "다른 창에서 같은 정원에 들어와 이 연결은 닫혔습니다.",
 } as const;
 
@@ -450,6 +455,11 @@ const en: Record<TextKey, string> = {
   "channel.stereo": "Stereo",
   "channel.mono": "Mono",
   "channel.help": "Mono turns off left-right panning and mixes the sound itself to mono.",
+  "floating.title": "Floating bubble",
+  "floating.show": "Show floating bubble",
+  "floating.hide": "Hide floating bubble",
+  "floating.grant": "Allow display over other apps",
+  "floating.help": "Keep a small floating bubble on top of other apps to pause or resume. Double-tap it to return to Hush Garden.",
   "notice.replaced": "This garden was opened again in another window, so this connection was closed.",
 };
 
@@ -671,6 +681,11 @@ const ja: Record<TextKey, string> = {
   "channel.stereo": "ステレオ",
   "channel.mono": "モノラル",
   "channel.help": "モノラルは位置による左右の偏りをなくし、音自体もモノラルにします。",
+  "floating.title": "フローティングバブル",
+  "floating.show": "フローティングバブルを表示",
+  "floating.hide": "フローティングバブルを隠す",
+  "floating.grant": "他のアプリの上に重ねて表示を許可",
+  "floating.help": "他のアプリを使っている間も小さなバブルで再生・一時停止を操作できます。ダブルタップでアプリに戻ります。",
   "notice.replaced": "別のウィンドウで同じ庭に入ったため、この接続は閉じられました。",
 };
 
@@ -892,6 +907,11 @@ const zh: Record<TextKey, string> = {
   "channel.stereo": "立体声",
   "channel.mono": "单声道",
   "channel.help": "单声道会关闭随位置变化的左右声道效果，并将声音本身转为单声道。",
+  "floating.title": "悬浮球",
+  "floating.show": "开启悬浮球",
+  "floating.hide": "关闭悬浮球",
+  "floating.grant": "允许显示在其他应用上层",
+  "floating.help": "在使用其他应用时也可以通过小悬浮球控制播放或暂停，双击可返回应用。",
   "notice.replaced": "在另一个窗口重新进入了花园，因此此连接已关闭。",
 };
 

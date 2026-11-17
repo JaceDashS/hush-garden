@@ -14,6 +14,7 @@ import { GardenSocket, REPLACED_CODE, socketUrl } from "../api/socket";
 import { getDeviceId } from "../deviceId";
 import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User } from "../api/types";
 import type { GardenAudio } from "../audio/engine";
+import { onFloatingBubbleEvents, syncFloatingBubblePlaying } from "../audio/floatingBubble";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
 import { MyCharacters } from "../components/MyCharacters";
 import { ChatLog } from "../components/ChatLog";
@@ -206,6 +207,14 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   // The key handler is set up once, so it reaches the current toggle through a ref.
   const togglePlayRef = useRef(togglePlay);
   togglePlayRef.current = togglePlay;
+
+  useEffect(() => {
+    syncFloatingBubblePlaying(playing);
+  }, [playing]);
+
+  useEffect(() => {
+    return onFloatingBubbleEvents(() => void togglePlayRef.current(), () => undefined);
+  }, []);
 
   useEffect(() => {
     if (playing) void showPlayback(true, place);
@@ -650,6 +659,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       <SettingsCard
         client={client}
         open={settingsOpen}
+        playing={playing}
         settings={settings}
         user={entry?.user ?? null}
         online={online}
@@ -678,7 +688,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         onClose={() => setPanel(null)}
       />
     ),
-    [settingsOpen, settings, entry?.user, online, myName, nameError, t, patch?.phase, client, loggedIn],
+    [settingsOpen, playing, settings, entry?.user, online, myName, nameError, t, patch?.phase, client, loggedIn],
   );
   const lostText = online && link === "lost" ? t(enterError || "notice.lost") : online && link === "replaced" ? t("notice.replaced") : "";
   // While the connection is lost (or taken over), a lasting toast says so; it goes when the cause is gone.
