@@ -67,3 +67,13 @@ export function joystickToInput(dx: number, dy: number, radius: number): Point {
 export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
+
+export const MIN_ZOOM = 0.45;
+export const MAX_ZOOM = 2.2;
+
+/** Updates camera zoom from a wheel delta, clamped between MIN_ZOOM and MAX_ZOOM. */
+export function nextZoom(current: number, deltaY: number): number {
+  if (deltaY === 0) return current;
+  const factor = deltaY < 0 ? 1.1 : 1 / 1.1;
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(current * factor * 1000) / 1000));
+}

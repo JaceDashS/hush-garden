@@ -12,7 +12,7 @@ import { NOISE_CHUNK_SECONDS, NOISE_CROSSFADE_SECONDS, createNoiseState, fillNoi
 import { BUILT_IN_PRESETS, addSpeaker, applyPreset, deletePreset, initialGarden, moveSpeaker, normalizeMyGarden, removeSpeaker, resetGarden, savePreset, updateSpeaker } from "../src/domain/garden.ts";
 import { DEFAULT_TEMPO, RECORDINGS, TEMPO, defaultRecording } from "../src/domain/recordings.ts";
 import { MAX_OSCILLATORS, MAX_SPEAKERS, NATURE_SOURCES, REACH, WAVES, audibleCount, baseLevel, defaultSound, gainAt, isMono, isSynth, lookOf, loudnessAt, loudnessOf, mixFor, normalizeSound, reachOf, waveShape, withMono, withSource, type Speaker, type SpeakerSound, type SynthSound } from "../src/domain/sound.ts";
-import { GARDEN_SIZE, joystickToInput, keysToInput, step, toGarden, toScreen } from "../src/domain/world.ts";
+import { GARDEN_SIZE, MAX_ZOOM, MIN_ZOOM, joystickToInput, keysToInput, nextZoom, step, toGarden, toScreen } from "../src/domain/world.ts";
 
 /** A brown noise at the given volume with no oscillators, so its loudest part is the noise. */
 const noiseAt = (level: number): SynthSound => ({ ...defaultSound(), noise: { color: "brown", level }, oscillators: [] });
@@ -653,4 +653,12 @@ test("noise chunks carry filter state and apply equal-power crossfade", () => {
   // First chunk starts at full scale (no fade-in), second chunk fades in from 0.
   assert.equal(Math.abs(c2[0]), 0);
   assert.equal(c1[c1.length - 1] < 0.05, true);
+});
+
+test("background wheel zoom steps and clamps cleanly", () => {
+  assert.ok(nextZoom(1, -100) > 1);
+  assert.ok(nextZoom(1, 100) < 1);
+  assert.equal(nextZoom(1, 0), 1);
+  assert.equal(nextZoom(MAX_ZOOM, -100), MAX_ZOOM);
+  assert.equal(nextZoom(MIN_ZOOM, 100), MIN_ZOOM);
 });
