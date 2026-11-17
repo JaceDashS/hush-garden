@@ -89,6 +89,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [nameError, setNameError] = useState<TextKey | "">("");
 
   const [link, setLink] = useState<Link>(online ? (settings.consent ? "entering" : "consent") : "online");
+  const linkRef = useRef<Link>(link);
+  linkRef.current = link;
   const [enterError, setEnterError] = useState<TextKey | "">("");
   const [entry, setEntry] = useState<Entry | null>(null);
   const [publicSpeakers, setPublicSpeakers] = useState<Speaker[]>([]);
@@ -270,6 +272,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     if (Platform.OS !== "web") return;
     const typing = (event: KeyboardEvent) => ["INPUT", "TEXTAREA"].includes((event.target as HTMLElement | null)?.tagName ?? "");
     const down = (event: KeyboardEvent) => {
+      if (linkRef.current === "replaced") return;
       // Escape opens the settings, and closes them (or any other open panel) again.
       if (event.key === "Escape" && !event.repeat) {
         event.preventDefault();
@@ -577,7 +580,19 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       const next = new GardenSocket(socketUrl(API_ORIGIN, result.ticket), receive, (code) => {
         if (!alive.current) return;
         socket.current = null;
-        setLink(code === REPLACED_CODE ? "replaced" : "lost");
+        if (code === REPLACED_CODE) {
+          setLink("replaced");
+          setPanel(null);
+          setCarryId(null);
+          setEditing(false);
+          setPublicSpeakers([]);
+          setOthers({});
+          void audio.pause().catch(() => undefined);
+          setPlaying(false);
+          void hidePlayback();
+        } else {
+          setLink("lost");
+        }
       });
       socket.current = next;
       next.open();
@@ -842,13 +857,24 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     ),
     [settingsOpen, playing, settings, entry?.user, online, myName, nameError, t, patch?.phase, client, loggedIn],
   );
-  const lostText = online && link === "lost" ? t(enterError || "notice.lost") : online && link === "replaced" ? t("notice.replaced") : "";
-  // While the connection is lost (or taken over), a lasting toast says so; it goes when the cause is gone.
+  const lostText = online && link === "lost" ? t(enterError || "notice.lost") : "";
+  // While the connection is lost, a lasting toast says so; it goes when the cause is gone.
   useEffect(() => {
     if (lostText) showToast({ id: "connection", text: lostText, kind: "message", seconds: null });
     else dismissToast("connection");
   }, [lostText]);
   useEffect(() => () => dismissToast("connection"), []);
+
+  if (online && link === "replaced") {
+    return (
+      <View testID="garden-replaced" style={{ flex: 1, backgroundColor: colors.sky, alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <View style={{ width: "100%", maxWidth: 380, backgroundColor: colors.panel, borderRadius: 24, borderWidth: 2, borderColor: colors.panelEdge, padding: 20, gap: 14 }}>
+          <T size={15} weight="700">{t("notice.replaced")}</T>
+          <Btn variant="primary" title={t("common.back")} onPress={onExit} testID="replaced-exit" />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: wide ? "row" : "column" }}>
