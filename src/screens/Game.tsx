@@ -17,6 +17,7 @@ import type { GardenAudio } from "../audio/engine";
 import { onFloatingBubbleEvents, syncFloatingBubblePlaying } from "../audio/floatingBubble";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
 import { MyCharacters } from "../components/MyCharacters";
+import { AdBanner } from "../components/AdBanner";
 import { ChatLog } from "../components/ChatLog";
 import { ConsentCard, LoginCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
 import { dismissToast, showMessage, showToast } from "../toasts";
@@ -877,7 +878,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: wide ? "row" : "column" }}>
+    <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: "column" }}>
+    <View style={{ flex: 1, flexDirection: wide ? "row" : "column" }}>
       <View style={{ flex: 1 }}>
         <Scene me={me} actors={actors} speakers={speakers} carriedId={carryId} heldIds={heldIds} chatRipples={chatRipples} markers={markers} onInput={(input) => (joystick.current = input)} />
 
@@ -931,6 +933,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           />
         </View>
       )}
+    </View>
+    <AdBanner visible={!panel && !askNature && !(online && (link === "consent" || link === "entering" || link === "replaced"))} />
 
       {online && (link === "consent" || link === "entering") && (
         <Modal>

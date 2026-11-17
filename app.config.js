@@ -20,6 +20,7 @@ export default {
       supportsTablet: true,
       infoPlist: {
         NSLocationWhenInUseUsageDescription: "Shows the name of your city above your character in the public garden.",
+        NSUserTrackingUsageDescription: "Used to show more relevant ads and measure ad performance.",
         ITSAppUsesNonExemptEncryption: false,
       },
     },
@@ -39,6 +40,13 @@ export default {
       ],
       "./plugins/with-short-cmake-path.cjs",
       "./plugins/with-floating-bubble.cjs",
+      [
+        "react-native-google-mobile-ads",
+        {
+          androidAppId: process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "ca-app-pub-3940256099942544~3347511713",
+          iosAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "ca-app-pub-3940256099942544~1458002511",
+        },
+      ],
     ],
   },
 };

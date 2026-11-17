@@ -316,6 +316,8 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
           <Group title={t("settings.platform")}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               <Btn small title={t("settings.mainPage")} onPress={() => { const url = `${SITE_ORIGIN}/about`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="about-developer" />
+              <Btn small title={t("settings.guide")} onPress={() => { const url = `${SITE_ORIGIN}/hush-garden/guide`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="hush-guide" />
+              <Btn small title={t("settings.privacy")} onPress={() => { const url = `${SITE_ORIGIN}/hush-garden/privacy`; if (Platform.OS === "web" && typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer"); else void Linking.openURL(url); }} testID="hush-privacy" />
               <Btn small title={t("settings.feedback")} onPress={() => setFeedbackOpen(true)} testID="feedback" />
             </View>
           </Group>
