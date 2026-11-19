@@ -8,7 +8,7 @@
     "start": "expo start",
     "web": "expo start --web",
     "android": "expo run:android",
-    "export:web": "expo export --platform web --output-dir dist",
+    "export:web": "expo export --platform web --output-dir dist && node scripts/add-web-metadata.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "build:android": "node scripts/build-android.mjs",
