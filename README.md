@@ -1,5 +1,7 @@
 # Hush Garden
 
+[Public app guide](https://jace-s.com/en/apps/hush-garden)
+
 A cute quarter-view garden where speakers play masking noise. Walk closer to a speaker and its noise grows louder; use it with earphones to block out a room.
 
 - Private garden: works offline. Make speakers, carry them around, shape their sound (noise, two oscillators, one equalizer), save presets.
