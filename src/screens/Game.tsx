@@ -532,15 +532,17 @@ export function Game({
         ? resolveChatColor(settingsRef.current.character, settingsRef.current.chatColor)
         : payload.color || resolveChatColor(othersRef.current[payload.senderId]?.character ?? "bunny");
       const rippleAt = mine ? meRef.current : othersRef.current[payload.senderId] ?? { x: payload.x, y: payload.y };
-      setChatRipples((current) => [...current, { id: rippleId, x: rippleAt.x, y: rippleAt.y, color: rippleColor }]);
-      setTimeout(() => {
-        if (!alive.current) return;
-        setChatRipples((current) => current.filter((item) => item.id !== rippleId));
-      }, 1850);
-      setBubbles((current) => ({
-        ...current,
-        [mine ? "me" : payload.senderId]: { text: (mine ? "" : payload.name + ": ") + payload.text, until: at + BUBBLE_MS },
-      }));
+      if (mine || playingRef.current) {
+        setChatRipples((current) => [...current, { id: rippleId, x: rippleAt.x, y: rippleAt.y, color: rippleColor }]);
+        setTimeout(() => {
+          if (!alive.current) return;
+          setChatRipples((current) => current.filter((item) => item.id !== rippleId));
+        }, 1850);
+        setBubbles((current) => ({
+          ...current,
+          [mine ? "me" : payload.senderId]: { text: (mine ? "" : payload.name + ": ") + payload.text, until: at + BUBBLE_MS },
+        }));
+      }
       // Always record nearby chat in the log even while wearing earmuffs (AFK mode).
       setChatLog((current) =>
         appendChatEntry(current, { id: rippleId, senderId: payload.senderId, name: payload.name, text: payload.text, at, mine }),
@@ -806,6 +808,12 @@ export function Game({
                 const otherFacing = message.facing ?? motionRef.current[message.playerId]?.facing ?? 1;
                 playRemote(message.playerId, actionKindOf(other.character, other.custom), "putDown", lookOf(speaker.sound), groundSpotFor(other, { x: message.x, y: message.y }, otherFacing));
               }
+            }
+          } else if (message.x == null && message.y == null) {
+            if (pendingHold.current?.id === message.id) pendingHold.current = null;
+            if (carryIdRef.current === message.id) {
+              setCarryId(null);
+              setEditing(false);
             }
           }
           break;
