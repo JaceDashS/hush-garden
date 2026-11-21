@@ -10,8 +10,14 @@ import { Platform, Pressable, View, useWindowDimensions, type TextInput } from "
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HushClient } from "../api/client";
 import { MeshPeerManager, type MeshDataMessage } from "../api/meshPeer";
-import { KICKED_CODE as ROOM_KICKED_CODE, REPLACED_CODE as ROOM_REPLACED_CODE, RoomSocket, roomSocketUrl } from "../api/roomSocket";
-import { GardenSocket, REPLACED_CODE, socketUrl } from "../api/socket";
+import {
+  ADMIN_KICKED_CODE as ROOM_ADMIN_KICKED_CODE,
+  KICKED_CODE as ROOM_KICKED_CODE,
+  REPLACED_CODE as ROOM_REPLACED_CODE,
+  RoomSocket,
+  roomSocketUrl,
+} from "../api/roomSocket";
+import { ADMIN_KICKED_CODE, GardenSocket, REPLACED_CODE, socketUrl } from "../api/socket";
 import { getDeviceId } from "../deviceId";
 import {
   ApiError,
@@ -56,13 +62,14 @@ import type { Settings } from "../settings";
 import { Btn, GearIcon, IconBtn, Input, Modal, T, colors } from "../ui";
 
 type Panel = null | "settings" | "presets" | "login" | "room";
-type Link = "consent" | "entering" | "online" | "lost" | "replaced";
+type Link = "consent" | "entering" | "online" | "lost" | "replaced" | "adminClosed";
 
 const SAVE_DELAY_MS = 350;
 const RETRY_MS = 3000;
 const BONK_RANGE = 2.5;
 const BONK_COOLDOWN_MS = 1500;
 const BONK_DURATION_MS = 420;
+const BONK_STUN_MS = 1200;
 const CHAT_COOLDOWN_MS = 900;
 
 const newId = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -180,6 +187,8 @@ export function Game({
   const nextChatId = useRef(0);
   const lastChatSentAt = useRef(0);
   const lastBonkAt = useRef(0);
+  const stunUntilRef = useRef(0);
+  const changeSpeakersRef = useRef<(next: Speaker[], changedId?: string) => void>(() => undefined);
   const [draft, setDraft] = useState("");
   const chatInput = useRef<React.ComponentRef<typeof TextInput>>(null);
 
@@ -348,6 +357,10 @@ export function Game({
   useEffect(
     () => () => {
       alive.current = false;
+      for (const timer of Object.values(bonkTimers.current)) clearTimeout(timer);
+      bonkTimers.current = {};
+      for (const timer of Object.values(remoteTimers.current)) clearTimeout(timer);
+      remoteTimers.current = {};
       void hidePlayback();
     },
     [],
@@ -358,7 +371,7 @@ export function Game({
     if (Platform.OS !== "web") return;
     const typing = (event: KeyboardEvent) => ["INPUT", "TEXTAREA"].includes((event.target as HTMLElement | null)?.tagName ?? "");
     const down = (event: KeyboardEvent) => {
-      if (linkRef.current === "replaced") return;
+      if (linkRef.current === "replaced" || linkRef.current === "adminClosed") return;
       if (event.key === "Escape" && !event.repeat) {
         event.preventDefault();
         setPanel((open) => (open ? null : typing(event) ? open : "settings"));
@@ -406,7 +419,8 @@ export function Game({
       const seconds = (now - last) / 1000;
       last = now;
       const stick = joystick.current;
-      const input = acting.current ? { x: 0, y: 0 } : stick.x || stick.y ? stick : keysToInput(keys.current);
+      const stunned = now < stunUntilRef.current;
+      const input = acting.current || stunned ? { x: 0, y: 0 } : stick.x || stick.y ? stick : keysToInput(keys.current);
       const active = Math.hypot(input.x, input.y) > 0.05;
       if (active !== wasWalking) {
         wasWalking = active;
@@ -519,7 +533,7 @@ export function Game({
         delete next[actorKey];
         return next;
       });
-    }, BONK_DURATION_MS);
+    }, role === "hit" ? BONK_STUN_MS : BONK_DURATION_MS);
   }, []);
 
   const receiveChat = useCallback(
@@ -601,6 +615,21 @@ export function Game({
           if (!roomDetailRef.current?.allowInteraction) return;
           triggerBonkEffect(fromPeerId, "swing");
           triggerBonkEffect(message.targetId === myId.current ? "me" : message.targetId, "hit");
+          if (message.targetId === myId.current) {
+            stunUntilRef.current = Math.max(stunUntilRef.current, Date.now() + BONK_STUN_MS);
+            pendingHold.current = null;
+            if (carryIdRef.current) {
+              const droppedId = carryIdRef.current;
+              const dropSpot = clampToGarden(meRef.current);
+              carryIdRef.current = null;
+              setCarryId(null);
+              setEditing(false);
+              roomSocket.current?.release(droppedId, dropSpot, facingRef.current);
+              if (placedRef.current.some((s) => s.id === droppedId)) {
+                changeSpeakersRef.current(moveSpeaker(placedRef.current, droppedId, dropSpot), droppedId);
+              }
+            }
+          }
           const sender = othersRef.current[fromPeerId];
           const at = sender ? { x: sender.x, y: sender.y } : { x: message.x, y: message.y };
           const dist = distance(meRef.current, at);
@@ -647,6 +676,10 @@ export function Game({
           for (const timer of Object.values(remoteTimers.current)) clearTimeout(timer);
           remoteTimers.current = {};
           setRemoteActions({});
+          for (const timer of Object.values(bonkTimers.current)) clearTimeout(timer);
+          bonkTimers.current = {};
+          setBonks({});
+          stunUntilRef.current = 0;
           pendingHold.current = null;
           targets.current = {};
 
@@ -692,6 +725,14 @@ export function Game({
           clearTimeout(remoteTimers.current[message.peerId]);
           delete remoteTimers.current[message.peerId];
           setRemoteActions((cur) => {
+            if (!cur[message.peerId]) return cur;
+            const next = { ...cur };
+            delete next[message.peerId];
+            return next;
+          });
+          clearTimeout(bonkTimers.current[message.peerId]);
+          delete bonkTimers.current[message.peerId];
+          setBonks((cur) => {
             if (!cur[message.peerId]) return cur;
             const next = { ...cur };
             delete next[message.peerId];
@@ -765,7 +806,9 @@ export function Game({
             const pending = pendingHold.current;
             pendingHold.current = null;
             const speaker = pending?.id === message.id ? pending : placedRef.current.find((item) => item.id === message.id);
-            if (speaker && pending?.id === message.id && !acting.current) {
+            const stunned = Date.now() < stunUntilRef.current;
+            if (speaker && pending?.id === message.id && !acting.current && !stunned) {
+              carryIdRef.current = speaker.id;
               setCarryId(speaker.id);
               acting.current = true;
               const kind = actionKindOf(settingsRef.current.character, settingsRef.current.customCharacter);
@@ -776,6 +819,8 @@ export function Game({
                 acting.current = false;
                 setAction(undefined);
               }, actionDuration(kind, "lift"));
+            } else if (carryIdRef.current !== message.id || stunned) {
+              roomSocket.current?.release(message.id);
             }
           } else {
             setOthers((cur) => (cur[message.playerId] ? { ...cur, [message.playerId]: { ...cur[message.playerId], carrying: message.id } } : cur));
@@ -843,6 +888,10 @@ export function Game({
           for (const timer of Object.values(remoteTimers.current)) clearTimeout(timer);
           remoteTimers.current = {};
           setRemoteActions({});
+          for (const timer of Object.values(bonkTimers.current)) clearTimeout(timer);
+          bonkTimers.current = {};
+          setBonks({});
+          stunUntilRef.current = 0;
           pendingHold.current = null;
           targets.current = {};
           setLink("online");
@@ -884,7 +933,9 @@ export function Game({
             const pending = pendingHold.current;
             pendingHold.current = null;
             const speaker = pending?.id === message.id ? pending : placedRef.current.find((item) => item.id === message.id);
-            if (speaker && pending?.id === message.id && !acting.current) {
+            const stunned = Date.now() < stunUntilRef.current;
+            if (speaker && pending?.id === message.id && !acting.current && !stunned) {
+              carryIdRef.current = speaker.id;
               setCarryId(speaker.id);
               acting.current = true;
               const kind = actionKindOf(settingsRef.current.character, settingsRef.current.customCharacter);
@@ -895,6 +946,8 @@ export function Game({
                 acting.current = false;
                 setAction(undefined);
               }, actionDuration(kind, "lift"));
+            } else if (carryIdRef.current !== message.id || stunned) {
+              socket.current?.release(message.id);
             }
           } else {
             setOthers((current) => (current[message.playerId] ? { ...current, [message.playerId]: { ...current[message.playerId], carrying: message.id } } : current));
@@ -968,6 +1021,27 @@ export function Game({
     [flash, playRemote, receiveChat],
   );
 
+  const handleTerminalClose = useCallback(
+    (nextLink: "replaced" | "adminClosed") => {
+      for (const timer of Object.values(bonkTimers.current)) clearTimeout(timer);
+      bonkTimers.current = {};
+      setBonks({});
+      stunUntilRef.current = 0;
+      pendingHold.current = null;
+      carryIdRef.current = null;
+      setLink(nextLink);
+      setPanel(null);
+      setCarryId(null);
+      setEditing(false);
+      setPublicSpeakers([]);
+      setOthers({});
+      void audio.pause().catch(() => undefined);
+      setPlaying(false);
+      void hidePlayback();
+    },
+    [audio],
+  );
+
   const connect = useCallback(async () => {
     socket.current?.close();
     socket.current = null;
@@ -1027,15 +1101,9 @@ export function Game({
             void audio.pause().catch(() => undefined);
             onExit();
           } else if (code === ROOM_REPLACED_CODE) {
-            setLink("replaced");
-            setPanel(null);
-            setCarryId(null);
-            setEditing(false);
-            setPublicSpeakers([]);
-            setOthers({});
-            void audio.pause().catch(() => undefined);
-            setPlaying(false);
-            void hidePlayback();
+            handleTerminalClose("replaced");
+          } else if (code === ROOM_ADMIN_KICKED_CODE) {
+            handleTerminalClose("adminClosed");
           } else {
             setLink("lost");
           }
@@ -1063,15 +1131,9 @@ export function Game({
         if (!alive.current) return;
         socket.current = null;
         if (code === REPLACED_CODE) {
-          setLink("replaced");
-          setPanel(null);
-          setCarryId(null);
-          setEditing(false);
-          setPublicSpeakers([]);
-          setOthers({});
-          void audio.pause().catch(() => undefined);
-          setPlaying(false);
-          void hidePlayback();
+          handleTerminalClose("replaced");
+        } else if (code === ADMIN_KICKED_CODE) {
+          handleTerminalClose("adminClosed");
         } else {
           setLink("lost");
         }
@@ -1145,6 +1207,7 @@ export function Game({
     },
     [online, onGarden, pushPublic],
   );
+  changeSpeakersRef.current = changeSpeakers;
 
   const carried = carryId ? placed.find((speaker) => speaker.id === carryId) : undefined;
 
@@ -1167,6 +1230,7 @@ export function Game({
   }, []);
 
   const lift = (speaker: Speaker) => {
+    if (Date.now() < stunUntilRef.current) return;
     if (acting.current || carryId || pendingHold.current) return;
     if (online) {
       pendingHold.current = speaker;
@@ -1179,6 +1243,7 @@ export function Game({
   };
 
   const putDown = () => {
+    if (Date.now() < stunUntilRef.current) return;
     if (!carryId || !carried || acting.current) return;
     const id = carryId;
     setEditing(false);
@@ -1193,6 +1258,7 @@ export function Game({
   };
 
   const create = () => {
+    if (Date.now() < stunUntilRef.current) return;
     if (acting.current || carryId || pendingHold.current) return;
     if (placed.length >= MAX_SPEAKERS) return flash("notice.maxSpeakers", { n: MAX_SPEAKERS });
     if (isRoom) mesh.current?.broadcast({ t: "action", name: "create", look: lookOf(defaultSound()), facing });
@@ -1201,6 +1267,8 @@ export function Game({
       if (placedRef.current.length >= MAX_SPEAKERS) return;
       const id = newId();
       changeSpeakers(addSpeaker(placedRef.current, meRef.current, id), id);
+      if (Date.now() < stunUntilRef.current) return;
+      carryIdRef.current = id;
       setCarryId(id);
       if (isRoom) roomSocket.current?.hold(id, facing);
       else if (online) socket.current?.hold(id, facing);
@@ -1208,6 +1276,7 @@ export function Game({
   };
 
   const discard = () => {
+    if (Date.now() < stunUntilRef.current) return;
     if (acting.current || !carried) return;
     const id = carried.id;
     setEditing(false);
@@ -1228,6 +1297,7 @@ export function Game({
 
   // --- toy hammer bonk ---------------------------------------------------------------------------------------
   const bonkPlayer = (target: RemotePlayer) => {
+    if (Date.now() < stunUntilRef.current) return;
     if (!isRoom || !roomDetailRef.current?.allowInteraction) return;
     const now = Date.now();
     if (now - lastBonkAt.current < BONK_COOLDOWN_MS) return;
@@ -1472,12 +1542,13 @@ export function Game({
     return list;
   }, [isRoom, roomDetail, roomMembers, myName, place, entry?.country, entry?.user, settings.character, settings.customCharacter, playing]);
 
-  if (online && link === "replaced") {
+  if (online && (link === "replaced" || link === "adminClosed")) {
+    const isAdminClosed = link === "adminClosed";
     return (
-      <View testID="garden-replaced" style={{ flex: 1, backgroundColor: colors.sky, alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <View testID={isAdminClosed ? "garden-admin-closed" : "garden-replaced"} style={{ flex: 1, backgroundColor: colors.sky, alignItems: "center", justifyContent: "center", padding: 20 }}>
         <View style={{ width: "100%", maxWidth: 380, backgroundColor: colors.panel, borderRadius: 24, borderWidth: 2, borderColor: colors.panelEdge, padding: 20, gap: 14 }}>
-          <T size={15} weight="700">{t("notice.replaced")}</T>
-          <Btn variant="primary" title={t("common.back")} onPress={onExit} testID="replaced-exit" />
+          <T size={15} weight="700">{t(isAdminClosed ? "notice.adminClosed" : "notice.replaced")}</T>
+          <Btn variant="primary" title={t("common.back")} onPress={onExit} testID={isAdminClosed ? "admin-closed-exit" : "replaced-exit"} />
         </View>
       </View>
     );
@@ -1606,7 +1677,7 @@ export function Game({
         </View>
       )}
     </View>
-    <AdBanner visible={!panel && !askNature && !(online && (link === "consent" || link === "entering" || link === "replaced"))} />
+    <AdBanner visible={!panel && !askNature && !(online && (link === "consent" || link === "entering" || link === "replaced" || link === "adminClosed"))} />
 
       {online && (link === "consent" || link === "entering") && (
         <Modal>

@@ -134,6 +134,8 @@ const place = (point: Point) => {
 const depth = (point: Point) => Math.round((point.x + point.y) * 10);
 
 const BONK_MS = 420;
+const BONK_STUN_MS = 1200;
+const STAMINA_FADE_MS = 450;
 
 function ToyHammerArt({ progress, facing }: { progress: number; facing: 1 | -1 }) {
   // Swings back (-35 deg) then strikes forward (+65 deg) then returns cleanly.
@@ -155,23 +157,81 @@ function ToyHammerArt({ progress, facing }: { progress: number; facing: 1 | -1 }
 }
 
 function BonkHitStars({ progress }: { progress: number }) {
-  const fade = Math.max(0, 1 - progress);
-  const spread = 6 + progress * 14;
+  const fade = progress < 0.75 ? 1 : Math.max(0, 1 - (progress - 0.75) / 0.25);
+  const orbit = progress * Math.PI * 3;
   return (
     <View pointerEvents="none" style={{ position: "absolute", left: -4, top: -18, width: 64, height: 34, opacity: fade }}>
       <Svg width={64} height={34} viewBox="0 0 64 34">
-        {[[-1, 0.4], [0, 1], [1, 0.4]].map(([dx, dy], idx) => (
-          <G key={idx} transform={`translate(${32 + dx * spread} ${22 - dy * spread * 0.7}) scale(${0.7 + progress * 0.5})`}>
-            <Path d="M0 -6 L1.8 -1.8 L6 0 L1.8 1.8 L0 6 L-1.8 1.8 L-6 0 L-1.8 -1.8 Z" fill="#ffe08a" stroke="#e0a800" strokeWidth={0.9} />
-          </G>
-        ))}
+        {[0, 1, 2].map((idx) => {
+          const angle = orbit + (idx * Math.PI * 2) / 3;
+          const x = 32 + Math.cos(angle) * 18;
+          const y = 18 + Math.sin(angle) * 7;
+          const scale = 0.75 + 0.25 * Math.sin(angle);
+          return (
+            <G key={idx} transform={`translate(${x} ${y}) scale(${scale})`}>
+              <Path d="M0 -6 L1.8 -1.8 L6 0 L1.8 1.8 L0 6 L-1.8 1.8 L-6 0 L-1.8 -1.8 Z" fill="#ffe08a" stroke="#e0a800" strokeWidth={0.9} />
+            </G>
+          );
+        })}
       </Svg>
     </View>
   );
 }
 
+function StaminaBar({ value, exhausted }: { value: number; exhausted: boolean }) {
+  const full = value >= 99.9;
+  const opacity = useRef(new Animated.Value(full ? 0 : 1)).current;
+  const [visible, setVisible] = useState(!full);
+
+  useEffect(() => {
+    if (!full) {
+      opacity.stopAnimation();
+      opacity.setValue(1);
+      setVisible(true);
+      return;
+    }
+    const anim = Animated.timing(opacity, {
+      toValue: 0,
+      duration: STAMINA_FADE_MS,
+      useNativeDriver: false,
+    });
+    anim.start(({ finished }) => {
+      if (finished) setVisible(false);
+    });
+    return () => anim.stop();
+  }, [full, opacity]);
+
+  if (!visible && full) return null;
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      testID="stamina-bar"
+      style={{
+        marginTop: 2,
+        width: 44,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: colors.track,
+        borderWidth: 1.2,
+        borderColor: colors.ink,
+        overflow: "hidden",
+        opacity,
+      }}
+    >
+      <View
+        style={{
+          height: "100%",
+          width: `${Math.max(0, Math.min(100, value))}%`,
+          backgroundColor: exhausted ? colors.danger : colors.mintDeep,
+        }}
+      />
+    </Animated.View>
+  );
+}
+
 /** The character with whatever it holds; `moment` is the frame of the action being played, if any. */
-function ActorBody({ actor, moment, progress, sheet, bonkProgress }: { actor: Actor; moment: ActionMoment | null; progress: number; sheet: ReturnType<typeof useSheet>; bonkProgress: number | null }) {
+function ActorBody({ actor, moment, progress, sheet, bonkProgress, bonkStunProgress }: { actor: Actor; moment: ActionMoment | null; progress: number; sheet: ReturnType<typeof useSheet>; bonkProgress: number | null; bonkStunProgress: number | null }) {
   const action = actor.action;
   const facing = actor.facing ?? 1;
   const hitSquash = actor.bonk?.role === "hit" && bonkProgress !== null
@@ -187,7 +247,7 @@ function ActorBody({ actor, moment, progress, sheet, bonkProgress }: { actor: Ac
         {actor.custom ? <ImageCharacter id={actor.custom} sheet={sheet} facing={facing} walking={actor.walking} carrying={!!actor.carrying} muted={actor.muted} /> : <Character kind={actor.kind} facing={facing} walking={actor.walking} carrying={!!actor.carrying} muted={actor.muted} />}
         {!!actor.carrying && <PropView prop={CARRY} form="speaker" look={actor.carrying} facing={facing} origin={CHARACTER_FEET} />}
         {actor.bonk?.role === "swing" && bonkProgress !== null && <ToyHammerArt progress={bonkProgress} facing={facing} />}
-        {actor.bonk?.role === "hit" && bonkProgress !== null && <BonkHitStars progress={bonkProgress} />}
+        {actor.bonk?.role === "hit" && bonkStunProgress !== null && <BonkHitStars progress={bonkStunProgress} />}
       </View>
     );
   }
@@ -203,7 +263,7 @@ function ActorBody({ actor, moment, progress, sheet, bonkProgress }: { actor: Ac
         <FxView key={effect.kind + index + effect.x} kind={effect.kind} x={effect.x} y={effect.y} progress={effect.progress} facing={facing} origin={CHARACTER_FEET} />
       ))}
       {actor.bonk?.role === "swing" && bonkProgress !== null && <ToyHammerArt progress={bonkProgress} facing={facing} />}
-      {actor.bonk?.role === "hit" && bonkProgress !== null && <BonkHitStars progress={bonkProgress} />}
+      {actor.bonk?.role === "hit" && bonkStunProgress !== null && <BonkHitStars progress={bonkStunProgress} />}
     </View>
   );
 }
@@ -225,11 +285,11 @@ function ActorView({ actor }: { actor: Actor }) {
   const length = action ? actionDuration(kind, action.name === "putDown" ? "lift" : action.name) : 0;
   const progress = action && length > 0 ? Math.max(0, Math.min(1, (now - action.startedAt) / length)) : 0;
   const bonkProgress = bonk ? Math.max(0, Math.min(1, (now - bonk.startedAt) / BONK_MS)) : null;
+  const bonkStunProgress = bonk?.role === "hit" ? Math.max(0, Math.min(1, (now - bonk.startedAt) / BONK_STUN_MS)) : null;
   const at = place(actor);
   // While lifting or putting down, the name rises and sinks with the speaker instead of jumping.
   const lifting = action && (action.name === "lift" || action.name === "putDown") && moment;
   const headroom = lifting ? CARRY_HEIGHT * Math.max(0, Math.min(1, moment.prop.y / CARRY.y)) : actor.carrying || action ? CARRY_HEIGHT : 0;
-  const showStamina = !!actor.stamina && actor.stamina.value < 99.9;
   return (
     <View pointerEvents="none" style={{ position: "absolute", left: at.left - 90, top: at.top - CHARACTER_SIZE.height - 44 - LABEL_HEIGHT - headroom, width: 180, alignItems: "center", zIndex: depth(actor) }}>
       <View style={{ height: 40, justifyContent: "flex-end", alignItems: "center" }}>
@@ -244,30 +304,8 @@ function ActorView({ actor }: { actor: Actor }) {
         <T size={11.5} weight="800" lines={1}>{actor.name}</T>
         <T size={9.5} weight="600" tone="muted" lines={1}>{actor.label}</T>
       </View>
-      <ActorBody actor={actor} moment={moment} progress={progress} sheet={sheet} bonkProgress={bonkProgress} />
-      {showStamina && (
-        <View
-          testID="stamina-bar"
-          style={{
-            marginTop: 2,
-            width: 44,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: colors.track,
-            borderWidth: 1.2,
-            borderColor: colors.ink,
-            overflow: "hidden",
-          }}
-        >
-          <View
-            style={{
-              height: "100%",
-              width: `${Math.max(0, Math.min(100, actor.stamina!.value))}%`,
-              backgroundColor: actor.stamina!.exhausted ? colors.danger : colors.mintDeep,
-            }}
-          />
-        </View>
-      )}
+      <ActorBody actor={actor} moment={moment} progress={progress} sheet={sheet} bonkProgress={bonkProgress} bonkStunProgress={bonkStunProgress} />
+      {!!actor.stamina && <StaminaBar value={actor.stamina.value} exhausted={actor.stamina.exhausted} />}
     </View>
   );
 }

@@ -429,7 +429,9 @@ test("character API calls", async () => {
 });
 
 import { parseMeshMessage } from "../src/api/meshPeer.ts";
-import { parseRoomServerMessage, roomSocketUrl } from "../src/api/roomSocket.ts";
+import { ADMIN_KICKED_CODE as ROOM_ADMIN_KICKED_CODE, KICKED_CODE, REPLACED_CODE as ROOM_REPLACED_CODE, parseRoomServerMessage, roomSocketUrl } from "../src/api/roomSocket.ts";
+import { ADMIN_KICKED_CODE as SOCKET_ADMIN_KICKED_CODE, REPLACED_CODE as SOCKET_REPLACED_CODE } from "../src/api/socket.ts";
+import { LANGUAGES, translate } from "../src/domain/text.ts";
 import { EXHAUSTED_RECOVERY, MAX_STAMINA, STAMINA_DRAIN_PER_SEC, STAMINA_REGEN_DELAY_MS, initialStaminaState, stepStamina } from "../src/domain/stamina.ts";
 import { MAX_SPEAKER_PRESETS, normalizeSpeakerPresets, removeSpeakerPreset, upsertSpeakerPreset } from "../src/domain/speakerPresets.ts";
 import { defaultSound } from "../src/domain/sound.ts";
@@ -528,4 +530,27 @@ test("AudioRunningTracker notifies subscribers on state transitions", () => {
   unsubscribe();
   tracker.emit(true);
   assert.deepEqual(events, [true, false]);
+});
+
+test("admin close code 4003 and localized texts for admin close and room placeholder", () => {
+  assert.equal(ROOM_REPLACED_CODE, 4001);
+  assert.equal(SOCKET_REPLACED_CODE, 4001);
+  assert.equal(KICKED_CODE, 4002);
+  assert.equal(ROOM_ADMIN_KICKED_CODE, 4003);
+  assert.equal(SOCKET_ADMIN_KICKED_CODE, 4003);
+
+  assert.equal(translate("ko", "notice.adminClosed"), "관리자에 의해 연결이 종료되었습니다.");
+  assert.equal(translate("en", "notice.adminClosed"), "Your connection was closed by an administrator.");
+  assert.equal(translate("ja", "notice.adminClosed"), "管理者により接続が終了されました。");
+  assert.equal(translate("zh", "notice.adminClosed"), "管理员已关闭此连接。");
+
+  assert.equal(translate("ko", "lobby.roomNamePlaceholder"), "조용한 정원");
+  assert.equal(translate("en", "lobby.roomNamePlaceholder"), "Quiet Garden");
+  assert.equal(translate("ja", "lobby.roomNamePlaceholder"), "静かな庭");
+  assert.equal(translate("zh", "lobby.roomNamePlaceholder"), "安静的花园");
+
+  for (const lang of LANGUAGES) {
+    assert.ok(translate(lang, "notice.adminClosed").length > 0);
+    assert.ok(translate(lang, "lobby.roomNamePlaceholder").length > 0);
+  }
 });

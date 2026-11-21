@@ -88,6 +88,8 @@ function toPlayer(value: unknown) {
 
 /** Close code the server sends when a newer visit from the same device replaced this one. */
 export const REPLACED_CODE = 4001;
+/** Close code the server sends when an administrator closed the connection. */
+export const ADMIN_KICKED_CODE = 4003;
 
 /** Connection to the shared garden. Reconnecting needs a new ticket, so the owner calls enter() again on close. */
 export class GardenSocket {

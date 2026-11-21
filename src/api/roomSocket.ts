@@ -7,6 +7,7 @@ import type { CountryInfo, RoomDetail, RoomMember, RoomServerMessage } from "./t
 
 export const REPLACED_CODE = 4001;
 export const KICKED_CODE = 4002;
+export const ADMIN_KICKED_CODE = 4003;
 
 export function roomSocketUrl(apiOrigin: string, ticket: string): string {
   return apiOrigin.replace(/^http/, "ws") + "/hush-garden/room-socket?ticket=" + encodeURIComponent(ticket);

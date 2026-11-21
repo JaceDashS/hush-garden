@@ -127,7 +127,7 @@ export function RoomLobby({
       const [coordinates, deviceId] = await Promise.all([requestCoordinates(), getDeviceId()]);
       const res = await client.createRoom({
         coordinates,
-        name: roomName.trim(),
+        name: roomName.trim() || t("lobby.roomNamePlaceholder"),
         visibility,
         maxPlayers,
         allowInteraction,
