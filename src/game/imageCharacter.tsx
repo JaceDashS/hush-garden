@@ -4,7 +4,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Image, View } from "react-native";
-import Svg, { Ellipse } from "react-native-svg";
+import Svg, { Circle, Ellipse, Path } from "react-native-svg";
 import { API_ORIGIN } from "../config";
 import type { ActionName } from "../domain/actions";
 import { WALK_FRAME_MS, nextWalkFrame } from "../domain/characters";
@@ -85,12 +85,43 @@ export function SheetFrame({ id, row, column, facing = 1 }: { id: string; row: n
   );
 }
 
+/** Crisp earmuff badge placed at the top corner of custom sprite characters so artwork is never obscured. */
+function CustomEarmuffBadge() {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        right: -4,
+        top: 0,
+        width: 24,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: "rgba(255,250,242,0.95)",
+        borderWidth: 1.5,
+        borderColor: "#4a4038",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Svg width={18} height={16} viewBox="0 0 18 16">
+        <Path d="M3.5 10 C3.5 4, 14.5 4, 14.5 10" stroke="#4a4038" strokeWidth={2.2} fill="none" strokeLinecap="round" />
+        <Path d="M3.5 10 C3.5 4, 14.5 4, 14.5 10" stroke="#e9728f" strokeWidth={1.2} fill="none" strokeLinecap="round" />
+        <Ellipse cx={3.5} cy={10.5} rx={2.2} ry={3} fill="#ff9eb5" stroke="#4a4038" strokeWidth={1.2} />
+        <Ellipse cx={14.5} cy={10.5} rx={2.2} ry={3} fill="#ff9eb5" stroke="#4a4038" strokeWidth={1.2} />
+        <Circle cx={3} cy={9.6} r={0.6} fill="#ffffff" />
+        <Circle cx={14} cy={9.6} r={0.6} fill="#ffffff" />
+      </Svg>
+    </View>
+  );
+}
+
 /**
  * An image character in the scene. It walks with its own timer like the drawn characters; `action` is the
  * action being played and how far it is. `sheet` comes from `useSheet(id)` of the caller, which also shows the
  * loading mark; until the image is ready the drawn stand-in for its id is shown.
  */
-export function ImageCharacter({ id, sheet, facing = 1, walking = false, carrying = false, action }: { id: string; sheet: { ready: boolean; loader: React.ReactNode }; facing?: 1 | -1; walking?: boolean; carrying?: boolean; action?: { name: ActionName; progress: number } }) {
+export function ImageCharacter({ id, sheet, facing = 1, walking = false, carrying = false, muted = false, action }: { id: string; sheet: { ready: boolean; loader: React.ReactNode }; facing?: 1 | -1; walking?: boolean; carrying?: boolean; muted?: boolean; action?: { name: ActionName; progress: number } }) {
   const [frame, setFrame] = useState(0);
   const { ready, loader } = sheet;
   useEffect(() => {
@@ -102,7 +133,7 @@ export function ImageCharacter({ id, sheet, facing = 1, walking = false, carryin
   if (!ready) {
     return (
       <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
-        <Character kind={fallbackKind(id)} facing={facing} walking={walking} carrying={carrying || action?.name === "lift"} />
+        <Character kind={fallbackKind(id)} facing={facing} walking={walking} carrying={carrying || action?.name === "lift"} muted={muted} />
         {loader}
       </View>
     );
@@ -112,6 +143,7 @@ export function ImageCharacter({ id, sheet, facing = 1, walking = false, carryin
     <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
       <Shadow />
       <SheetFrame id={id} row={row} column={column} facing={facing} />
+      {muted && <CustomEarmuffBadge />}
     </View>
   );
 }

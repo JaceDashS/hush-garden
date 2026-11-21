@@ -1,10 +1,20 @@
-import type { CharacterKind } from "../domain/characters";
+import { normalizeCharacter, type CharacterKind } from "../domain/characters";
 import { normalizeSpeakers } from "../domain/garden";
-import { normalizeCharacterList, type CharacterList } from "../domain/imageCharacters";
-import type { Speaker } from "../domain/sound";
-import { ApiError, type Entry, type Transport, type User } from "./types";
+import { isCharacterId, normalizeCharacterList, type CharacterList } from "../domain/imageCharacters";
+import type { Speaker, SpeakerSound } from "../domain/sound";
+import { MAX_SPEAKER_PRESETS, normalizeSpeakerPresets } from "../domain/speakerPresets";
+import {
+  ApiError,
+  type Entry,
+  type HushProfile,
+  type PublicRoomSummary,
+  type RoomEntryResponse,
+  type SpeakerPresetList,
+  type Transport,
+  type User,
+} from "./types";
 
-/** Account and public garden API. Requests run one at a time so session updates never race. */
+/** Account, profile, speaker preset, and P2P room lobby API. Requests run one at a time so session updates never race. */
 export class HushClient {
   private tail: Promise<unknown> = Promise.resolve();
   private user: User | null = null;
@@ -32,6 +42,7 @@ export class HushClient {
   get currentUser(): User | null {
     return this.user;
   }
+
   /** Posts public Hush Garden feedback using the current account or a guest edit password. */
   submitFeedback(content: string, password: string): Promise<{ id: number }> {
     return this.serialize(() => {
@@ -109,11 +120,121 @@ export class HushClient {
     });
   }
 
+  /** Fetches the signed-in account's synced garden appearance and nickname. */
+  getProfile(): Promise<HushProfile> {
+    return this.serialize(async () => {
+      const res = await this.call<Record<string, unknown>>("/hush-garden/profile");
+      return {
+        characterName: typeof res.characterName === "string" ? res.characterName : "",
+        character: normalizeCharacter(res.character),
+        customCharacter: isCharacterId(res.customCharacter) ? res.customCharacter : null,
+      };
+    });
+  }
+
+  /** Saves the signed-in account's selected drawn/custom character for cross-device sync. */
+  saveProfile(character: CharacterKind, customCharacter: string | null): Promise<HushProfile> {
+    return this.serialize(async () => {
+      const res = await this.call<Record<string, unknown>>("/hush-garden/profile", {
+        character,
+        customCharacter: customCharacter || null,
+      });
+      return {
+        characterName: typeof res.characterName === "string" ? res.characterName : "",
+        character: normalizeCharacter(res.character),
+        customCharacter: isCharacterId(res.customCharacter) ? res.customCharacter : null,
+      };
+    });
+  }
+
+  /** Lists the signed-in account's personal speaker sound presets (up to 5). */
+  listSpeakerPresets(): Promise<SpeakerPresetList> {
+    return this.serialize(async () => {
+      const res = await this.call<Record<string, unknown>>("/hush-garden/presets");
+      return {
+        presets: normalizeSpeakerPresets(res.presets),
+        limit: typeof res.limit === "number" ? res.limit : MAX_SPEAKER_PRESETS,
+      };
+    });
+  }
+
+  /** Saves or updates one personal speaker sound preset for the signed-in account. */
+  saveSpeakerPreset(input: { id?: string; name: string; sound: SpeakerSound }): Promise<SpeakerPresetList> {
+    return this.serialize(async () => {
+      const res = await this.call<Record<string, unknown>>("/hush-garden/presets/save", input);
+      return {
+        presets: normalizeSpeakerPresets(res.presets),
+        limit: typeof res.limit === "number" ? res.limit : MAX_SPEAKER_PRESETS,
+      };
+    });
+  }
+
+  /** Deletes one personal speaker sound preset for the signed-in account. */
+  deleteSpeakerPreset(id: string): Promise<SpeakerPresetList> {
+    return this.serialize(async () => {
+      const res = await this.call<Record<string, unknown>>("/hush-garden/presets/delete", { id });
+      return {
+        presets: normalizeSpeakerPresets(res.presets),
+        limit: typeof res.limit === "number" ? res.limit : MAX_SPEAKER_PRESETS,
+      };
+    });
+  }
+
+  /** Lists currently open public P2P rooms. */
+  listRooms(): Promise<PublicRoomSummary[]> {
+    return this.serialize(async () => {
+      const res = await this.call<{ rooms?: PublicRoomSummary[] }>("/hush-garden/rooms");
+      return Array.isArray(res.rooms) ? res.rooms : [];
+    });
+  }
+
+  /** Creates a new P2P room (signed-in users only) and returns its room metadata and join ticket. */
+  createRoom(params: {
+    coordinates: { latitude: number; longitude: number } | null;
+    name: string;
+    visibility: "public" | "private";
+    maxPlayers: number;
+    allowInteraction: boolean;
+    allowGuestEdit: boolean;
+    character: CharacterKind;
+    customCharacter?: string;
+    deviceId?: string;
+  }): Promise<RoomEntryResponse> {
+    const { coordinates, customCharacter, deviceId, ...rest } = params;
+    return this.serialize(() =>
+      this.call<RoomEntryResponse>("/hush-garden/rooms/create", {
+        consent: true,
+        ...rest,
+        ...(customCharacter ? { customCharacter } : {}),
+        ...(deviceId ? { deviceId } : {}),
+        ...(coordinates ?? {}),
+      }),
+    );
+  }
+
+  /** Joins an existing P2P room by room id or invite code. */
+  joinRoom(params: {
+    coordinates: { latitude: number; longitude: number } | null;
+    roomId?: string;
+    code?: string;
+    character: CharacterKind;
+    customCharacter?: string;
+    deviceId?: string;
+  }): Promise<RoomEntryResponse> {
+    const { coordinates, customCharacter, deviceId, ...rest } = params;
+    return this.serialize(() =>
+      this.call<RoomEntryResponse>("/hush-garden/rooms/join", {
+        consent: true,
+        ...rest,
+        ...(customCharacter ? { customCharacter } : {}),
+        ...(deviceId ? { deviceId } : {}),
+        ...(coordinates ?? {}),
+      }),
+    );
+  }
+
   /**
-   * Enters the public garden. `consent` must be true. Coordinates are optional and already rounded by the
-   * caller; without them the server uses the IP region. The server keeps only the place name.
-   * `character` is the picture other players see and `name` the character name; an empty or refused name
-   * becomes the account name or "Guest", and the accepted one comes back in the result.
+   * Enters the legacy public garden.
    */
   enter(coordinates: { latitude: number; longitude: number } | null, character: CharacterKind, name: string, deviceId?: string, customCharacter?: string): Promise<Entry> {
     return this.serialize(() => this.call<Entry>("/hush-garden/enter", { consent: true, character, name, ...(customCharacter ? { customCharacter } : {}), ...(deviceId ? { deviceId } : {}), ...(coordinates ?? {}) }));

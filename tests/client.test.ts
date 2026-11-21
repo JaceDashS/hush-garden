@@ -47,8 +47,8 @@ test("server messages are validated and unknown ones are dropped", () => {
 test("settings fall back to defaults and keep valid values", () => {
   const device = deviceLanguage();
   assert.deepEqual(normalizeSettings(null), { ...DEFAULT_SETTINGS, language: device });
-  assert.deepEqual(normalizeSettings({ volume: 7, mono: "yes", cue: "loud", consent: "yes", character: "dragon", chatColor: "red", language: "xx", natureSounds: "maybe" }), { volume: 1, mono: false, cue: "tone", consent: false, character: "bunny", customCharacter: "", chatColor: "", name: "", language: device, natureSounds: "ask" });
-  assert.deepEqual(normalizeSettings({ volume: 0.25, mono: true, cue: "dip", consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", chatColor: "#8FD6B4", name: " Momo ", language: "ja", natureSounds: "no" }), { volume: 0.25, mono: true, cue: "dip", consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", chatColor: "#8fd6b4", name: "Momo", language: "ja", natureSounds: "no" });
+  assert.deepEqual(normalizeSettings({ volume: 7, mono: "yes", cue: "loud", consent: "yes", character: "dragon", chatColor: "red", language: "xx", natureSounds: "maybe" }), { volume: 1, mono: false, cue: "tone", chatNotifications: false, consent: false, character: "bunny", customCharacter: "", chatColor: "", name: "", language: device, natureSounds: "ask", speakerPresets: [] });
+  assert.deepEqual(normalizeSettings({ volume: 0.25, mono: true, cue: "dip", chatNotifications: true, consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", chatColor: "#8FD6B4", name: " Momo ", language: "ja", natureSounds: "no" }), { volume: 0.25, mono: true, cue: "dip", chatNotifications: true, consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", chatColor: "#8fd6b4", name: "Momo", language: "ja", natureSounds: "no", speakerPresets: [] });
   assert.equal(normalizeSettings({ customCharacter: "../x" }).customCharacter, "");
   assert.equal(normalizeSettings({ name: "admin" }).name, "");
 });
@@ -426,4 +426,106 @@ test("character API calls", async () => {
   assert.deepEqual(calls[3].body, { id });
   assert.equal((calls[5].body as { customCharacter?: string }).customCharacter, id);
   assert.equal("customCharacter" in (calls[6].body as object), false);
+});
+
+import { parseMeshMessage } from "../src/api/meshPeer.ts";
+import { parseRoomServerMessage, roomSocketUrl } from "../src/api/roomSocket.ts";
+import { EXHAUSTED_RECOVERY, MAX_STAMINA, STAMINA_DRAIN_PER_SEC, STAMINA_REGEN_DELAY_MS, initialStaminaState, stepStamina } from "../src/domain/stamina.ts";
+import { MAX_SPEAKER_PRESETS, normalizeSpeakerPresets, removeSpeakerPreset, upsertSpeakerPreset } from "../src/domain/speakerPresets.ts";
+import { defaultSound } from "../src/domain/sound.ts";
+
+test("stamina drains while sprinting, exhausts at zero, and recovers after delay", () => {
+  let s = initialStaminaState();
+  assert.equal(s.stamina, MAX_STAMINA);
+  // Step in 0.1s increments (stepStamina caps dt to 0.1s per tick).
+  let now = 1000;
+  for (let i = 0; i < 34; i++) {
+    now += 100;
+    s = stepStamina(s, true, true, 0.1, now);
+  }
+  assert.equal(s.stamina, 0);
+  assert.equal(s.exhausted, true);
+  assert.equal(s.sprinting, false);
+
+  // Immediately releasing Shift does not regenerate until STAMINA_REGEN_DELAY_MS elapses.
+  s = stepStamina(s, false, false, 0.1, now + 200);
+  assert.equal(s.stamina, 0);
+  assert.equal(s.exhausted, true);
+
+  // Advance past regen delay; exhausted stays true until EXHAUSTED_RECOVERY (25).
+  let regenNow = now + STAMINA_REGEN_DELAY_MS;
+  for (let i = 0; i < 10; i++) {
+    regenNow += 100;
+    s = stepStamina(s, true, true, 0.1, regenNow);
+    assert.equal(s.sprinting, false);
+  }
+  assert.ok(s.stamina > 20 && s.stamina < EXHAUSTED_RECOVERY);
+  assert.equal(s.exhausted, true);
+
+  for (let i = 0; i < 5; i++) {
+    regenNow += 100;
+    s = stepStamina(s, false, false, 0.1, regenNow);
+  }
+  assert.ok(s.stamina >= EXHAUSTED_RECOVERY);
+  assert.equal(s.exhausted, false);
+
+  // Can sprint again once recovered.
+  const sprinted = stepStamina(s, true, true, 0.1, regenNow + 100);
+  assert.equal(sprinted.sprinting, true);
+  assert.ok(sprinted.stamina < s.stamina && Math.abs((s.stamina - sprinted.stamina) - STAMINA_DRAIN_PER_SEC * 0.1) < 1e-6);
+});
+
+test("personal speaker presets enforce max 5, overwrite by name/id, and delete", () => {
+  let list = normalizeSpeakerPresets([{ id: "1", name: "Rain", sound: { source: "rain", level: 0.5 } }, { id: "" }]);
+  assert.equal(list.length, 1);
+  for (let i = 2; i <= MAX_SPEAKER_PRESETS; i++) {
+    list = upsertSpeakerPreset(list, { id: String(i), name: "P" + i, sound: defaultSound() });
+  }
+  assert.equal(list.length, MAX_SPEAKER_PRESETS);
+
+  // 6th with new name is ignored.
+  const ignored = upsertSpeakerPreset(list, { id: "6", name: "P6", sound: defaultSound() });
+  assert.equal(ignored.length, MAX_SPEAKER_PRESETS);
+
+  // Overwrite by existing name updates sound without adding a 6th entry.
+  const overwritten = upsertSpeakerPreset(list, { id: "new-id", name: "P2", sound: { source: "campfire", recording: "fs-501417", level: 0.8, oscillators: [], eq: { bands: [] } } });
+  assert.equal(overwritten.length, MAX_SPEAKER_PRESETS);
+  assert.equal(overwritten.find((p) => p.name === "P2")?.sound.source, "campfire");
+
+  const deleted = removeSpeakerPreset(overwritten, "1");
+  assert.equal(deleted.length, MAX_SPEAKER_PRESETS - 1);
+});
+
+test("room signaling and mesh messages parse defensively", () => {
+  assert.equal(roomSocketUrl("https://api.jace-s.com", "tk 1"), "wss://api.jace-s.com/hush-garden/room-socket?ticket=tk%201");
+  const hello = parseRoomServerMessage(JSON.stringify({
+    t: "roomHello",
+    peerId: "p1",
+    room: { id: "r1", code: "ABCDEF", name: "Focus", visibility: "public", hostPeerId: "p1", hostCountry: { code: "KR", name: "South Korea" }, playerCount: 1, maxPlayers: 8, allowInteraction: true, allowGuestEdit: false, createdAt: 10 },
+    members: [{ peerId: "p2", name: "Guest #1234", place: "Local", country: { code: "LOCAL", name: "Local" }, character: "cat", muted: true, joinedAt: 20, isGuest: true }],
+    speakers: [],
+  }));
+  assert.ok(hello && hello.t === "roomHello" && hello.members[0].muted === true && hello.room.hostCountry.code === "KR");
+  assert.deepEqual(parseRoomServerMessage(JSON.stringify({ t: "peerMuted", peerId: "p2", muted: true })), { t: "peerMuted", peerId: "p2", muted: true });
+  assert.equal(parseRoomServerMessage("bad"), null);
+
+  assert.deepEqual(parseMeshMessage(JSON.stringify({ t: "move", x: 100, y: -5 })), { t: "move", x: 23.65, y: 0.35 });
+  assert.deepEqual(parseMeshMessage(JSON.stringify({ t: "bonk", targetId: "p2", x: 5, y: 6 })), { t: "bonk", targetId: "p2", x: 5, y: 6 });
+  assert.equal(parseMeshMessage(JSON.stringify({ t: "chat", text: "   ", x: 5, y: 5 })), null);
+});
+
+import { AudioRunningTracker } from "../src/audio/state.ts";
+
+test("AudioRunningTracker notifies subscribers on state transitions", () => {
+  const tracker = new AudioRunningTracker();
+  const events: boolean[] = [];
+  const unsubscribe = tracker.subscribe((running) => events.push(running));
+  assert.equal(tracker.running, false);
+  tracker.emit(true);
+  assert.equal(tracker.running, true);
+  tracker.emit(false);
+  assert.equal(tracker.running, false);
+  unsubscribe();
+  tracker.emit(true);
+  assert.deepEqual(events, [true, false]);
 });

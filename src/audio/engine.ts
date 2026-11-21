@@ -17,6 +17,7 @@ import { LIMIT_RANGE, limiterCurve } from "./limiter";
 import { SoundLibrary, type SoundFiles } from "./library";
 import { NaturePlayer } from "./naturePlayer";
 import { NOISE_CHUNK_SECONDS, NOISE_CROSSFADE_SECONDS, createNoiseState, fillNoiseChunk } from "./noise";
+import { AudioRunningTracker } from "./state";
 
 /** Gain changes glide with this time constant so walking never clicks. */
 const GLIDE = 0.08;
@@ -148,10 +149,20 @@ export class GardenAudio {
   private mono = false;
   private mixAnalyser: AnalyserNode | null = null;
   private spectrumData: Float32Array | null = null;
+  private runningTracker = new AudioRunningTracker();
 
   /** True once start() has run. Sound can only start from a user gesture in browsers. */
   get running(): boolean {
     return this.context?.state === "running";
+  }
+
+  /** Subscribes to playback running state transitions. Returns an unsubscribe function. */
+  subscribe(listener: (running: boolean) => void): () => void {
+    return this.runningTracker.subscribe(listener);
+  }
+
+  private emitRunning(): void {
+    this.runningTracker.emit(this.running);
   }
 
   /** Creates the audio graph on first use and resumes playback. Call from a tap or key press. */
@@ -159,6 +170,9 @@ export class GardenAudio {
     if (!this.context) {
       const context = new AudioContext();
       this.context = context;
+      (context as unknown as { addEventListener?: (type: string, fn: () => void) => void }).addEventListener?.("statechange", () => {
+        if (this.context === context) this.emitRunning();
+      });
       this.bus = context.createGain();
       this.dry = context.createGain();
       this.wet = context.createGain();
@@ -188,11 +202,13 @@ export class GardenAudio {
     }
     if (this.context.state !== "running") await this.context.resume();
     this.refresh();
+    this.emitRunning();
   }
 
   /** Pauses all sound and keeps the graph for a quick resume. */
   async pause(): Promise<void> {
     if (this.context?.state === "running") await this.context.suspend();
+    this.emitRunning();
   }
 
   /** Frees every node. The engine can be started again afterwards. */
@@ -202,6 +218,7 @@ export class GardenAudio {
     this.context = null;
     this.mixAnalyser = null;
     await context?.close();
+    this.emitRunning();
   }
 
   /**
@@ -282,6 +299,38 @@ export class GardenAudio {
       param.setValueAtTime(to, now + fade + hold);
       param.linearRampToValueAtTime(from, end);
     }
+  }
+
+  /** Plays a bouncy toy-hammer "bonk" sound with spatial pan and distance attenuation. */
+  playBonk(pan: number, gain: number): void {
+    const context = this.context;
+    if (!context || context.state !== "running" || gain <= 0.005) return;
+    const now = context.currentTime;
+    const clampedGain = Math.max(0, Math.min(1, gain)) * 0.45;
+    const osc = context.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(190, now + 0.055);
+    osc.frequency.exponentialRampToValueAtTime(380, now + 0.14);
+
+    const env = context.createGain();
+    env.gain.setValueAtTime(0.0001, now);
+    env.gain.linearRampToValueAtTime(clampedGain, now + 0.012);
+    env.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+    const panner = context.createStereoPanner();
+    panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), now);
+
+    osc.connect(env);
+    env.connect(panner);
+    panner.connect(this.master);
+    osc.onended = () => {
+      try { osc.disconnect(); } catch { /* ignore */ }
+      try { env.disconnect(); } catch { /* ignore */ }
+      try { panner.disconnect(); } catch { /* ignore */ }
+    };
+    osc.start(now);
+    osc.stop(now + 0.19);
   }
 
   /**

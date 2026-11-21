@@ -1,18 +1,29 @@
 /**
- * The playable garden. `mode` "mine" is the private offline garden kept on the device; "public" is the shared
- * garden on the server, which needs location consent to enter and a login to chat.
- *
- * Speakers are handled with the character's hands: a speaker is made into the hands, lifted from the ground when
- * the character stands near it, edited only while held, and put down or discarded from the hands.
+ * The playable garden.
+ * - `mine` / `test`: private offline garden kept on the device.
+ * - `room`: P2P full-mesh online room coordinated by the room signaling socket.
+ * - `public`: legacy server-relayed public garden (kept for compatibility).
  */
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, View, useWindowDimensions, type TextInput } from "react-native";
+import { Platform, Pressable, View, useWindowDimensions, type TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HushClient } from "../api/client";
+import { MeshPeerManager, type MeshDataMessage } from "../api/meshPeer";
+import { KICKED_CODE as ROOM_KICKED_CODE, REPLACED_CODE as ROOM_REPLACED_CODE, RoomSocket, roomSocketUrl } from "../api/roomSocket";
 import { GardenSocket, REPLACED_CODE, socketUrl } from "../api/socket";
 import { getDeviceId } from "../deviceId";
-import { ApiError, type Entry, type RemotePlayer, type ServerMessage, type User } from "../api/types";
+import {
+  ApiError,
+  type Entry,
+  type RemotePlayer,
+  type RoomDetail,
+  type RoomEntryResponse,
+  type RoomMember,
+  type RoomServerMessage,
+  type ServerMessage,
+  type User,
+} from "../api/types";
 import type { GardenAudio } from "../audio/engine";
 import { onFloatingBubbleEvents, syncFloatingBubblePlaying } from "../audio/floatingBubble";
 import { hidePlayback, onPlaybackButtons, showPlayback } from "../audio/session";
@@ -20,6 +31,8 @@ import { MyCharacters } from "../components/MyCharacters";
 import { AdBanner } from "../components/AdBanner";
 import { ChatLog } from "../components/ChatLog";
 import { ConsentCard, LoginCard, NatureDownloadCard, PresetCard, SettingsCard } from "../components/Panels";
+import { countryFlag } from "../components/RoomLobby";
+import { RoomPanel } from "../components/RoomPanel";
 import { dismissToast, showMessage, showToast } from "../toasts";
 import { loadNotices, showNotices } from "../api/notices";
 import { GardenStatus } from "../components/GardenStatus";
@@ -29,29 +42,37 @@ import { clearPatch, startPatch, usePatchState } from "../audio/patchSession";
 import { API_ORIGIN } from "../config";
 import { actionDuration, actionKindOf, liftTravel, type ActionName, type GroundSpot } from "../domain/actions";
 import { PICK_UP_TILES, resolveChatColor } from "../domain/characters";
-import { BUBBLE_MS, CHAT_MAX_LENGTH, appendChatEntry, cleanMessage, cueFor, type ChatEntry } from "../domain/chat";
+import { BUBBLE_MS, CHAT_MAX_LENGTH, CHAT_RANGE, appendChatEntry, cleanMessage, cueFor, type ChatEntry } from "../domain/chat";
 import { addSpeaker, applyPreset, deletePreset, moveSpeaker, removeSpeaker, resetGarden, savePreset, updateSpeaker, type MyGarden } from "../domain/garden";
-import { MAX_SPEAKERS, audibleCount, defaultSound, lookOf, type SourceLook, type Speaker } from "../domain/sound";
+import { MAX_SPEAKERS, audibleCount, defaultSound, lookOf, type SourceLook, type Speaker, type SpeakerSound } from "../domain/sound";
+import { MAX_STAMINA, RUN_SPEED, initialStaminaState, stepStamina, type StaminaState } from "../domain/stamina";
 import type { TextKey } from "../domain/text";
-import { GARDEN_SIZE, clampToGarden, distance, keysToInput, step, toGarden, type Point } from "../domain/world";
+import { GARDEN_SIZE, TILE_WIDTH, WALK_SPEED, clampToGarden, distance, keysToInput, step, toGarden, toScreen, type Point } from "../domain/world";
 import { Scene, groundSpotFor, type Actor, type ChatRipple, type Marker } from "../game/Scene";
 import { useT } from "../i18n";
 import { requestCoordinates } from "../location";
+import { sendNearbyChatNotification } from "../notifications";
 import type { Settings } from "../settings";
 import { Btn, GearIcon, IconBtn, Input, Modal, T, colors } from "../ui";
 
-type Panel = null | "settings" | "presets" | "login";
-/** `replaced`: a newer visit from this device took over; this one does not reconnect by itself. */
+type Panel = null | "settings" | "presets" | "login" | "room";
 type Link = "consent" | "entering" | "online" | "lost" | "replaced";
 
-const SAVE_DELAY_MS = 400;
+const SAVE_DELAY_MS = 350;
 const RETRY_MS = 3000;
+const BONK_RANGE = 2.5;
+const BONK_COOLDOWN_MS = 1500;
+const BONK_DURATION_MS = 420;
+const CHAT_COOLDOWN_MS = 900;
 
 const newId = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 const ENTER_ERRORS: Record<string, TextKey> = {
   RATE_LIMITED: "notice.rateLimited",
   GARDEN_FULL: "notice.gardenFull",
+  ROOM_NOT_FOUND: "lobby.roomNotFound",
+  ROOM_FULL: "lobby.roomFull",
+  BANNED: "lobby.banned",
 };
 const NAME_ERRORS: Record<string, TextKey> = {
   NAME_NOT_ALLOWED: "name.notAllowed",
@@ -59,25 +80,60 @@ const NAME_ERRORS: Record<string, TextKey> = {
   NAME_RATE_LIMITED: "name.rateLimited",
 };
 
-export function Game({ mode, client, audio, settings, onSettings, garden, onGarden, onExit }: { mode: "mine" | "public" | "test"; client: HushClient; audio: GardenAudio; settings: Settings; onSettings: (settings: Settings) => void; garden: MyGarden; onGarden: (garden: MyGarden) => void; onExit: () => void }) {
+export function Game({
+  mode,
+  client,
+  audio,
+  settings,
+  onSettings,
+  garden,
+  onGarden,
+  initialRoom = null,
+  onSyncAccount,
+  onSaveSpeakerPreset,
+  onDeleteSpeakerPreset,
+  onExit,
+}: {
+  mode: "mine" | "public" | "room" | "test";
+  client: HushClient;
+  audio: GardenAudio;
+  settings: Settings;
+  onSettings: (settings: Settings) => void;
+  garden: MyGarden;
+  onGarden: (garden: MyGarden) => void;
+  initialRoom?: RoomEntryResponse | null;
+  onSyncAccount?: () => Promise<void>;
+  onSaveSpeakerPreset?: (name: string, sound: SpeakerSound) => Promise<void>;
+  onDeleteSpeakerPreset?: (id: string) => Promise<void>;
+  onExit: () => void;
+}) {
   const t = useT();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 820;
-  const online = mode === "public";
+  const isRoom = mode === "room";
+  const online = mode === "public" || isRoom;
 
-  const [me, setMe] = useState<Point>({ x: GARDEN_SIZE / 2, y: GARDEN_SIZE / 2 + 1 });
+  const [me, setMe] = useState<Point>(() => ({
+    x: GARDEN_SIZE / 2 + (Math.random() - 0.5) * 2,
+    y: GARDEN_SIZE / 2 + 1 + (Math.random() - 0.5) * 2,
+  }));
   const [facing, setFacing] = useState<1 | -1>(1);
   const [walking, setWalking] = useState(false);
   const [playing, setPlaying] = useState(audio.running);
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+
+  useEffect(() => {
+    setPlaying(audio.running);
+    return audio.subscribe(setPlaying);
+  }, [audio]);
+
   const [panel, setPanel] = useState<Panel>(null);
   const panelRef = useRef<Panel>(null);
   panelRef.current = panel;
-  /** The speaker in the character's hands. */
   const [carryId, setCarryId] = useState<string | null>(null);
-  /** The action being played. The character cannot walk or start another one until it ends. */
   const [action, setAction] = useState<(Actor["action"] & { spot?: Point }) | undefined>(undefined);
-  /** Redrawn while a speaker is lifted or put down, so its sound and waves move with it. */
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     if (!action?.spot) return;
@@ -85,20 +141,29 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     const timer = setInterval(() => setClock(Date.now()), 33);
     return () => clearInterval(timer);
   }, [action]);
-  /** The editor of the held speaker is open. */
   const [editing, setEditing] = useState(false);
   const [nameError, setNameError] = useState<TextKey | "">("");
 
-  const [link, setLink] = useState<Link>(online ? (settings.consent ? "entering" : "consent") : "online");
+  const [link, setLink] = useState<Link>(
+    online ? (isRoom ? "entering" : settings.consent ? "entering" : "consent") : "online",
+  );
   const linkRef = useRef<Link>(link);
   linkRef.current = link;
   const [enterError, setEnterError] = useState<TextKey | "">("");
-  const [entry, setEntry] = useState<Entry | null>(null);
+  const [entry, setEntry] = useState<Entry | null>(initialRoom?.entry ?? null);
+  const [roomDetail, setRoomDetail] = useState<RoomDetail | null>(initialRoom?.room ?? null);
+  const roomDetailRef = useRef<RoomDetail | null>(roomDetail);
+  roomDetailRef.current = roomDetail;
+  const [roomMembers, setRoomMembers] = useState<Record<string, RoomMember>>({});
+  const myJoinedAt = useRef(Date.now());
+  const pendingInitialRoom = useRef<RoomEntryResponse | null>(initialRoom);
+
   const [publicSpeakers, setPublicSpeakers] = useState<Speaker[]>([]);
   const [others, setOthers] = useState<Record<string, RemotePlayer>>({});
-  /** Which way each other player faces and whether it is walking, derived from its reported movement. */
   const [motion, setMotion] = useState<Record<string, { facing: 1 | -1; walking: boolean }>>({});
   const [remoteActions, setRemoteActions] = useState<Record<string, Actor["action"]>>({});
+  const [bonks, setBonks] = useState<Record<string, { role: "swing" | "hit"; startedAt: number }>>({});
+  const bonkTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const remoteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const pendingHold = useRef<Speaker | null>(null);
   const othersRef = useRef(others);
@@ -113,14 +178,22 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const [chatRipples, setChatRipples] = useState<ChatRipple[]>([]);
   const [chatLog, setChatLog] = useState<ChatEntry[]>([]);
   const nextChatId = useRef(0);
+  const lastChatSentAt = useRef(0);
+  const lastBonkAt = useRef(0);
   const [draft, setDraft] = useState("");
   const chatInput = useRef<React.ComponentRef<typeof TextInput>>(null);
 
+  const staminaRef = useRef<StaminaState>(initialStaminaState());
+  const [staminaUi, setStaminaUi] = useState<{ value: number; exhausted: boolean }>({
+    value: MAX_STAMINA,
+    exhausted: false,
+  });
+  const staminaUiRef = useRef(staminaUi);
+  staminaUiRef.current = staminaUi;
+  const touchSprint = useRef(false);
+  const [sprintDown, setSprintDown] = useState(false);
+
   const placed = online ? publicSpeakers : garden.speakers;
-  /**
-   * A carried speaker is wherever the character is, so its sound and its shadow travel along. While it is lifted
-   * or put down, it is where the animation has carried it along the ground between its spot and the character.
-   */
   const carriedAt = useMemo((): Point => {
     if (!action?.spot || (action.name !== "lift" && action.name !== "putDown")) return me;
     const travel = liftTravel(actionKindOf(settings.character, settings.customCharacter), action.name, clock - action.startedAt);
@@ -151,13 +224,19 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const gardenRef = useRef(garden);
   gardenRef.current = garden;
   const acting = useRef(false);
-  const canEdit = online ? !!entry?.canEdit : true;
   const myId = useRef("me");
+  const canEdit = isRoom
+    ? !!roomDetail && (roomDetail.hostPeerId === myId.current || roomDetail.allowGuestEdit)
+    : online
+      ? !!entry?.canEdit
+      : true;
   const meRef = useRef(me);
   meRef.current = me;
   const joystick = useRef<Point>({ x: 0, y: 0 });
   const keys = useRef(new Set<string>());
   const socket = useRef<GardenSocket | null>(null);
+  const roomSocket = useRef<RoomSocket | null>(null);
+  const mesh = useRef<MeshPeerManager | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const onSettingsRef = useRef(onSettings);
@@ -165,13 +244,10 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const targets = useRef<Record<string, Point>>({});
   const alive = useRef(true);
 
-  /** A short message for the player, as a toast from the top. */
   const flash = useCallback((key: TextKey, values?: Record<string, string | number>) => showMessage(t(key, values)), [t]);
 
   // --- sound -------------------------------------------------------------------------------------------------
   useEffect(() => audio.setSpeakers(speakers), [audio, speakers]);
-  // Entering a garden checks the nature sounds. When files are missing the player is asked first (unless they
-  // agreed before or ticked "don't ask again"); nature sources stay silent and unchoosable until all are there.
   const [askNature, setAskNature] = useState<{ bytes: number; answer: (yes: boolean) => void } | null>(null);
   const askDownload = useCallback((bytes: number) => {
     const choice = settingsRef.current.natureSounds;
@@ -179,7 +255,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     return new Promise<boolean>((answer) => setAskNature({ bytes, answer }));
   }, []);
   useEffect(() => startPatch(audio, askDownload), [audio, askDownload]);
-  // Platform notices are fetched on entering a garden and shown as toasts, each once per app run.
   useEffect(() => void loadNotices(), []);
   const patch = usePatchState();
   const natureLock = patch?.phase === "ready" ? null : patch?.phase === "failed" ? "failed" : patch?.phase === "declined" ? "declined" : "loading";
@@ -197,9 +272,7 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     onSettings(settingsRef.current);
     startPatch(audio, async () => true, true);
   };
-  /** Developer options of the test garden. */
   const developer = {
-    // Forget the stored files and the earlier answer, so the question and the whole download happen again.
     redownload: () => {
       settingsRef.current = { ...settingsRef.current, natureSounds: "ask" };
       onSettings(settingsRef.current);
@@ -222,6 +295,20 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   useEffect(() => audio.setVolume(settings.volume), [audio, settings.volume]);
   useEffect(() => audio.setMono(settings.mono), [audio, settings.mono]);
 
+  // Sync muted (earmuffs) status to room peers whenever playback state changes.
+  useEffect(() => {
+    if (isRoom && link === "online") {
+      roomSocket.current?.mute(!playing);
+    }
+  }, [isRoom, link, playing]);
+
+  // Sync appearance changes in room mode immediately.
+  useEffect(() => {
+    if (isRoom && link === "online") {
+      roomSocket.current?.look(settings.character, settings.customCharacter || null);
+    }
+  }, [isRoom, link, settings.character, settings.customCharacter]);
+
   const place = online ? entry?.place ?? "" : t("status.mine");
   const togglePlay = useCallback(async () => {
     try {
@@ -238,7 +325,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       flash("notice.soundFailed");
     }
   }, [audio, flash, place]);
-  // The key handler is set up once, so it reaches the current toggle through a ref.
   const togglePlayRef = useRef(togglePlay);
   togglePlayRef.current = togglePlay;
 
@@ -256,7 +342,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       () => void audio.start().then(() => alive.current && setPlaying(true)),
       () => void audio.pause().then(() => alive.current && setPlaying(false)),
     );
-    // The notification text follows the place name.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audio, place]);
 
@@ -268,13 +353,12 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     [],
   );
 
-  // --- movement ----------------------------------------------------------------------------------------------
+  // --- movement + sprint stamina ---------------------------------------------------------------------------
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const typing = (event: KeyboardEvent) => ["INPUT", "TEXTAREA"].includes((event.target as HTMLElement | null)?.tagName ?? "");
     const down = (event: KeyboardEvent) => {
       if (linkRef.current === "replaced") return;
-      // Escape opens the settings, and closes them (or any other open panel) again.
       if (event.key === "Escape" && !event.repeat) {
         event.preventDefault();
         setPanel((open) => (open ? null : typing(event) ? open : "settings"));
@@ -298,7 +382,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       if (event.key.startsWith("Arrow")) event.preventDefault();
       keys.current.add(event.key);
     };
-    const up = (event: KeyboardEvent) => keys.current.delete(event.key);
+    const up = (event: KeyboardEvent) => {
+      keys.current.delete(event.key);
+    };
     const blur = () => keys.current.clear();
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -320,24 +406,38 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       const seconds = (now - last) / 1000;
       last = now;
       const stick = joystick.current;
-      // The character stays in place while it makes, lifts or discards a speaker.
       const input = acting.current ? { x: 0, y: 0 } : stick.x || stick.y ? stick : keysToInput(keys.current);
       const active = Math.hypot(input.x, input.y) > 0.05;
       if (active !== wasWalking) {
         wasWalking = active;
         setWalking(active);
       }
+
+      const wantsSprint = keys.current.has("Shift") || touchSprint.current;
+      const nextStamina = stepStamina(staminaRef.current, wantsSprint, active, seconds, now);
+      staminaRef.current = nextStamina;
+      if (
+        Math.round(nextStamina.stamina) !== Math.round(staminaUiRef.current.value) ||
+        nextStamina.exhausted !== staminaUiRef.current.exhausted
+      ) {
+        const ui = { value: nextStamina.stamina, exhausted: nextStamina.exhausted };
+        staminaUiRef.current = ui;
+        setStaminaUi(ui);
+      }
+
       if (active) {
-        const next = step(meRef.current, input, seconds);
+        const speed = nextStamina.sprinting ? RUN_SPEED : WALK_SPEED;
+        const next = step(meRef.current, input, seconds, speed);
         if (next.x !== meRef.current.x || next.y !== meRef.current.y) {
           meRef.current = next;
           setMe(next);
-          socket.current?.move(next);
+          if (isRoom) mesh.current?.move(next);
+          else socket.current?.move(next);
         }
         if (input.x > 0.1) setFacing(1);
         else if (input.x < -0.1) setFacing(-1);
       }
-      // Other players glide toward their last reported position.
+
       const moves = targets.current;
       if (Object.keys(moves).length) {
         setOthers((current) => {
@@ -358,7 +458,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
               arrived.push(id);
               continue;
             }
-            // Right on screen is +x and -y in the garden.
             const side = target.x - player.x - (target.y - player.y);
             walkers[id] = side > 0.02 ? 1 : side < -0.02 ? -1 : 0;
             const ratio = Math.min(1, seconds * 10);
@@ -391,9 +490,8 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [isRoom]);
 
-  /** Plays a one-shot action animation for another visitor in the garden. */
   const playRemote = useCallback((playerId: string, kind: ReturnType<typeof actionKindOf>, name: ActionName, look: SourceLook, ground?: GroundSpot) => {
     clearTimeout(remoteTimers.current[playerId]);
     setRemoteActions((current) => ({ ...current, [playerId]: { name, startedAt: Date.now(), look, ground } }));
@@ -409,7 +507,321 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     }, actionDuration(kind, name));
   }, []);
 
-  // --- public garden connection ------------------------------------------------------------------------------
+  const triggerBonkEffect = useCallback((actorKey: string, role: "swing" | "hit") => {
+    clearTimeout(bonkTimers.current[actorKey]);
+    setBonks((current) => ({ ...current, [actorKey]: { role, startedAt: Date.now() } }));
+    bonkTimers.current[actorKey] = setTimeout(() => {
+      delete bonkTimers.current[actorKey];
+      if (!alive.current) return;
+      setBonks((current) => {
+        if (!current[actorKey]) return current;
+        const next = { ...current };
+        delete next[actorKey];
+        return next;
+      });
+    }, BONK_DURATION_MS);
+  }, []);
+
+  const receiveChat = useCallback(
+    (payload: { senderId: string; name: string; text: string; color?: string; x: number; y: number }) => {
+      const mine = payload.senderId === myId.current;
+      const at = Date.now();
+      nextChatId.current += 1;
+      const rippleId = `${at}-${nextChatId.current}`;
+      const rippleColor = mine
+        ? resolveChatColor(settingsRef.current.character, settingsRef.current.chatColor)
+        : payload.color || resolveChatColor(othersRef.current[payload.senderId]?.character ?? "bunny");
+      const rippleAt = mine ? meRef.current : othersRef.current[payload.senderId] ?? { x: payload.x, y: payload.y };
+      setChatRipples((current) => [...current, { id: rippleId, x: rippleAt.x, y: rippleAt.y, color: rippleColor }]);
+      setTimeout(() => {
+        if (!alive.current) return;
+        setChatRipples((current) => current.filter((item) => item.id !== rippleId));
+      }, 1850);
+      setBubbles((current) => ({
+        ...current,
+        [mine ? "me" : payload.senderId]: { text: (mine ? "" : payload.name + ": ") + payload.text, until: at + BUBBLE_MS },
+      }));
+      // Always record nearby chat in the log even while wearing earmuffs (AFK mode).
+      setChatLog((current) =>
+        appendChatEntry(current, { id: rippleId, senderId: payload.senderId, name: payload.name, text: payload.text, at, mine }),
+      );
+      if (!mine && playingRef.current) {
+        const cue = cueFor(meRef.current, { x: payload.x, y: payload.y });
+        if (cue) {
+          audio.cue(cue, settingsRef.current.cue);
+          if (Platform.OS !== "web" && settingsRef.current.cue !== "off") {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+          }
+        }
+        if (settingsRef.current.chatNotifications) {
+          void sendNearbyChatNotification(payload.name, payload.text);
+        }
+      }
+    },
+    [audio],
+  );
+
+  // --- P2P Room Mode -----------------------------------------------------------------------------------------
+  const handleMeshMessage = useCallback(
+    (fromPeerId: string, message: MeshDataMessage) => {
+      switch (message.t) {
+        case "helloPos": {
+          delete targets.current[fromPeerId];
+          setOthers((current) =>
+            current[fromPeerId] ? { ...current, [fromPeerId]: { ...current[fromPeerId], x: message.x, y: message.y } } : current,
+          );
+          break;
+        }
+        case "move": {
+          targets.current[fromPeerId] = { x: message.x, y: message.y };
+          break;
+        }
+        case "action": {
+          const other = othersRef.current[fromPeerId];
+          if (other) playRemote(fromPeerId, actionKindOf(other.character, other.custom), message.name, message.look);
+          break;
+        }
+        case "chat": {
+          const sender = othersRef.current[fromPeerId];
+          const senderAt = sender ? { x: sender.x, y: sender.y } : { x: message.x, y: message.y };
+          if (distance(meRef.current, senderAt) > CHAT_RANGE) return;
+          receiveChat({
+            senderId: fromPeerId,
+            name: sender?.name || "?",
+            text: message.text,
+            color: message.color,
+            x: senderAt.x,
+            y: senderAt.y,
+          });
+          break;
+        }
+        case "bonk": {
+          if (!roomDetailRef.current?.allowInteraction) return;
+          triggerBonkEffect(fromPeerId, "swing");
+          triggerBonkEffect(message.targetId === myId.current ? "me" : message.targetId, "hit");
+          const sender = othersRef.current[fromPeerId];
+          const at = sender ? { x: sender.x, y: sender.y } : { x: message.x, y: message.y };
+          const dist = distance(meRef.current, at);
+          if (dist <= CHAT_RANGE && playingRef.current) {
+            const closeness = 1 - dist / CHAT_RANGE;
+            const dx = toScreen(at).x - toScreen(meRef.current).x;
+            const pan = Math.max(-1, Math.min(1, dx / (CHAT_RANGE * (TILE_WIDTH / 2))));
+            audio.playBonk(pan, 0.35 + 0.65 * closeness);
+          }
+          break;
+        }
+      }
+    },
+    [audio, playRemote, receiveChat, triggerBonkEffect],
+  );
+
+  const receiveRoom = useCallback(
+    (message: RoomServerMessage) => {
+      switch (message.t) {
+        case "roomHello": {
+          myId.current = message.peerId;
+          myJoinedAt.current = Date.now();
+          setRoomDetail(message.room);
+          setPublicSpeakers(message.speakers);
+          const center = GARDEN_SIZE / 2;
+          const nextMembers: Record<string, RoomMember> = {};
+          const nextOthers: Record<string, RemotePlayer> = {};
+          for (const member of message.members) {
+            nextMembers[member.peerId] = member;
+            nextOthers[member.peerId] = {
+              id: member.peerId,
+              name: member.name,
+              place: member.place,
+              character: member.character,
+              custom: member.custom,
+              muted: member.muted,
+              carrying: member.carrying,
+              x: center,
+              y: center,
+            };
+          }
+          setRoomMembers(nextMembers);
+          setOthers(nextOthers);
+          for (const timer of Object.values(remoteTimers.current)) clearTimeout(timer);
+          remoteTimers.current = {};
+          setRemoteActions({});
+          pendingHold.current = null;
+          targets.current = {};
+
+          mesh.current?.closeAll();
+          const nextMesh = new MeshPeerManager(
+            message.peerId,
+            (to, payload) => roomSocket.current?.signal(to, payload),
+            handleMeshMessage,
+            () => meRef.current,
+          );
+          mesh.current = nextMesh;
+          for (const member of message.members) {
+            nextMesh.connectPeer(member.peerId);
+          }
+          roomSocket.current?.mute(!playingRef.current);
+          setLink("online");
+          break;
+        }
+        case "peerJoined": {
+          const m = message.member;
+          const center = GARDEN_SIZE / 2;
+          setRoomMembers((cur) => ({ ...cur, [m.peerId]: m }));
+          setOthers((cur) => ({
+            ...cur,
+            [m.peerId]: {
+              id: m.peerId,
+              name: m.name,
+              place: m.place,
+              character: m.character,
+              custom: m.custom,
+              muted: m.muted,
+              carrying: m.carrying,
+              x: center,
+              y: center,
+            },
+          }));
+          mesh.current?.connectPeer(m.peerId);
+          break;
+        }
+        case "peerLeft": {
+          mesh.current?.removePeer(message.peerId);
+          delete targets.current[message.peerId];
+          clearTimeout(remoteTimers.current[message.peerId]);
+          delete remoteTimers.current[message.peerId];
+          setRemoteActions((cur) => {
+            if (!cur[message.peerId]) return cur;
+            const next = { ...cur };
+            delete next[message.peerId];
+            return next;
+          });
+          setRoomMembers((cur) => {
+            const next = { ...cur };
+            delete next[message.peerId];
+            return next;
+          });
+          setOthers((cur) => {
+            const next = { ...cur };
+            delete next[message.peerId];
+            return next;
+          });
+          break;
+        }
+        case "signal": {
+          void mesh.current?.handleSignal(message.from, { description: message.description, candidate: message.candidate });
+          break;
+        }
+        case "roomUpdated": {
+          setRoomDetail(message.room);
+          break;
+        }
+        case "hostChanged": {
+          setRoomDetail((cur) =>
+            cur ? { ...cur, hostPeerId: message.hostPeerId, hostCountry: message.hostCountry } : cur,
+          );
+          if (message.hostPeerId === myId.current) {
+            showMessage(t("room.hostNow"));
+          }
+          break;
+        }
+        case "peerRenamed": {
+          if (message.peerId === myId.current) {
+            setEntry((cur) => (cur ? { ...cur, name: message.name } : cur));
+            setNameError("");
+          } else {
+            setOthers((cur) => (cur[message.peerId] ? { ...cur, [message.peerId]: { ...cur[message.peerId], name: message.name } } : cur));
+            setRoomMembers((cur) => (cur[message.peerId] ? { ...cur, [message.peerId]: { ...cur[message.peerId], name: message.name } } : cur));
+          }
+          break;
+        }
+        case "peerLook": {
+          if (message.peerId === myId.current) {
+            if (settingsRef.current.customCharacter && !message.custom) {
+              const nextSettings = { ...settingsRef.current, customCharacter: "" };
+              settingsRef.current = nextSettings;
+              onSettingsRef.current(nextSettings);
+            }
+          } else {
+            const custom = message.custom || undefined;
+            setOthers((cur) => (cur[message.peerId] ? { ...cur, [message.peerId]: { ...cur[message.peerId], character: message.character, custom } } : cur));
+            setRoomMembers((cur) => (cur[message.peerId] ? { ...cur, [message.peerId]: { ...cur[message.peerId], character: message.character, custom } } : cur));
+          }
+          break;
+        }
+        case "peerMuted": {
+          if (message.peerId !== myId.current) {
+            setOthers((cur) => (cur[message.peerId] ? { ...cur, [message.peerId]: { ...cur[message.peerId], muted: message.muted } } : cur));
+            setRoomMembers((cur) => (cur[message.peerId] ? { ...cur, [message.peerId]: { ...cur[message.peerId], muted: message.muted } } : cur));
+          }
+          break;
+        }
+        case "speakers":
+          setPublicSpeakers(message.speakers);
+          break;
+        case "hold": {
+          if (message.playerId === myId.current) {
+            const pending = pendingHold.current;
+            pendingHold.current = null;
+            const speaker = pending?.id === message.id ? pending : placedRef.current.find((item) => item.id === message.id);
+            if (speaker && pending?.id === message.id && !acting.current) {
+              setCarryId(speaker.id);
+              acting.current = true;
+              const kind = actionKindOf(settingsRef.current.character, settingsRef.current.customCharacter);
+              const ground = groundSpotFor(meRef.current, speaker, facingRef.current);
+              setAction({ name: "lift", startedAt: Date.now(), look: lookOf(speaker.sound), ground, spot: { x: speaker.x, y: speaker.y } });
+              setTimeout(() => {
+                if (!alive.current) return;
+                acting.current = false;
+                setAction(undefined);
+              }, actionDuration(kind, "lift"));
+            }
+          } else {
+            setOthers((cur) => (cur[message.playerId] ? { ...cur, [message.playerId]: { ...cur[message.playerId], carrying: message.id } } : cur));
+            const other = othersRef.current[message.playerId];
+            const speaker = placedRef.current.find((item) => item.id === message.id);
+            if (other && speaker) {
+              const otherFacing = message.facing ?? motionRef.current[message.playerId]?.facing ?? 1;
+              playRemote(message.playerId, actionKindOf(other.character, other.custom), "lift", lookOf(speaker.sound), groundSpotFor(other, speaker, otherFacing));
+            }
+          }
+          break;
+        }
+        case "holdDenied":
+          if (pendingHold.current?.id === message.id) {
+            pendingHold.current = null;
+            flash("notice.speakerHeld");
+          } else if (carryIdRef.current === message.id) {
+            setCarryId(null);
+            setEditing(false);
+            flash("notice.speakerHeld");
+          }
+          break;
+        case "release":
+          if (message.playerId !== myId.current) {
+            setOthers((cur) => (cur[message.playerId] ? { ...cur, [message.playerId]: { ...cur[message.playerId], carrying: undefined } } : cur));
+            if (message.x != null && message.y != null) {
+              const other = othersRef.current[message.playerId];
+              const speaker = placedRef.current.find((item) => item.id === message.id);
+              if (other && speaker) {
+                const otherFacing = message.facing ?? motionRef.current[message.playerId]?.facing ?? 1;
+                playRemote(message.playerId, actionKindOf(other.character, other.custom), "putDown", lookOf(speaker.sound), groundSpotFor(other, { x: message.x, y: message.y }, otherFacing));
+              }
+            }
+          }
+          break;
+        case "error":
+          if (NAME_ERRORS[message.error]) {
+            setNameError(NAME_ERRORS[message.error]);
+            break;
+          }
+          flash(message.error === "LOGIN_REQUIRED" ? "notice.chatLogin" : message.error === "GARDEN_FULL" ? "notice.gardenFull" : "notice.requestFailed");
+          break;
+      }
+    },
+    [flash, handleMeshMessage, playRemote, t],
+  );
+
+  // --- Legacy public garden connection -----------------------------------------------------------------------
   const receive = useCallback(
     (message: ServerMessage) => {
       switch (message.t) {
@@ -518,7 +930,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
         case "look":
           if (message.id === myId.current) {
-            // The character image in use was deleted: back to the drawn character.
             if (settingsRef.current.customCharacter && !message.custom) {
               const nextSettings = { ...settingsRef.current, customCharacter: "" };
               settingsRef.current = nextSettings;
@@ -527,28 +938,14 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           } else setOthers((current) => (current[message.id] ? { ...current, [message.id]: { ...current[message.id], character: message.character, custom: message.custom } } : current));
           break;
         case "chat": {
-          const mine = message.id === myId.current;
-          const at = Date.now();
-          nextChatId.current += 1;
-          const rippleId = `${at}-${nextChatId.current}`;
-          const rippleColor = mine
-            ? resolveChatColor(settingsRef.current.character, settingsRef.current.chatColor)
-            : message.color || resolveChatColor(othersRef.current[message.id]?.character ?? "bunny");
-          const rippleAt = mine ? meRef.current : othersRef.current[message.id] ?? { x: message.x, y: message.y };
-          setChatRipples((current) => [...current, { id: rippleId, x: rippleAt.x, y: rippleAt.y, color: rippleColor }]);
-          setTimeout(() => {
-            if (!alive.current) return;
-            setChatRipples((current) => current.filter((item) => item.id !== rippleId));
-          }, 1850);
-          setBubbles((current) => ({ ...current, [mine ? "me" : message.id]: { text: (mine ? "" : message.name + ": ") + message.text, until: at + BUBBLE_MS } }));
-          setChatLog((current) => appendChatEntry(current, { id: rippleId, senderId: message.id, name: message.name, text: message.text, at, mine }));
-          if (!mine) {
-            const cue = cueFor(meRef.current, message);
-            if (cue) {
-              audio.cue(cue, settingsRef.current.cue);
-              if (Platform.OS !== "web" && settingsRef.current.cue !== "off") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-            }
-          }
+          receiveChat({
+            senderId: message.id,
+            name: message.name,
+            text: message.text,
+            color: message.color,
+            x: message.x,
+            y: message.y,
+          });
           break;
         }
         case "error":
@@ -560,21 +957,97 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           break;
       }
     },
-    [audio, flash, playRemote],
+    [flash, playRemote, receiveChat],
   );
 
   const connect = useCallback(async () => {
     socket.current?.close();
     socket.current = null;
+    roomSocket.current?.close();
+    roomSocket.current = null;
+    mesh.current?.closeAll();
+    mesh.current = null;
     setLink("entering");
     setEnterError("");
     try {
+      if (isRoom) {
+        let ticket = "";
+        let entryData: Entry;
+        const pre = pendingInitialRoom.current;
+        if (pre) {
+          pendingInitialRoom.current = null;
+          ticket = pre.ticket;
+          entryData = pre.entry;
+          setRoomDetail(pre.room);
+        } else {
+          const roomId = roomDetailRef.current?.id;
+          if (!roomId) {
+            onExit();
+            return;
+          }
+          const coordinates = await requestCoordinates();
+          const joined = await client.joinRoom({
+            coordinates,
+            roomId,
+            character: settingsRef.current.character,
+            customCharacter: settingsRef.current.customCharacter || undefined,
+            deviceId: await getDeviceId(),
+          });
+          if (!alive.current) return;
+          ticket = joined.ticket;
+          entryData = joined.entry;
+          setRoomDetail(joined.room);
+        }
+        setEntry(entryData);
+        if (entryData.user) {
+          const nextSettings = {
+            ...settingsRef.current,
+            ...(typeof entryData.characterName === "string" ? { name: entryData.characterName } : {}),
+            ...(entryData.character ? { character: entryData.character } : {}),
+            customCharacter: entryData.customCharacter ?? settingsRef.current.customCharacter,
+          };
+          settingsRef.current = nextSettings;
+          onSettings(nextSettings);
+        }
+        const nextRoomSocket = new RoomSocket(roomSocketUrl(API_ORIGIN, ticket), receiveRoom, (code) => {
+          if (!alive.current) return;
+          roomSocket.current = null;
+          mesh.current?.closeAll();
+          mesh.current = null;
+          if (code === ROOM_KICKED_CODE) {
+            showMessage(t("room.kickedNotice"));
+            void audio.pause().catch(() => undefined);
+            onExit();
+          } else if (code === ROOM_REPLACED_CODE) {
+            setLink("replaced");
+            setPanel(null);
+            setCarryId(null);
+            setEditing(false);
+            setPublicSpeakers([]);
+            setOthers({});
+            void audio.pause().catch(() => undefined);
+            setPlaying(false);
+            void hidePlayback();
+          } else {
+            setLink("lost");
+          }
+        });
+        roomSocket.current = nextRoomSocket;
+        nextRoomSocket.open();
+        return;
+      }
+
       const coordinates = await requestCoordinates();
       const result = await client.enter(coordinates, settingsRef.current.character, settingsRef.current.name, await getDeviceId(), settingsRef.current.customCharacter || undefined);
       if (!alive.current) return;
       setEntry(result);
       if (result.user && typeof result.characterName === "string") {
-        const nextSettings = { ...settingsRef.current, name: result.characterName };
+        const nextSettings = {
+          ...settingsRef.current,
+          name: result.characterName,
+          ...(result.character ? { character: result.character } : {}),
+          ...(result.customCharacter !== undefined ? { customCharacter: result.customCharacter ?? "" } : {}),
+        };
         settingsRef.current = nextSettings;
         onSettings(nextSettings);
       }
@@ -599,17 +1072,24 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
       next.open();
     } catch (cause) {
       if (!alive.current) return;
+      if (isRoom && cause instanceof ApiError && (cause.code === "ROOM_NOT_FOUND" || cause.code === "BANNED")) {
+        showMessage(t(ENTER_ERRORS[cause.code]));
+        onExit();
+        return;
+      }
       setEnterError((cause instanceof ApiError && ENTER_ERRORS[cause.code]) || "notice.connectFailed");
       setLink(settingsRef.current.consent ? "lost" : "consent");
     }
-    // Settings are read through a ref, so saving them does not restart the connection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, receive]);
+  }, [client, isRoom, receive, receiveRoom]);
 
   useEffect(() => {
-    if (online && settings.consent) void connect();
-    return () => socket.current?.close();
-    // Runs once per visit; reconnects are explicit.
+    if (online && (isRoom || settings.consent)) void connect();
+    return () => {
+      socket.current?.close();
+      roomSocket.current?.close();
+      mesh.current?.closeAll();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -636,13 +1116,18 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     (speaker: Speaker) => {
       clearTimeout(saveTimers.current[speaker.id]);
       saveTimers.current[speaker.id] = setTimeout(() => {
-        client.saveSpeaker(speaker).catch((cause) => flash(cause instanceof ApiError && cause.status === 403 ? "notice.noPermission" : "notice.saveFailed"));
-      }, SAVE_DELAY_MS);
+        if (isRoom) {
+          roomSocket.current?.saveSpeaker(speaker);
+        } else {
+          client.saveSpeaker(speaker).catch((cause) =>
+            flash(cause instanceof ApiError && cause.status === 403 ? "notice.noPermission" : "notice.saveFailed"),
+          );
+        }
+      }, isRoom ? 150 : SAVE_DELAY_MS);
     },
-    [client, flash],
+    [client, flash, isRoom],
   );
 
-  /** Stores a new speaker list. Edits must start from `placedRef.current`, never from the list with the carried speaker moved. */
   const changeSpeakers = useCallback(
     (next: Speaker[], changedId?: string) => {
       if (!online) return onGarden({ ...gardenRef.current, speakers: next });
@@ -655,7 +1140,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
   const carried = carryId ? placed.find((speaker) => speaker.id === carryId) : undefined;
 
-  // A held speaker that someone else removed leaves the hands empty.
   useEffect(() => {
     if (carryId && !carried && !acting.current) {
       setCarryId(null);
@@ -663,7 +1147,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     }
   }, [carryId, carried]);
 
-  /** Plays an action of the player's character and runs `after` when it ends. */
   const play = useCallback((name: ActionName, look: SourceLook, after: () => void, ground?: GroundSpot, spot?: Point) => {
     acting.current = true;
     setAction({ name, startedAt: Date.now(), look, ground, spot });
@@ -675,61 +1158,88 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     }, actionDuration(actionKindOf(settingsRef.current.character, settingsRef.current.customCharacter), name));
   }, []);
 
-  /** Lifts a speaker the character stands next to. */
   const lift = (speaker: Speaker) => {
     if (acting.current || carryId || pendingHold.current) return;
     if (online) {
       pendingHold.current = speaker;
-      socket.current?.hold(speaker.id, facing);
+      if (isRoom) roomSocket.current?.hold(speaker.id, facing);
+      else socket.current?.hold(speaker.id, facing);
       return;
     }
     setCarryId(speaker.id);
-    // The speaker leaves the ground from where it stands, so the lift starts exactly on the drawn speaker.
     play("lift", lookOf(speaker.sound), () => undefined, groundSpotFor(meRef.current, speaker, facing), { x: speaker.x, y: speaker.y });
   };
 
-  /** Puts the carried speaker down one step in front of the character. */
   const putDown = () => {
     if (!carryId || !carried || acting.current) return;
     const id = carryId;
     setEditing(false);
-    // The lift played backwards; the speaker lands when it ends.
-    // The spot is fixed when the button is pressed, so the animation ends exactly where the speaker then stands.
     const ahead = toGarden({ x: facing * 40, y: 14 });
     const spot = clampToGarden({ x: meRef.current.x + ahead.x, y: meRef.current.y + ahead.y });
-    if (online) socket.current?.release(id, spot, facing);
+    if (isRoom) roomSocket.current?.release(id, spot, facing);
+    else if (online) socket.current?.release(id, spot, facing);
     play("putDown", lookOf(carried.sound), () => {
       setCarryId(null);
       if (placedRef.current.some((speaker) => speaker.id === id)) changeSpeakers(moveSpeaker(placedRef.current, id, spot), id);
     }, groundSpotFor(meRef.current, spot, facing), spot);
   };
 
-  /** Makes a new speaker; when the character's animation ends, the speaker is in its hands. */
   const create = () => {
     if (acting.current || carryId || pendingHold.current) return;
     if (placed.length >= MAX_SPEAKERS) return flash("notice.maxSpeakers", { n: MAX_SPEAKERS });
-    if (online) socket.current?.action("create", lookOf(defaultSound()), facing);
+    if (isRoom) mesh.current?.broadcast({ t: "action", name: "create", look: lookOf(defaultSound()), facing });
+    else if (online) socket.current?.action("create", lookOf(defaultSound()), facing);
     play("create", lookOf(defaultSound()), () => {
       if (placedRef.current.length >= MAX_SPEAKERS) return;
       const id = newId();
       changeSpeakers(addSpeaker(placedRef.current, meRef.current, id), id);
       setCarryId(id);
-      if (online) socket.current?.hold(id, facing);
+      if (isRoom) roomSocket.current?.hold(id, facing);
+      else if (online) socket.current?.hold(id, facing);
     });
   };
 
-  /** Discards the held speaker; it is removed when the character's animation ends. */
   const discard = () => {
     if (acting.current || !carried) return;
     const id = carried.id;
     setEditing(false);
-    if (online) socket.current?.action("discard", lookOf(carried.sound), facing);
+    if (isRoom) mesh.current?.broadcast({ t: "action", name: "discard", look: lookOf(carried.sound), facing });
+    else if (online) socket.current?.action("discard", lookOf(carried.sound), facing);
     play("discard", lookOf(carried.sound), () => {
       setCarryId(null);
       if (!online) return onGarden({ ...gardenRef.current, speakers: removeSpeaker(placedRef.current, id) });
       setPublicSpeakers(removeSpeaker(placedRef.current, id));
       clearTimeout(saveTimers.current[id]);
-      client.deleteSpeaker(id).catch(() => flash("notice.deleteFailed"));
+      if (isRoom) {
+        roomSocket.current?.deleteSpeaker(id);
+      } else {
+        client.deleteSpeaker(id).catch(() => flash("notice.deleteFailed"));
+      }
+    });
+  };
+
+  // --- toy hammer bonk ---------------------------------------------------------------------------------------
+  const bonkPlayer = (target: RemotePlayer) => {
+    if (!isRoom || !roomDetailRef.current?.allowInteraction) return;
+    const now = Date.now();
+    if (now - lastBonkAt.current < BONK_COOLDOWN_MS) return;
+    lastBonkAt.current = now;
+
+    const dxScreen = toScreen(target).x - toScreen(meRef.current).x;
+    if (dxScreen > 2) setFacing(1);
+    else if (dxScreen < -2) setFacing(-1);
+
+    triggerBonkEffect("me", "swing");
+    triggerBonkEffect(target.id, "hit");
+    if (playingRef.current) {
+      const pan = Math.max(-1, Math.min(1, dxScreen / (CHAT_RANGE * (TILE_WIDTH / 2))));
+      audio.playBonk(pan, 1);
+    }
+    mesh.current?.broadcast({
+      t: "bonk",
+      targetId: target.id,
+      x: meRef.current.x,
+      y: meRef.current.y,
     });
   };
 
@@ -737,22 +1247,47 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const sendChat = () => {
     const text = cleanMessage(draft);
     if (text) {
-      socket.current?.chat(text, settingsRef.current.chatColor || undefined);
+      if (isRoom) {
+        if (!entry?.canChat) {
+          flash("notice.chatLogin");
+          return;
+        }
+        const now = Date.now();
+        if (now - lastChatSentAt.current < CHAT_COOLDOWN_MS) {
+          flash("notice.chatSlow");
+          return;
+        }
+        lastChatSentAt.current = now;
+        const color = settingsRef.current.chatColor || undefined;
+        mesh.current?.broadcast({ t: "chat", text, ...(color ? { color } : {}), x: meRef.current.x, y: meRef.current.y });
+        receiveChat({
+          senderId: myId.current,
+          name: entry?.name || settingsRef.current.name || t("name.me"),
+          text,
+          color,
+          x: meRef.current.x,
+          y: meRef.current.y,
+        });
+      } else {
+        socket.current?.chat(text, settingsRef.current.chatColor || undefined);
+      }
       setDraft("");
     }
     chatInput.current?.blur();
   };
 
-  /** Saves the character name. Online, the server decides and answers with a rename or an error. */
   const changeName = (name: string) => {
+    if (online && !entry?.user) return;
     setNameError("");
     onSettings({ ...settings, name });
     settingsRef.current = { ...settings, name };
-    if (online) socket.current?.rename(name);
+    if (isRoom) roomSocket.current?.rename(name);
+    else if (online) socket.current?.rename(name);
   };
 
   const afterLogin = async (_user: User) => {
     setPanel(null);
+    await onSyncAccount?.();
     await connect();
   };
 
@@ -782,22 +1317,70 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         custom: player.custom,
         facing: motion[player.id]?.facing,
         walking: motion[player.id]?.walking,
+        muted: player.muted,
+        bonk: bonks[player.id],
         carrying: remoteAction ? undefined : held ? lookOf(held.sound) : undefined,
         action: remoteAction,
       };
     });
-    list.push({ id: "me", x: me.x, y: me.y, name: myName, label: place || "…", bubble: bubbles.me?.text, kind: settings.character, custom: settings.customCharacter || undefined, facing, walking, carrying: action ? undefined : carried ? lookOf(carried.sound) : undefined, action });
+    list.push({
+      id: "me",
+      x: me.x,
+      y: me.y,
+      name: myName,
+      label: place || "…",
+      bubble: bubbles.me?.text,
+      kind: settings.character,
+      custom: settings.customCharacter || undefined,
+      facing,
+      walking,
+      muted: !playing,
+      stamina: staminaUi,
+      bonk: bonks.me,
+      carrying: action ? undefined : carried ? lookOf(carried.sound) : undefined,
+      action,
+    });
     return list;
-  }, [others, remoteActions, placed, motion, bubbles, me, myName, place, facing, walking, settings.character, settings.customCharacter, carried, action]);
+  }, [others, remoteActions, placed, motion, bubbles, bonks, me, myName, place, facing, walking, playing, staminaUi, settings.character, settings.customCharacter, carried, action]);
 
-  /** The speaker close enough to lift, if the hands are free. */
   const liftable = useMemo(() => {
     if (!canEdit || carryId || action) return null;
-    return placed.filter((speaker) => !heldIds.has(speaker.id)).map((speaker) => ({ speaker, gap: distance(speaker, me) })).filter((item) => item.gap <= PICK_UP_TILES).sort((a, b) => a.gap - b.gap)[0]?.speaker ?? null;
+    return placed
+      .filter((speaker) => !heldIds.has(speaker.id))
+      .map((speaker) => ({ speaker, gap: distance(speaker, me) }))
+      .filter((item) => item.gap <= PICK_UP_TILES)
+      .sort((a, b) => a.gap - b.gap)[0]?.speaker ?? null;
   }, [canEdit, carryId, action, placed, heldIds, me]);
 
+  const bonkable = useMemo(() => {
+    if (!isRoom || !roomDetail?.allowInteraction || carryId || action || liftable) return null;
+    return Object.values(others)
+      .map((player) => ({ player, gap: distance(player, me) }))
+      .filter((item) => item.gap <= BONK_RANGE)
+      .sort((a, b) => a.gap - b.gap)[0]?.player ?? null;
+  }, [isRoom, roomDetail?.allowInteraction, carryId, action, liftable, others, me]);
+
   const markers: Marker[] = [];
-  if (liftable) markers.push({ id: "lift", x: liftable.x, y: liftable.y, offsetX: 66, offsetY: -34, content: <Btn small variant="mint" title={t("near.lift")} onPress={() => lift(liftable)} testID="speaker-lift" /> });
+  if (liftable) {
+    markers.push({
+      id: "lift",
+      x: liftable.x,
+      y: liftable.y,
+      offsetX: 66,
+      offsetY: -34,
+      content: <Btn small variant="mint" title={t("near.lift")} onPress={() => lift(liftable)} testID="speaker-lift" />,
+    });
+  }
+  if (bonkable) {
+    markers.push({
+      id: "bonk",
+      x: bonkable.x,
+      y: bonkable.y,
+      offsetX: -54,
+      offsetY: -34,
+      content: <Btn small variant="primary" title={t("near.bonk")} onPress={() => bonkPlayer(bonkable)} testID="player-bonk" />,
+    });
+  }
   if (carried && !action) {
     markers.push({
       id: "hold",
@@ -817,7 +1400,6 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
   const heard = audibleCount(me, speakers);
   const showEditor = editing && !!carried && !action;
 
-  // The settings card is prepared once and only redrawn when what it shows changes, not on every step.
   const settingsHandlers = useRef({ onSettings, changeName, togglePlay, logout, onExit, downloadNature, developer });
   settingsHandlers.current = { onSettings, changeName, togglePlay, logout, onExit, downloadNature, developer };
   const settingsOpen = panel === "settings";
@@ -856,15 +1438,31 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
         onClose={() => setPanel(null)}
       />
     ),
-    [settingsOpen, playing, settings, entry?.user, online, myName, nameError, t, patch?.phase, client, loggedIn],
+    [settingsOpen, playing, settings, entry?.user, online, myName, nameError, t, patch?.phase, client, loggedIn, mode],
   );
   const lostText = online && link === "lost" ? t(enterError || "notice.lost") : "";
-  // While the connection is lost, a lasting toast says so; it goes when the cause is gone.
   useEffect(() => {
     if (lostText) showToast({ id: "connection", text: lostText, kind: "message", seconds: null });
     else dismissToast("connection");
   }, [lostText]);
   useEffect(() => () => dismissToast("connection"), []);
+
+  const roomRoster = useMemo((): RoomMember[] => {
+    if (!isRoom || !roomDetail) return [];
+    const list: RoomMember[] = Object.values(roomMembers);
+    list.push({
+      peerId: myId.current,
+      name: myName,
+      place: place || "…",
+      country: entry?.country ?? roomDetail.hostCountry,
+      character: settings.character,
+      custom: settings.customCharacter || undefined,
+      muted: !playing,
+      joinedAt: myJoinedAt.current,
+      isGuest: !entry?.user,
+    });
+    return list;
+  }, [isRoom, roomDetail, roomMembers, myName, place, entry?.country, entry?.user, settings.character, settings.customCharacter, playing]);
 
   if (online && link === "replaced") {
     return (
@@ -877,6 +1475,11 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
     );
   }
 
+  const statusTitle = isRoom && roomDetail
+    ? `${countryFlag(roomDetail.hostCountry.code)} ${roomDetail.name} · ${t("lobby.players", { count: Object.keys(others).length + 1, max: roomDetail.maxPlayers })}`
+    : t(online ? "status.public" : mode === "test" ? "status.test" : "status.mine") +
+      (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "");
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, flexDirection: "column" }}>
     <View style={{ flex: 1, flexDirection: wide ? "row" : "column" }}>
@@ -885,17 +1488,36 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
 
         <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, top: insets.top + 8, paddingHorizontal: 10, gap: 6 }}>
           <View pointerEvents="box-none" style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
-            <View pointerEvents="box-none" style={{ flex: 1, alignItems: "flex-start" }}>
-              {canEdit && link === "online" && (carried ? <Btn small variant="danger" title={t("top.discard")} disabled={!!action} onPress={discard} testID="speaker-discard" /> : <Btn small variant="primary" title={t("top.create")} disabled={!!action || !!carryId} onPress={create} testID="speaker-create" />)}
+            <View pointerEvents="box-none" style={{ flex: 1, flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 6 }}>
+              {canEdit && link === "online" && (
+                carried
+                  ? <Btn small variant="danger" title={t("top.discard")} disabled={!!action} onPress={discard} testID="speaker-discard" />
+                  : <Btn small variant="primary" title={t("top.create")} disabled={!!action || !!carryId} onPress={create} testID="speaker-create" />
+              )}
+              {isRoom && link === "online" && roomDetail && (
+                <Btn small title={t("room.button")} onPress={() => setPanel("room")} testID="open-room-panel" />
+              )}
             </View>
-            {wide && <View style={{ flex: 1, minWidth: 0, alignItems: "center" }}><GardenStatus
-              title={t(online ? "status.public" : mode === "test" ? "status.test" : "status.mine") + (online && link === "online" ? " · " + t("status.people", { n: Object.keys(others).length + 1 }) : "")}
-              detail={patch?.phase === "failed" ? t("patch.failed") : t("status.heard", { n: heard })}
-              progress={patch?.phase === "downloading" ? (patch.totalBytes ? patch.doneBytes / patch.totalBytes : 0) : null}
-              gaugeLabel={t("status.downloading")}
-            /></View>}
+            {wide && (
+              <View style={{ flex: 1, minWidth: 0, alignItems: "center" }}>
+                <GardenStatus
+                  title={statusTitle}
+                  detail={patch?.phase === "failed" ? t("patch.failed") : t("status.heard", { n: heard })}
+                  progress={patch?.phase === "downloading" ? (patch.totalBytes ? patch.doneBytes / patch.totalBytes : 0) : null}
+                  gaugeLabel={t("status.downloading")}
+                />
+              </View>
+            )}
             <View pointerEvents="box-none" style={{ flex: 1, flexDirection: "row", justifyContent: "flex-end", gap: 6 }}>
-              <SoundButton compact={!wide} playing={playing} volume={settings.volume} mono={settings.mono} onToggle={() => void togglePlay()} onVolume={(volume) => onSettings({ ...settings, volume })} onMono={(mono) => onSettings({ ...settings, mono })} />
+              <SoundButton
+                compact={!wide}
+                playing={playing}
+                volume={settings.volume}
+                mono={settings.mono}
+                onToggle={() => void togglePlay()}
+                onVolume={(volume) => onSettings({ ...settings, volume })}
+                onMono={(mono) => onSettings({ ...settings, mono })}
+              />
               <IconBtn label={t("top.settings")} onPress={() => setPanel("settings")} testID="open-settings">
                 <GearIcon />
               </IconBtn>
@@ -903,8 +1525,47 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           </View>
         </View>
 
+        {!showEditor && (
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: "absolute",
+              right: 12,
+              bottom: insets.bottom + (!wide && online && link === "online" ? 70 : 14),
+              zIndex: 5,
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t("sprint.button")}
+              testID="sprint-button"
+              onPressIn={() => {
+                touchSprint.current = true;
+                setSprintDown(true);
+              }}
+              onPressOut={() => {
+                touchSprint.current = false;
+                setSprintDown(false);
+              }}
+              style={{
+                minHeight: 38,
+                paddingHorizontal: 14,
+                borderRadius: 999,
+                backgroundColor: sprintDown ? colors.mint : "rgba(255, 250, 242, 0.92)",
+                borderWidth: 2,
+                borderBottomWidth: sprintDown ? 2 : 4,
+                borderColor: sprintDown ? colors.mintDeep : colors.panelEdge,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <T size={12.5} weight="800">{t("sprint.button")}</T>
+            </Pressable>
+          </View>
+        )}
+
         {online && link === "online" && !showEditor && (
-          <View pointerEvents="box-none" style={{ position: "absolute", left: 10, right: 10, bottom: insets.bottom + 10, maxWidth: 520, gap: 6 }}>
+          <View pointerEvents="box-none" style={{ position: "absolute", left: 10, right: wide ? 100 : 10, bottom: insets.bottom + 10, maxWidth: 520, gap: 6 }}>
             <ChatLog entries={chatLog} />
             <View style={{ flexDirection: "row", gap: 6 }}>
               {entry?.canChat ? (
@@ -930,6 +1591,9 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
             onClose={() => setEditing(false)}
             readSpectrum={() => audio.spectrum(carried.id)}
             natureLock={natureLock}
+            presets={settings.speakerPresets}
+            onSavePreset={onSaveSpeakerPreset}
+            onDeletePreset={onDeleteSpeakerPreset}
           />
         </View>
       )}
@@ -962,13 +1626,29 @@ export function Game({ mode, client, audio, settings, onSettings, garden, onGard
           <NatureDownloadCard megabytes={Math.max(1, Math.round(askNature.bytes / 1e6))} onDownload={() => answerNature(true)} onLater={(dontAsk) => answerNature(false, dontAsk)} />
         </Modal>
       )}
-      {/* Kept mounted and laid out while closed, so it opens at once and fully drawn. */}
       <Modal hidden={panel !== "settings"} onClose={() => setPanel(null)}>
         {settingsCard}
       </Modal>
       {panel === "login" && (
         <Modal onClose={() => setPanel(null)}>
           <LoginCard client={client} onLoggedIn={afterLogin} onClose={() => setPanel(null)} />
+        </Modal>
+      )}
+      {panel === "room" && isRoom && roomDetail && (
+        <Modal onClose={() => setPanel(null)}>
+          <RoomPanel
+            room={roomDetail}
+            myPeerId={myId.current}
+            members={roomRoster}
+            onUpdateSettings={(patch) => roomSocket.current?.updateSettings(patch)}
+            onTransferHost={(peerId) => roomSocket.current?.transferHost(peerId)}
+            onKick={(peerId) => roomSocket.current?.kick(peerId)}
+            onLeave={() => {
+              setPanel(null);
+              onExit();
+            }}
+            onClose={() => setPanel(null)}
+          />
         </Modal>
       )}
       {panel === "presets" && (

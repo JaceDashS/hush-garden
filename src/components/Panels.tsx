@@ -13,7 +13,9 @@ import { CHARACTER_COLORS, CHAT_RIPPLE_COLORS } from "../domain/characters";
 import { NAME_MAX_LENGTH, checkName } from "../domain/names";
 import { LANGUAGES, LANGUAGE_NAMES, type TextKey } from "../domain/text";
 import { useT } from "../i18n";
+import { isOsNotificationSupported, requestOsNotificationPermission } from "../notifications";
 import type { Settings } from "../settings";
+import { showMessage } from "../toasts";
 import { Btn, Card, Check, Chips, DragLockContext, Input, Slider, T, colors, ensureWebScrollbarStyle } from "../ui";
 import type { PatchPhase } from "../audio/patch";
 import { CharacterPicker } from "./CharacterPicker";
@@ -218,7 +220,19 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
   }, [open]);
   const [problem, setProblem] = useState<TextKey | "">("");
   const [dragging, setDragging] = useState(false);
+  const osNotifySupported = isOsNotificationSupported();
+  const isGuestOnline = online && !user;
+  const toggleOsNotify = async (next: boolean) => {
+    if (!next) return onChange({ ...settings, chatNotifications: false });
+    const granted = await requestOsNotificationPermission();
+    if (!granted) {
+      showMessage(t("settings.osNotifyDenied"));
+      return;
+    }
+    onChange({ ...settings, chatNotifications: true });
+  };
   const saveName = () => {
+    if (isGuestOnline) return;
     if (!name.trim()) {
       setProblem("");
       return onName("");
@@ -243,6 +257,12 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
             <Group title={t("settings.cue")}>
               <Chips label={t("settings.cue")} value={settings.cue} options={CUES.map((cue) => ({ value: cue, label: t(("cue." + cue) as TextKey) }))} onChange={(cue) => onChange({ ...settings, cue })} />
               <T size={12} tone="muted">{t("settings.cueHelp")}</T>
+              {osNotifySupported && (
+                <View style={{ gap: 4, paddingTop: 4 }}>
+                  <Check label={t("settings.osNotify")} value={settings.chatNotifications} onChange={(next) => void toggleOsNotify(next)} testID="settings-os-notify" />
+                  <T size={12} tone="muted">{t("settings.osNotifyHelp")}</T>
+                </View>
+              )}
             </Group>
             <Group title={t("settings.nature")}>
               {nature === "ready" ? (
@@ -257,13 +277,21 @@ export function SettingsCard({ client, open = true, playing = false, settings, u
 
           <Section>
             <Group title={t("settings.nameNow", { name: shownName })}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <View style={{ flex: 1 }}>
-                  <Input label={t("settings.name")} placeholder={t("settings.namePlaceholder")} value={name} maxLength={NAME_MAX_LENGTH} onChangeText={setName} onSubmit={saveName} testID="settings-name" />
+              {isGuestOnline ? (
+                <View testID="guest-name-locked">
+                  <T size={12.5} tone="muted">{t("settings.guestNameLocked")}</T>
                 </View>
-                <Btn small variant="mint" title={t("settings.nameSave")} onPress={saveName} testID="settings-name-save" />
-              </View>
-              {!!(problem || nameError) && <T size={12.5} tone="danger">{problem ? t(problem, { n: NAME_MAX_LENGTH }) : nameError}</T>}
+              ) : (
+                <>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <View style={{ flex: 1 }}>
+                      <Input label={t("settings.name")} placeholder={t("settings.namePlaceholder")} value={name} maxLength={NAME_MAX_LENGTH} onChangeText={setName} onSubmit={saveName} testID="settings-name" />
+                    </View>
+                    <Btn small variant="mint" title={t("settings.nameSave")} onPress={saveName} testID="settings-name-save" />
+                  </View>
+                  {!!(problem || nameError) && <T size={12.5} tone="danger">{problem ? t(problem, { n: NAME_MAX_LENGTH }) : nameError}</T>}
+                </>
+              )}
             </Group>
             <Group title={t("settings.character")}>
               <CharacterPicker value={settings.character} onChange={(character) => onChange({ ...settings, character, customCharacter: "" })} />

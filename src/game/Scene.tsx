@@ -1,6 +1,7 @@
 /** The quarter-view garden: ground, sound shadows, trees, speakers and characters, with the camera following the player. */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, PanResponder, Platform, View } from "react-native";
+import Svg, { G, Path, Rect } from "react-native-svg";
 import { CARRY, NEUTRAL, actionAt, actionDuration, actionKindOf, type ActionMoment, type ActionName, type GroundSpot } from "../domain/actions";
 import type { CharacterKind } from "../domain/characters";
 import { CHAT_RANGE } from "../domain/chat";
@@ -33,6 +34,9 @@ export interface Actor {
   custom?: string;
   facing?: 1 | -1;
   walking?: boolean;
+  muted?: boolean;
+  stamina?: { value: number; exhausted: boolean };
+  bonk?: { role: "swing" | "hit"; startedAt: number };
 }
 
 /** Something pressable placed in the garden, such as the lift button beside a speaker. */
@@ -129,29 +133,77 @@ const place = (point: Point) => {
 };
 const depth = (point: Point) => Math.round((point.x + point.y) * 10);
 
+const BONK_MS = 420;
+
+function ToyHammerArt({ progress, facing }: { progress: number; facing: 1 | -1 }) {
+  // Swings back (-35 deg) then strikes forward (+65 deg) then returns cleanly.
+  const angle = progress < 0.35
+    ? -35 * (progress / 0.35)
+    : progress < 0.65
+      ? -35 + 105 * ((progress - 0.35) / 0.3)
+      : 70 * (1 - (progress - 0.65) / 0.35);
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: facing === 1 ? 26 : -14, top: 4, width: 44, height: 44, transformOrigin: facing === 1 ? "8px 34px" : "36px 34px", transform: [{ scaleX: facing }, { rotate: `${angle}deg` }] }}>
+      <Svg width={44} height={44} viewBox="0 0 44 44">
+        <Rect x={19} y={14} width={5} height={24} rx={2.5} fill="#ffe08a" stroke="#4a4038" strokeWidth={2} />
+        <Rect x={9} y={5} width={24} height={14} rx={6} fill="#ff9eb5" stroke="#4a4038" strokeWidth={2.2} />
+        <Rect x={11} y={7} width={6} height={10} rx={3} fill="#e9728f" />
+        <Rect x={25} y={7} width={6} height={10} rx={3} fill="#e9728f" />
+      </Svg>
+    </View>
+  );
+}
+
+function BonkHitStars({ progress }: { progress: number }) {
+  const fade = Math.max(0, 1 - progress);
+  const spread = 6 + progress * 14;
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", left: -4, top: -18, width: 64, height: 34, opacity: fade }}>
+      <Svg width={64} height={34} viewBox="0 0 64 34">
+        {[[-1, 0.4], [0, 1], [1, 0.4]].map(([dx, dy], idx) => (
+          <G key={idx} transform={`translate(${32 + dx * spread} ${22 - dy * spread * 0.7}) scale(${0.7 + progress * 0.5})`}>
+            <Path d="M0 -6 L1.8 -1.8 L6 0 L1.8 1.8 L0 6 L-1.8 1.8 L-6 0 L-1.8 -1.8 Z" fill="#ffe08a" stroke="#e0a800" strokeWidth={0.9} />
+          </G>
+        ))}
+      </Svg>
+    </View>
+  );
+}
+
 /** The character with whatever it holds; `moment` is the frame of the action being played, if any. */
-function ActorBody({ actor, moment, progress, sheet }: { actor: Actor; moment: ActionMoment | null; progress: number; sheet: ReturnType<typeof useSheet> }) {
+function ActorBody({ actor, moment, progress, sheet, bonkProgress }: { actor: Actor; moment: ActionMoment | null; progress: number; sheet: ReturnType<typeof useSheet>; bonkProgress: number | null }) {
   const action = actor.action;
   const facing = actor.facing ?? 1;
+  const hitSquash = actor.bonk?.role === "hit" && bonkProgress !== null
+    ? 1 - 0.28 * Math.sin(Math.min(1, bonkProgress) * Math.PI)
+    : 1;
+  const hitTransform = hitSquash < 0.999
+    ? { transformOrigin: `${CHARACTER_FEET.x}px ${CHARACTER_FEET.y}px`, transform: [{ scaleX: 1 / Math.sqrt(hitSquash) }, { scaleY: hitSquash }] }
+    : undefined;
+
   if (!moment) {
     return (
-      <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
-        {actor.custom ? <ImageCharacter id={actor.custom} sheet={sheet} facing={facing} walking={actor.walking} carrying={!!actor.carrying} /> : <Character kind={actor.kind} facing={facing} walking={actor.walking} carrying={!!actor.carrying} />}
+      <View style={[{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }, hitTransform]}>
+        {actor.custom ? <ImageCharacter id={actor.custom} sheet={sheet} facing={facing} walking={actor.walking} carrying={!!actor.carrying} muted={actor.muted} /> : <Character kind={actor.kind} facing={facing} walking={actor.walking} carrying={!!actor.carrying} muted={actor.muted} />}
         {!!actor.carrying && <PropView prop={CARRY} form="speaker" look={actor.carrying} facing={facing} origin={CHARACTER_FEET} />}
+        {actor.bonk?.role === "swing" && bonkProgress !== null && <ToyHammerArt progress={bonkProgress} facing={facing} />}
+        {actor.bonk?.role === "hit" && bonkProgress !== null && <BonkHitStars progress={bonkProgress} />}
       </View>
     );
   }
   return (
-    <View style={{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }}>
+    <View style={[{ width: CHARACTER_SIZE.width, height: CHARACTER_SIZE.height }, hitTransform]}>
       {actor.custom ? (
-        <ImageCharacter id={actor.custom} sheet={sheet} facing={facing} action={{ name: action!.name, progress }} />
+        <ImageCharacter id={actor.custom} sheet={sheet} facing={facing} muted={actor.muted} action={{ name: action!.name, progress }} />
       ) : (
-        <Character kind={actor.kind} facing={facing} turn={moment.turn} walking={moment.walk} carrying={moment.arms === "up"} stance={moment.stance ?? NEUTRAL} />
+        <Character kind={actor.kind} facing={facing} turn={moment.turn} walking={moment.walk} carrying={moment.arms === "up"} muted={actor.muted} stance={moment.stance ?? NEUTRAL} />
       )}
       <PropView prop={moment.prop} form={moment.form} look={action!.look} facing={facing} origin={CHARACTER_FEET} />
       {moment.effects.map((effect, index) => (
         <FxView key={effect.kind + index + effect.x} kind={effect.kind} x={effect.x} y={effect.y} progress={effect.progress} facing={facing} origin={CHARACTER_FEET} />
       ))}
+      {actor.bonk?.role === "swing" && bonkProgress !== null && <ToyHammerArt progress={bonkProgress} facing={facing} />}
+      {actor.bonk?.role === "hit" && bonkProgress !== null && <BonkHitStars progress={bonkProgress} />}
     </View>
   );
 }
@@ -160,21 +212,24 @@ function ActorBody({ actor, moment, progress, sheet }: { actor: Actor; moment: A
 function ActorView({ actor }: { actor: Actor }) {
   const [now, setNow] = useState(() => Date.now());
   const action = actor.action;
+  const bonk = actor.bonk;
   useEffect(() => {
-    if (!action) return;
+    if (!action && !bonk) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), ACTION_FRAME_MS);
     return () => clearInterval(timer);
-  }, [action]);
+  }, [action, bonk]);
   const sheet = useSheet(actor.custom);
   const kind = actionKindOf(actor.kind, actor.custom);
   const moment = action ? actionAt(kind, action.name, now - action.startedAt, action.ground) : null;
   const length = action ? actionDuration(kind, action.name === "putDown" ? "lift" : action.name) : 0;
   const progress = action && length > 0 ? Math.max(0, Math.min(1, (now - action.startedAt) / length)) : 0;
+  const bonkProgress = bonk ? Math.max(0, Math.min(1, (now - bonk.startedAt) / BONK_MS)) : null;
   const at = place(actor);
   // While lifting or putting down, the name rises and sinks with the speaker instead of jumping.
   const lifting = action && (action.name === "lift" || action.name === "putDown") && moment;
   const headroom = lifting ? CARRY_HEIGHT * Math.max(0, Math.min(1, moment.prop.y / CARRY.y)) : actor.carrying || action ? CARRY_HEIGHT : 0;
+  const showStamina = !!actor.stamina && actor.stamina.value < 99.9;
   return (
     <View pointerEvents="none" style={{ position: "absolute", left: at.left - 90, top: at.top - CHARACTER_SIZE.height - 44 - LABEL_HEIGHT - headroom, width: 180, alignItems: "center", zIndex: depth(actor) }}>
       <View style={{ height: 40, justifyContent: "flex-end", alignItems: "center" }}>
@@ -189,12 +244,50 @@ function ActorView({ actor }: { actor: Actor }) {
         <T size={11.5} weight="800" lines={1}>{actor.name}</T>
         <T size={9.5} weight="600" tone="muted" lines={1}>{actor.label}</T>
       </View>
-      <ActorBody actor={actor} moment={moment} progress={progress} sheet={sheet} />
+      <ActorBody actor={actor} moment={moment} progress={progress} sheet={sheet} bonkProgress={bonkProgress} />
+      {showStamina && (
+        <View
+          testID="stamina-bar"
+          style={{
+            marginTop: 2,
+            width: 44,
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: colors.track,
+            borderWidth: 1.2,
+            borderColor: colors.ink,
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              height: "100%",
+              width: `${Math.max(0, Math.min(100, actor.stamina!.value))}%`,
+              backgroundColor: actor.stamina!.exhausted ? colors.danger : colors.mintDeep,
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }
 
-const ActorMemo = React.memo(ActorView, (a, b) => a.actor.x === b.actor.x && a.actor.y === b.actor.y && a.actor.bubble === b.actor.bubble && a.actor.label === b.actor.label && a.actor.facing === b.actor.facing && a.actor.walking === b.actor.walking && a.actor.kind === b.actor.kind && a.actor.custom === b.actor.custom && a.actor.name === b.actor.name && a.actor.carrying === b.actor.carrying && a.actor.action === b.actor.action);
+const ActorMemo = React.memo(ActorView, (a, b) =>
+  a.actor.x === b.actor.x &&
+  a.actor.y === b.actor.y &&
+  a.actor.bubble === b.actor.bubble &&
+  a.actor.label === b.actor.label &&
+  a.actor.facing === b.actor.facing &&
+  a.actor.walking === b.actor.walking &&
+  a.actor.muted === b.actor.muted &&
+  a.actor.stamina?.value === b.actor.stamina?.value &&
+  a.actor.stamina?.exhausted === b.actor.stamina?.exhausted &&
+  a.actor.bonk === b.actor.bonk &&
+  a.actor.kind === b.actor.kind &&
+  a.actor.custom === b.actor.custom &&
+  a.actor.name === b.actor.name &&
+  a.actor.carrying === b.actor.carrying &&
+  a.actor.action === b.actor.action);
 
 /**
  * `onInput` receives the joystick direction while a finger or the mouse is held on the garden, and zero on release.

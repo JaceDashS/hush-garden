@@ -20,6 +20,7 @@
     "@expo/metro-runtime": "~58.0.17",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tauri-apps/plugin-http": "^2.9.0",
+    "@tauri-apps/plugin-notification": "^2.8.1",
     "expo": "~58.0.20",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.13",

@@ -3,6 +3,7 @@ import { DEFAULT_CHARACTER, normalizeCharacter, type CharacterKind } from "./dom
 import type { CueMode } from "./domain/chat";
 import { isCharacterId } from "./domain/imageCharacters";
 import { checkName } from "./domain/names";
+import { normalizeSpeakerPresets, type SpeakerPreset } from "./domain/speakerPresets";
 import { languageForLocale, normalizeLanguage, type Language } from "./domain/text";
 
 /** A stored name that no longer passes the name rule is dropped. */
@@ -28,6 +29,8 @@ export interface Settings {
   mono: boolean;
   /** How a nearby chat is hinted. */
   cue: CueMode;
+  /** Whether background OS notifications are enabled for nearby chat. */
+  chatNotifications: boolean;
   /** The user agreed to location use for the public garden. */
   consent: boolean;
   /** The character the player chose. */
@@ -45,9 +48,24 @@ export interface Settings {
    * asking (the player agreed once), "no" never asks (the player ticked "don't ask again"; settings still offer it).
    */
   natureSounds: "ask" | "yes" | "no";
+  /** Personal speaker sound presets (up to 5). Synced with server account when signed in. */
+  speakerPresets: SpeakerPreset[];
 }
 
-export const DEFAULT_SETTINGS: Settings = { volume: 0.8, mono: false, cue: "tone", consent: false, character: DEFAULT_CHARACTER, customCharacter: "", chatColor: "", name: "", language: "ko", natureSounds: "ask" };
+export const DEFAULT_SETTINGS: Settings = {
+  volume: 0.8,
+  mono: false,
+  cue: "tone",
+  chatNotifications: false,
+  consent: false,
+  character: DEFAULT_CHARACTER,
+  customCharacter: "",
+  chatColor: "",
+  name: "",
+  language: "ko",
+  natureSounds: "ask",
+  speakerPresets: [],
+};
 
 /** Turns stored JSON into valid settings; unknown or broken values fall back to defaults. A missing language becomes the device language. */
 export function normalizeSettings(value: unknown): Settings {
@@ -56,6 +74,7 @@ export function normalizeSettings(value: unknown): Settings {
     volume: typeof v.volume === "number" && Number.isFinite(v.volume) ? Math.max(0, Math.min(1, v.volume)) : DEFAULT_SETTINGS.volume,
     mono: v.mono === true,
     cue: v.cue === "dip" || v.cue === "off" || v.cue === "tone" ? v.cue : DEFAULT_SETTINGS.cue,
+    chatNotifications: v.chatNotifications === true,
     consent: v.consent === true,
     character: normalizeCharacter(v.character),
     customCharacter: isCharacterId(v.customCharacter) ? v.customCharacter : "",
@@ -63,5 +82,6 @@ export function normalizeSettings(value: unknown): Settings {
     name: nameOrEmpty(v.name),
     language: normalizeLanguage(v.language, deviceLanguage()),
     natureSounds: v.natureSounds === "yes" || v.natureSounds === "no" ? v.natureSounds : "ask",
+    speakerPresets: normalizeSpeakerPresets(v.speakerPresets),
   };
 }

@@ -34,16 +34,16 @@ export function clampToGarden(point: Point): Point {
 }
 
 /**
- * Moves a character for `seconds`. `input` is a screen direction (x right, y down) from the keyboard or joystick,
- * with length up to 1; the character walks the matching way on screen, so "up" always goes up the screen.
+ * Moves a character for `seconds` at `speed` tiles/sec. `input` is a screen direction (x right, y down) from the
+ * keyboard or joystick, with length up to 1; the character walks/runs the matching way on screen.
  */
-export function step(position: Point, input: Point, seconds: number): Point {
+export function step(position: Point, input: Point, seconds: number, speed = WALK_SPEED): Point {
   const length = Math.hypot(input.x, input.y);
   if (length < 0.05 || seconds <= 0) return position;
   const garden = toGarden(input);
   const norm = Math.hypot(garden.x, garden.y);
   // Normalised so every screen direction moves at the same garden speed; a half-pushed joystick walks slower.
-  const tiles = WALK_SPEED * Math.min(seconds, 0.1) * Math.min(1, length);
+  const tiles = speed * Math.min(seconds, 0.1) * Math.min(1, length);
   return clampToGarden({ x: position.x + (garden.x / norm) * tiles, y: position.y + (garden.y / norm) * tiles });
 }
 

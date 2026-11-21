@@ -9,14 +9,17 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { NAME_MAX_LENGTH, cleanSpeakerName, defaultSpeakerName } from "../domain/garden";
-import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, baseLevel, defaultOscillator, isMono, isSynth, lookOf, reachOf, withMono, withSource, type Oscillator, type NatureSound, type NatureSource, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
+import { LIMITS, MAX_OSCILLATORS, NATURE_SOURCES, NOISE_COLORS, WAVES, baseLevel, defaultOscillator, isMono, isSynth, lookOf, normalizeSound, reachOf, withMono, withSource, type Oscillator, type NatureSound, type NatureSource, type SoundSource, type Speaker, type SpeakerSound, type SynthSound } from "../domain/sound";
+import { MAX_SPEAKER_PRESETS, cleanPresetName, type SpeakerPreset } from "../domain/speakerPresets";
+import type { TextKey } from "../domain/text";
 import { SHADOW_TINT, SourceArt, WavePicture } from "../game/sprites";
 import { useT } from "../i18n";
+import { showMessage } from "../toasts";
 import { Btn, Chips, DragLockContext, HIDDEN_READY, IconBtn, Input, Knob, Prepared, Slider, T, Tabs, colors } from "../ui";
 import { DEFAULT_TEMPO, RECORDINGS, TEMPO, hasTempo } from "../domain/recordings";
 import { EqGraph, type Spectrum } from "./EqGraph";
 
-type Tab = "sound" | "osc" | "eq";
+type Tab = "sound" | "osc" | "eq" | "presets";
 const CHANNELS = ["stereo", "mono"] as const;
 
 /** Panel names and colours in the order of the stored oscillators. */
@@ -101,12 +104,32 @@ function SourcePicker({ value, onChange, locked }: { value: SoundSource; onChang
 }
 
 /** `onChange` receives the whole edited speaker. `readSpectrum` feeds the analyser behind the equalizer curve. */
-export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, natureLock = null }: { speaker: Speaker; onChange: (speaker: Speaker) => void; onClose: () => void; readSpectrum: () => Spectrum | null; natureLock?: "loading" | "failed" | "declined" | null }) {
+export function SpeakerEditor({
+  speaker,
+  onChange,
+  onClose,
+  readSpectrum,
+  natureLock = null,
+  presets = [],
+  onSavePreset,
+  onDeletePreset,
+}: {
+  speaker: Speaker;
+  onChange: (speaker: Speaker) => void;
+  onClose: () => void;
+  readSpectrum: () => Spectrum | null;
+  natureLock?: "loading" | "failed" | "declined" | null;
+  presets?: readonly SpeakerPreset[];
+  onSavePreset?: (name: string, sound: SpeakerSound) => Promise<void> | void;
+  onDeletePreset?: (id: string) => Promise<void> | void;
+}) {
   const natureReady = natureLock === null;
   const t = useT();
   const [tab, setTab] = useState<Tab>("sound");
   const [dragging, setDragging] = useState(false);
   const [draftName, setDraftName] = useState(speaker.name);
+  const [presetName, setPresetName] = useState("");
+  const [savingPreset, setSavingPreset] = useState(false);
   useEffect(() => {
     setDraftName((prev) => (cleanSpeakerName(prev) === speaker.name ? prev : speaker.name));
   }, [speaker.id, speaker.name]);
@@ -121,6 +144,22 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, nature
   const recordings = synth ? [] : RECORDINGS[sound.source as NatureSource];
   const setOscillator = (index: number, patch: Partial<Oscillator>) => set({ oscillators: sound.oscillators.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
   const next = sound.oscillators.length;
+  const cleanedPreset = cleanPresetName(presetName);
+  const canOverwritePreset = cleanedPreset ? presets.some((p) => p.name === cleanedPreset) : false;
+  const canSavePreset = !!onSavePreset && !!cleanedPreset && (presets.length < MAX_SPEAKER_PRESETS || canOverwritePreset);
+  const handleSavePreset = async () => {
+    if (!onSavePreset || !canSavePreset || savingPreset) return;
+    setSavingPreset(true);
+    try {
+      await onSavePreset(cleanedPreset, sound);
+      setPresetName("");
+      showMessage(t("speakerPreset.saved"));
+    } catch {
+      showMessage(t("notice.requestFailed"));
+    } finally {
+      setSavingPreset(false);
+    }
+  };
   return (
     <DragLockContext.Provider value={setDragging}>
       <Prepared style={{ flex: 1 }}>
@@ -142,7 +181,16 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, nature
             </View>
             <Btn small title={t("common.close")} onPress={onClose} testID="editor-close" />
           </View>
-          <Tabs value={tab} onChange={setTab} options={[{ value: "sound", label: t("tab.sound") }, { value: "osc", label: t("tab.osc") }, { value: "eq", label: t("tab.eq") }]} />
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "sound", label: t("tab.sound") },
+              { value: "osc", label: t("tab.osc") },
+              { value: "eq", label: t("tab.eq") },
+              { value: "presets", label: t("tab.presets") },
+            ]}
+          />
         </View>
         <ScrollView style={{ flex: 1 }} scrollEnabled={!dragging} contentContainerStyle={{ padding: 12, gap: 10 }} keyboardShouldPersistTaps="handled">
           <View style={pane(shown === "sound")} pointerEvents={shown === "sound" ? "auto" : "none"}>
@@ -185,6 +233,76 @@ export function SpeakerEditor({ speaker, onChange, onClose, readSpectrum, nature
           </View>
           <View style={pane(shown === "eq")} pointerEvents={shown === "eq" ? "auto" : "none"}>
             <EqGraph eq={sound.eq} active={shown === "eq"} onChange={(eq) => set({ eq })} readSpectrum={readSpectrum} />
+          </View>
+          <View style={pane(shown === "presets")} pointerEvents={shown === "presets" ? "auto" : "none"}>
+            <T size={12} tone="muted">{t("speakerPreset.help")}</T>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <View style={{ flex: 1 }}>
+                <Input
+                  label={t("speakerPreset.name")}
+                  placeholder={t("speakerPreset.name")}
+                  value={presetName}
+                  maxLength={NAME_MAX_LENGTH}
+                  onChangeText={setPresetName}
+                  onSubmit={() => void handleSavePreset()}
+                  testID="speaker-preset-name"
+                />
+              </View>
+              <Btn
+                small
+                variant="mint"
+                title={t("speakerPreset.save")}
+                disabled={savingPreset || !canSavePreset}
+                onPress={() => void handleSavePreset()}
+                testID="speaker-preset-save"
+              />
+            </View>
+            {presets.length >= MAX_SPEAKER_PRESETS && <T size={12} tone="muted">{t("speakerPreset.full")}</T>}
+            {presets.length === 0 ? (
+              <T size={12.5} tone="muted">{t("speakerPreset.empty")}</T>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {presets.map((preset) => (
+                  <View
+                    key={preset.id}
+                    testID={"speaker-preset-" + preset.id}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: 8,
+                      borderRadius: 12,
+                      backgroundColor: colors.white,
+                      borderWidth: 1.5,
+                      borderColor: colors.panelEdge,
+                    }}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <T size={13.5} weight="700" lines={1}>{preset.name}</T>
+                      <T size={11.5} tone="muted" lines={1}>
+                        {t(("source." + preset.sound.source) as TextKey)}
+                      </T>
+                    </View>
+                    <Btn
+                      small
+                      variant="primary"
+                      title={t("speakerPreset.apply")}
+                      onPress={() => onChange({ ...speaker, sound: normalizeSound(preset.sound) })}
+                      testID={"speaker-preset-apply-" + preset.id}
+                    />
+                    {onDeletePreset && (
+                      <Btn
+                        small
+                        variant="danger"
+                        title={t("common.delete")}
+                        onPress={() => void onDeletePreset(preset.id)}
+                        testID={"speaker-preset-delete-" + preset.id}
+                      />
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         </ScrollView>
       </View>

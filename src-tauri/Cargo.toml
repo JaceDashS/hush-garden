@@ -25,3 +25,4 @@ tauri = { version = "2.12.5" }
 tauri-plugin-log = "2"
 # Account requests go through the app instead of the web view, which keeps the session cookie in the app's own store.
 tauri-plugin-http = "2"
+tauri-plugin-notification = "2"

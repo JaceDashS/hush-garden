@@ -179,8 +179,21 @@ function Face({ look }: { look: Look }) {
 /** Where the feet touch the ground inside the character picture. */
 export const CHARACTER_FEET = { x: 28, y: 59 };
 
+function Earmuffs() {
+  return (
+    <G>
+      <Path d="M8 31 C8 12, 48 12, 48 31" stroke={INK} strokeWidth={5.2} fill="none" strokeLinecap="round" />
+      <Path d="M8 31 C8 12, 48 12, 48 31" stroke="#e9728f" strokeWidth={2.6} fill="none" strokeLinecap="round" />
+      <Ellipse cx={8} cy={32} rx={4.5} ry={6.5} fill="#ff9eb5" stroke={INK} strokeWidth={2} />
+      <Ellipse cx={48} cy={32} rx={4.5} ry={6.5} fill="#ff9eb5" stroke={INK} strokeWidth={2} />
+      <Circle cx={7} cy={30} r={1.3} fill="#ffffff" opacity={0.85} />
+      <Circle cx={47} cy={30} r={1.3} fill="#ffffff" opacity={0.85} />
+    </G>
+  );
+}
+
 /** One character picture in the given pose. `facing` -1 mirrors it to look left. `shadow` false leaves out the ground shadow. */
-export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facing = 1, shadow = true }: { kind: CharacterKind; pose: Pose; facing?: 1 | -1; shadow?: boolean }) {
+export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facing = 1, shadow = true, muted = false }: { kind: CharacterKind; pose: Pose; facing?: 1 | -1; shadow?: boolean; muted?: boolean }) {
   const open = pose.open ?? 0;
   const look = LOOKS[kind];
   const limb = kind === "panda" ? INK : look.body;
@@ -202,6 +215,7 @@ export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facin
           <Ellipse cx={28} cy={36} rx={20} ry={19} fill={look.body} stroke={INK} strokeWidth={2.5} />
           <Ellipse cx={29} cy={44} rx={kind === "penguin" ? 14 : 11} ry={kind === "penguin" ? 11 : 8} fill={look.belly} opacity={0.9} />
           <Face look={look} />
+          {muted && <Earmuffs />}
           {pose.armsUp && (
             <G>
               <Ellipse cx={10} cy={21} rx={4} ry={9} fill={limb} stroke={INK} strokeWidth={2} transform="rotate(-14 10 28)" />
@@ -221,7 +235,7 @@ export const CharacterArt = React.memo(function CharacterArt({ kind, pose, facin
  * it hops, leans, shifts and squashes around its feet while its shadow stays on the ground. `turn` -1 shows the
  * character turned around without changing the direction its `stance` moves in.
  */
-export function Character({ kind, facing = 1, walking = false, carrying = false, stance, turn = 1 }: { kind: CharacterKind; facing?: 1 | -1; walking?: boolean; carrying?: boolean; stance?: Stance; turn?: 1 | -1 }) {
+export function Character({ kind, facing = 1, walking = false, carrying = false, muted = false, stance, turn = 1 }: { kind: CharacterKind; facing?: 1 | -1; walking?: boolean; carrying?: boolean; muted?: boolean; stance?: Stance; turn?: 1 | -1 }) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     if (!walking) return;
@@ -230,7 +244,7 @@ export function Character({ kind, facing = 1, walking = false, carrying = false,
     return () => clearInterval(timer);
   }, [walking]);
   const base = poseFor(walking, frame, carrying);
-  if (!stance) return <CharacterArt kind={kind} pose={base} facing={facing} />;
+  if (!stance) return <CharacterArt kind={kind} pose={base} facing={facing} muted={muted} />;
   const pose: Pose = { ...base, arm: walking || carrying ? base.arm : stance.arm, sway: base.sway + stance.sway, open: carrying ? 0 : stance.open };
   const look = (facing * turn) as 1 | -1;
   const squash = Math.max(0.3, stance.squash);
@@ -243,7 +257,7 @@ export function Character({ kind, facing = 1, walking = false, carrying = false,
         </Svg>
       </View>
       <View style={{ transformOrigin: CHARACTER_FEET.x + "px " + CHARACTER_FEET.y + "px", transform: [{ translateX: stance.shiftX * facing }, { translateY: -stance.hop }, { rotate: stance.tilt * look + "deg" }, { scaleX: 1 / Math.sqrt(squash) }, { scaleY: squash }] }}>
-        <CharacterArt kind={kind} pose={pose} facing={look} shadow={false} />
+        <CharacterArt kind={kind} pose={pose} facing={look} shadow={false} muted={muted} />
       </View>
     </View>
   );
