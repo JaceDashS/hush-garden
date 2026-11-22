@@ -430,11 +430,14 @@ export function Game({
       const wantsSprint = keys.current.has("Shift") || touchSprint.current;
       const nextStamina = stepStamina(staminaRef.current, wantsSprint, active, seconds, now);
       staminaRef.current = nextStamina;
+      const isFull = nextStamina.stamina >= MAX_STAMINA;
+      const wasFull = staminaUiRef.current.value >= MAX_STAMINA;
       if (
         Math.round(nextStamina.stamina) !== Math.round(staminaUiRef.current.value) ||
+        isFull !== wasFull ||
         nextStamina.exhausted !== staminaUiRef.current.exhausted
       ) {
-        const ui = { value: nextStamina.stamina, exhausted: nextStamina.exhausted };
+        const ui = { value: isFull ? MAX_STAMINA : nextStamina.stamina, exhausted: nextStamina.exhausted };
         staminaUiRef.current = ui;
         setStaminaUi(ui);
       }
