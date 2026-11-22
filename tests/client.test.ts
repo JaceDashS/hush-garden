@@ -465,7 +465,7 @@ test("character API calls", async () => {
 import { parseMeshMessage } from "../src/api/meshPeer.ts";
 import { ADMIN_KICKED_CODE as ROOM_ADMIN_KICKED_CODE, KICKED_CODE, REPLACED_CODE as ROOM_REPLACED_CODE, parseRoomServerMessage, roomSocketUrl } from "../src/api/roomSocket.ts";
 import { ADMIN_KICKED_CODE as SOCKET_ADMIN_KICKED_CODE, REPLACED_CODE as SOCKET_REPLACED_CODE } from "../src/api/socket.ts";
-import { LANGUAGES, translate } from "../src/domain/text.ts";
+import { LANGUAGES, ROOM_NAME_PLACEHOLDERS, randomRoomNamePlaceholder, translate } from "../src/domain/text.ts";
 import { EXHAUSTED_RECOVERY, MAX_STAMINA, STAMINA_DRAIN_PER_SEC, STAMINA_REGEN_DELAY_MS, initialStaminaState, stepStamina } from "../src/domain/stamina.ts";
 import { MAX_SPEAKER_PRESETS, normalizeSpeakerPresets, removeSpeakerPreset, upsertSpeakerPreset } from "../src/domain/speakerPresets.ts";
 import { defaultSound } from "../src/domain/sound.ts";
@@ -586,5 +586,21 @@ test("admin close code 4003 and localized texts for admin close and room placeho
   for (const lang of LANGUAGES) {
     assert.ok(translate(lang, "notice.adminClosed").length > 0);
     assert.ok(translate(lang, "lobby.roomNamePlaceholder").length > 0);
+  }
+});
+
+test("ROOM_NAME_PLACEHOLDERS and randomRoomNamePlaceholder provide multiple titles per language", () => {
+  for (const lang of LANGUAGES) {
+    const list = ROOM_NAME_PLACEHOLDERS[lang];
+    assert.ok(list.length >= 5);
+    for (const title of list) {
+      assert.ok(title.trim().length > 0 && title.length <= 32);
+    }
+    assert.equal(randomRoomNamePlaceholder(lang, () => 0), list[0]);
+    assert.equal(randomRoomNamePlaceholder(lang, () => 0.9999), list[list.length - 1]);
+    assert.equal(randomRoomNamePlaceholder(lang, () => -1), list[0]);
+    assert.equal(randomRoomNamePlaceholder(lang, () => 1), list[list.length - 1]);
+    assert.equal(randomRoomNamePlaceholder(lang, () => Number.NaN), list[0]);
+    assert.ok(list.includes(randomRoomNamePlaceholder(lang, () => 0.5)));
   }
 });

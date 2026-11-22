@@ -1,12 +1,12 @@
 /** P2P Room Lobby: location consent, room browser (with host country), invite-code join, and room creation. */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HushClient } from "../api/client";
 import { isWebRtcSupported } from "../api/meshPeer";
 import { ApiError, type PublicRoomSummary, type RoomEntryResponse, type User } from "../api/types";
 import { getDeviceId } from "../deviceId";
-import type { TextKey } from "../domain/text";
+import { randomRoomNamePlaceholder, type TextKey } from "../domain/text";
 import { useT } from "../i18n";
 import { requestCoordinates } from "../location";
 import type { Settings } from "../settings";
@@ -57,6 +57,11 @@ export function RoomLobby({
   const [inviteCode, setInviteCode] = useState("");
 
   const [roomName, setRoomName] = useState("");
+  const placeholderSeed = useRef(Math.random()).current;
+  const roomPlaceholder = useMemo(
+    () => randomRoomNamePlaceholder(settings.language, () => placeholderSeed),
+    [settings.language, placeholderSeed],
+  );
   const [visibility, setVisibility] = useState<"public" | "private">("public");
   const [maxPlayers, setMaxPlayers] = useState(8);
   const [allowInteraction, setAllowInteraction] = useState(true);
@@ -127,7 +132,7 @@ export function RoomLobby({
       const [coordinates, deviceId] = await Promise.all([requestCoordinates(), getDeviceId()]);
       const res = await client.createRoom({
         coordinates,
-        name: roomName.trim() || t("lobby.roomNamePlaceholder"),
+        name: roomName.trim() || roomPlaceholder,
         visibility,
         maxPlayers,
         allowInteraction,
@@ -269,7 +274,7 @@ export function RoomLobby({
               <View style={{ gap: 10 }}>
                 <Input
                   label={t("lobby.roomName")}
-                  placeholder={t("lobby.roomNamePlaceholder")}
+                  placeholder={roomPlaceholder}
                   value={roomName}
                   maxLength={32}
                   onChangeText={setRoomName}

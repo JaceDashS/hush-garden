@@ -1209,3 +1209,19 @@ export function languageForLocale(locale: unknown): Language {
   const code = typeof locale === "string" ? locale.toLowerCase().split(/[-_]/)[0] : "";
   return normalizeLanguage(code, "en");
 }
+
+export const ROOM_NAME_PLACEHOLDERS: Record<Language, readonly string[]> = {
+  ko: ["조용한 정원", "비 오는 오후의 쉼터", "새벽 집중 작업방", "숲속 작은 오두막", "파도 소리 들리는 방", "따뜻한 차 한 잔", "별빛 아래 독서방", "느긋한 일요일 정원"],
+  en: ["Quiet Garden", "Rainy Afternoon Nook", "Late-Night Focus Room", "Cozy Forest Cabin", "Waves & Driftwood", "Warm Tea Corner", "Starlit Reading Room", "Lazy Sunday Garden"],
+  ja: ["静かな庭", "雨の午後の休憩室", "深夜の集中作業部屋", "森の小さな小屋", "波音の聞こえる部屋", "温かいお茶のひととき", "星空の下の読書部屋", "のんびり日曜の庭"],
+  zh: ["安静的花园", "雨后小憩屋", "深夜专注自习室", "林间小木屋", "听海的房间", "暖茶一隅", "星空下的阅读室", "悠闲周日花园"],
+};
+
+/** Picks one curated room title placeholder uniformly in `language`, clamping invalid RNG values cleanly. */
+export function randomRoomNamePlaceholder(language: Language, random: () => number = Math.random): string {
+  const list = ROOM_NAME_PLACEHOLDERS[language] ?? ROOM_NAME_PLACEHOLDERS.ko;
+  if (!list.length) return TEXTS[language]["lobby.roomNamePlaceholder"];
+  const raw = random();
+  const unit = typeof raw === "number" && Number.isFinite(raw) ? Math.min(0.999999999, Math.max(0, raw)) : 0;
+  return list[Math.floor(unit * list.length)] ?? TEXTS[language]["lobby.roomNamePlaceholder"];
+}
