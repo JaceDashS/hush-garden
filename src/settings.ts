@@ -1,5 +1,5 @@
 /** User settings kept on the device. */
-import { DEFAULT_CHARACTER, normalizeCharacter, type CharacterKind } from "./domain/characters";
+import { DEFAULT_CHARACTER, isCharacterKind, normalizeCharacter, randomCharacter, type CharacterKind } from "./domain/characters";
 import type { CueMode } from "./domain/chat";
 import { isCharacterId } from "./domain/imageCharacters";
 import { checkName } from "./domain/names";
@@ -84,4 +84,23 @@ export function normalizeSettings(value: unknown): Settings {
     natureSounds: v.natureSounds === "yes" || v.natureSounds === "no" ? v.natureSounds : "ask",
     speakerPresets: normalizeSpeakerPresets(v.speakerPresets),
   };
+}
+
+/**
+ * Resolves settings loaded from storage: preserves an existing valid character choice, or assigns and flags
+ * a newly picked random character for first-time visitors (or when the stored character is missing/invalid).
+ */
+export function resolveLoadedSettings(
+  raw: unknown,
+  random: () => number = Math.random,
+): { settings: Settings; shouldSave: boolean } {
+  if (raw && typeof raw === "object" && !Array.isArray(raw) && isCharacterKind((raw as Record<string, unknown>).character)) {
+    return { settings: normalizeSettings(raw), shouldSave: false };
+  }
+  const picked = randomCharacter(random);
+  const settings = normalizeSettings({
+    ...(raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}),
+    character: picked,
+  });
+  return { settings, shouldSave: true };
 }

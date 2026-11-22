@@ -1,7 +1,7 @@
 /** Device storage for the private garden and settings. Works offline; nothing here is sent to the server. */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeMyGarden, type MyGarden } from "./domain/garden";
-import { normalizeSettings, type Settings } from "./settings";
+import { resolveLoadedSettings, type Settings } from "./settings";
 
 const GARDEN_KEY = "hush-garden.my-garden.v1";
 const SETTINGS_KEY = "hush-garden.settings.v1";
@@ -29,5 +29,10 @@ export const loadGarden = async (): Promise<MyGarden> => normalizeMyGarden(await
 export const saveGarden = (garden: MyGarden): Promise<void> => write(GARDEN_KEY, garden);
 export const loadTestGarden = async (): Promise<MyGarden> => normalizeMyGarden(await read(TEST_GARDEN_KEY));
 export const saveTestGarden = (garden: MyGarden): Promise<void> => write(TEST_GARDEN_KEY, garden);
-export const loadSettings = async (): Promise<Settings> => normalizeSettings(await read(SETTINGS_KEY));
+export const loadSettings = async (): Promise<Settings> => {
+  const raw = await read(SETTINGS_KEY);
+  const { settings, shouldSave } = resolveLoadedSettings(raw);
+  if (shouldSave) void saveSettings(settings);
+  return settings;
+};
 export const saveSettings = (settings: Settings): Promise<void> => write(SETTINGS_KEY, settings);

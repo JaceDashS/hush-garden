@@ -11,7 +11,8 @@ import { lookOf } from "../src/domain/sound.ts";
 import { RIPPLE_INTERVAL, RIPPLE_POOL, RIPPLE_SECONDS, firstRippleDelay, nextRippleInterval } from "../src/game/ripple.ts";
 import { parseServerMessage, socketUrl } from "../src/api/socket.ts";
 import { roundCoordinate } from "../src/coordinates.ts";
-import { DEFAULT_SETTINGS, deviceLanguage, normalizeSettings } from "../src/settings.ts";
+import { CHARACTER_KINDS, isCharacterKind, randomCharacter } from "../src/domain/characters.ts";
+import { DEFAULT_SETTINGS, deviceLanguage, normalizeSettings, resolveLoadedSettings } from "../src/settings.ts";
 
 test("socket address uses wss for an https API origin and escapes the ticket", () => {
   assert.equal(socketUrl("https://api.jace-s.com", "a b"), "wss://api.jace-s.com/hush-garden/socket?ticket=a%20b");
@@ -51,6 +52,39 @@ test("settings fall back to defaults and keep valid values", () => {
   assert.deepEqual(normalizeSettings({ volume: 0.25, mono: true, cue: "dip", chatNotifications: false, consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", chatColor: "#8FD6B4", name: " Momo ", language: "ja", natureSounds: "no" }), { volume: 0.25, mono: true, cue: "dip", chatNotifications: false, consent: true, character: "panda", customCharacter: "0123456789abcdef0123456789abcdef", chatColor: "#8fd6b4", name: "Momo", language: "ja", natureSounds: "no", speakerPresets: [] });
   assert.equal(normalizeSettings({ customCharacter: "../x" }).customCharacter, "");
   assert.equal(normalizeSettings({ name: "admin" }).name, "");
+});
+
+test("randomCharacter and resolveLoadedSettings assign and preserve initial characters", () => {
+  assert.equal(isCharacterKind("fox"), true);
+  assert.equal(isCharacterKind("dragon"), false);
+  assert.equal(isCharacterKind(null), false);
+
+  assert.equal(randomCharacter(() => 0), CHARACTER_KINDS[0]);
+  assert.equal(randomCharacter(() => 0.5), CHARACTER_KINDS[5]);
+  assert.equal(randomCharacter(() => 0.9999), CHARACTER_KINDS[CHARACTER_KINDS.length - 1]);
+  assert.equal(randomCharacter(() => 1), CHARACTER_KINDS[CHARACTER_KINDS.length - 1]);
+  assert.equal(randomCharacter(() => -0.5), CHARACTER_KINDS[0]);
+  assert.equal(randomCharacter(() => Number.NaN), CHARACTER_KINDS[0]);
+
+  const firstVisit = resolveLoadedSettings(null, () => 0.5);
+  assert.equal(firstVisit.shouldSave, true);
+  assert.equal(firstVisit.settings.character, "fox");
+
+  const missingCharacter = resolveLoadedSettings({ volume: 0.4, mono: true }, () => 0.2);
+  assert.equal(missingCharacter.shouldSave, true);
+  assert.equal(missingCharacter.settings.character, "bear");
+  assert.equal(missingCharacter.settings.volume, 0.4);
+  assert.equal(missingCharacter.settings.mono, true);
+
+  const invalidCharacter = resolveLoadedSettings({ character: "invalid", language: "en" }, () => 0.9999);
+  assert.equal(invalidCharacter.shouldSave, true);
+  assert.equal(invalidCharacter.settings.character, "mouse");
+  assert.equal(invalidCharacter.settings.language, "en");
+
+  const returningVisitor = resolveLoadedSettings({ character: "fox", volume: 0.6 }, () => 0);
+  assert.equal(returningVisitor.shouldSave, false);
+  assert.equal(returningVisitor.settings.character, "fox");
+  assert.equal(returningVisitor.settings.volume, 0.6);
 });
 
 test("coordinates are rounded to about one kilometre before leaving the device", () => {

@@ -12,7 +12,6 @@ import { initialGarden, type MyGarden } from "./domain/garden";
 import type { CharacterKind } from "./domain/characters";
 import type { SpeakerSound } from "./domain/sound";
 import { removeSpeakerPreset, upsertSpeakerPreset } from "./domain/speakerPresets";
-import { CharacterPicker } from "./components/CharacterPicker";
 import { RoomLobby } from "./components/RoomLobby";
 import { Character } from "./game/characters";
 import { SpeakerArt } from "./game/sprites";
@@ -27,7 +26,7 @@ import { Btn, Card, Prepared, T, colors } from "./ui";
 type Mode = "home" | "mine" | "lobby" | "room" | "test";
 
 /** Title screen: choose the private offline garden or the online P2P room lobby; in development also the test garden. */
-function Home({ character, onCharacter, onPick }: { character: CharacterKind; onCharacter: (kind: CharacterKind) => void; onPick: (mode: "mine" | "lobby" | "test") => void }) {
+function Home({ character, onPick }: { character: CharacterKind; onPick: (mode: "mine" | "lobby" | "test") => void }) {
   const t = useT();
   return (
     <View style={{ flex: 1, backgroundColor: colors.sky, alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -40,8 +39,6 @@ function Home({ character, onCharacter, onPick }: { character: CharacterKind; on
         <Card>
           <T size={30} weight="800" style={{ textAlign: "center" }}>Hush Garden</T>
           <T size={14} tone="muted" style={{ textAlign: "center" }}>{t("home.tagline")}</T>
-          <T size={12.5} tone="muted" weight="700">{t("home.pickCharacter")}</T>
-          <CharacterPicker value={character} onChange={onCharacter} arrowKeys />
           <Btn variant="primary" title={t("home.mine")} onPress={() => onPick("mine")} testID="pick-mine" />
           <Btn variant="mint" title={t("home.public")} onPress={() => onPick("lobby")} testID="pick-public" />
           {TEST_GARDEN && <Btn title={t("home.test")} onPress={() => onPick("test")} testID="pick-test" />}
@@ -217,11 +214,7 @@ export default function App() {
       {!ready ? (
         <View style={{ flex: 1, backgroundColor: colors.sky }} />
       ) : mode === "home" ? (
-        <Home
-          character={settings.character}
-          onCharacter={(character) => changeSettings({ ...settings, character, customCharacter: "" })}
-          onPick={pick}
-        />
+        <Home character={settings.character} onPick={pick} />
       ) : mode === "lobby" ? (
         <RoomLobby
           client={client}

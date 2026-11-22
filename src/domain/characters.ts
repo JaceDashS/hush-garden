@@ -40,9 +40,22 @@ export function resolveChatColor(character: CharacterKind, chatColor?: string): 
   return chatColor && /^#[0-9a-fA-F]{6}$/.test(chatColor) ? chatColor : CHARACTER_COLORS[character];
 }
 
+export function isCharacterKind(value: unknown): value is CharacterKind {
+  return typeof value === "string" && CHARACTER_KINDS.includes(value as CharacterKind);
+}
+
 /** Any stored or received value becomes a known character; unknown values become the default. */
 export function normalizeCharacter(value: unknown): CharacterKind {
-  return CHARACTER_KINDS.includes(value as CharacterKind) ? (value as CharacterKind) : DEFAULT_CHARACTER;
+  return isCharacterKind(value) ? value : DEFAULT_CHARACTER;
+}
+
+/** Uniformly picks one of the standard characters, clamping out-of-range random values safely into [0, 1). */
+export function randomCharacter(random: () => number = Math.random): CharacterKind {
+  const raw = random();
+  const index = Number.isFinite(raw)
+    ? Math.max(0, Math.min(CHARACTER_KINDS.length - 1, Math.floor(raw * CHARACTER_KINDS.length)))
+    : 0;
+  return CHARACTER_KINDS[index];
 }
 
 /** Number of pictures in one walking cycle. */
