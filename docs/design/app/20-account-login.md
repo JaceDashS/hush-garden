@@ -5,7 +5,7 @@
 - Reuse: The Android flow follows the existing companion implementation. Each product remains independently buildable; no cross-repository runtime imports are added.
 - Spec: [Account Login](../../specs/app/20-account-login.md).
 - Architecture: [Overview](../../architecture/10-overview.md).
-- Scenarios: [Account Login](../../testing/scenarios/app/20-account-login.md).
+- Scenarios: [Account Login](../../testing/test-cases/app/20-account-login.md).
 
 ## Native Button
 GoogleButton uses the official 44px high button in the current login card, above the password fields. The accessibility label and safe errors follow the chosen language. Its working ref blocks duplicate presses and mounted state ignores dismissed-card results. Android uses the native module; Metro resolves GoogleButton.web.tsx for the existing browser implementation. iOS retains password login.

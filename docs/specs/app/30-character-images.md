@@ -1,7 +1,7 @@
 # Character Images
 
 - Design: [Character Images Design](../../design/app/30-character-images.md)
-- Scenarios: [Character Image Scenarios](../../testing/scenarios/app/30-character-images.md)
+- Scenarios: [Character Image Scenarios](../../testing/test-cases/app/30-character-images.md)
 - Server rules (permission, review, limits, image map format): the jace-s platform, `docs/specs/hush-garden/20-character-images.md`
 
 Besides the ten drawn characters, a player may appear as a character of their own, drawn from an image map that an AI chat made for them and an administrator approved.

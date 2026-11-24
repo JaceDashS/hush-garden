@@ -1,8 +1,8 @@
 # Character Images Design
 
 - Spec: [Character Images](../../specs/app/30-character-images.md)
-- All scenarios: [Character Image Scenarios](../../testing/scenarios/app/30-character-images.md)
-- Server: the jace-s platform, `docs/design/hush-garden/20-character-images.md`; API `docs/api/apps/hush-garden/30-characters.md`
+- All scenarios: [Character Image Scenarios](../../testing/test-cases/app/30-character-images.md)
+- Server: the jace-s platform, `docs/design/hush-garden/20-character-images.md`; API `docs/api/74-hush-garden-characters.md`
 
 ## Image Map
 

@@ -2,7 +2,7 @@
 
 - Spec: [Garden](../../specs/app/10-garden.md)
 - Architecture: [Overview](../../architecture/10-overview.md)
-- All scenarios: [Garden Scenarios](../../testing/scenarios/app/10-garden.md#garden-scenarios)
+- All scenarios: [Garden Scenarios](../../testing/test-cases/app/10-garden.md#garden-scenarios)
 
 ## Movement
 
@@ -93,7 +93,7 @@ flowchart LR
 - Each object is a still SVG with its moving parts laid over it as `Animated` views (native driver in the apps). `useLoop()` runs a value from 0 to 1 repeatedly and `useSwing()` swings it smoothly around a rest pose; both start after a random part of their period, so equal objects never move together. With `still` no loop starts and every part shows its rest pose.
 - Movements: rain drops fall and fade; ripples slide across the stream (clipped to the water); white streaks fall down the waterfall and its foam swells; five reeds sway around their base at different periods; the airplane bobs and tilts while its propeller flickers; the campfire's outer and inner flames stretch at different speeds while two sparks rise; the wave grows and leans; two steam wisps rise from the cup; the train rocks in a short double beat, its wheels turn and two smoke puffs rise; the heart beats twice per second (lub-dub).
 - Scenario: The player holds a new speaker, opens edit and taps the waterfall picture → the speaker in the hands becomes the waterfall with falling streaks, the stored sound is `{source: "waterfall", level: 0.7, oscillators: [], eq}` with the noise volume and equalizer it had, the noise controls disappear while the Oscillators and Equalizer tabs stay, and its waves turn blue (`#3a86cf`).
-- Spec: [Nature Sources](../../specs/app/10-garden.md#nature-sources). All scenarios: [Nature Source Scenarios](../../testing/scenarios/app/10-garden.md#nature-sources-have-oscillators-and-equalizer).
+- Spec: [Nature Sources](../../specs/app/10-garden.md#nature-sources). All scenarios: [Nature Source Scenarios](../../testing/test-cases/app/10-garden.md#nature-sources-have-oscillators-and-equalizer).
 
 ## Nature Recording Playback
 
@@ -105,7 +105,7 @@ flowchart LR
 - The heartbeat plays one of its 8 beats, chosen at random, at every beat: the spacing is 60 / tempo seconds, each beat moved by up to ±3 % so it does not sound mechanical; it is scheduled 1.5 s ahead and follows a tempo change from the next beat.
 - On the phone the files are decoded straight from their path; on the web from the bytes in the Cache API.
 - Scenario: A stream with recording 2 → layer 1 plays chunk 6 from 12.4 s for 31 s, fading in over 5 s; 26 s later layer 2 (chunk 2, 38 s) fades in over the 5 s in which layer 1 fades out; sometimes a quiet 15 s extra layer from chunk 9 joins in between.
-- All scenarios: [Nature Recording Playback Scenarios](../../testing/scenarios/app/10-garden.md#nature-recording-chain).
+- All scenarios: [Nature Recording Playback Scenarios](../../testing/test-cases/app/10-garden.md#nature-recording-chain).
 
 ## Nature Sound Patch
 
@@ -115,7 +115,7 @@ flowchart LR
 - Entering a garden calls `startPatch()`; it runs once per app run and again only after a failure (or when forced by the settings button or a developer option). It reads the manifest (falling back to the stored one when offline) and counts the files already stored with the right size. When files are missing it asks (`phase: "asking"`) through the `ask` callback with their size: `Settings.natureSounds` "yes" answers yes, "no" answers no, "ask" shows `NatureDownloadCard` (after the public garden's consent card). Download sets "yes"; later with "don't ask again" ticked sets "no"; later alone keeps "ask". A no ends in `phase: "declined"`. Otherwise it downloads the missing ones three at a time, then saves the manifest and removes files the manifest no longer lists. File names carry a content hash, so a changed file is a new file.
 - While it downloads, `GardenStatus` crossfades its text out (with a slight shrink) and a full-width gauge in over 320 ms; the fill follows the downloaded bytes and the gauge crossfades back when done. Before or after, a failure shows as the pill's second line. Until it is ready the editor's nature pictures are disabled with a note (downloading, declined: "download in the settings", failed), the settings show a download button, and the engine plays no nature source.
 - Scenario: First visit on the web → "Download the nature sounds (231 MB)?" → Download → the status pill becomes a filling gauge → the files are in the Cache API → the pill shows the speakers heard again and nature sources can be chosen and are heard. A later visit only reads the manifest and asks nothing.
-- Guide: [Nature Sounds](../../guides/30-nature-sounds.md). All scenarios: [Nature Sound Patch Scenarios](../../testing/scenarios/app/10-garden.md#nature-sound-patch).
+- Guide: [Nature Sounds](../../guides/30-nature-sounds.md). All scenarios: [Nature Sound Patch Scenarios](../../testing/test-cases/app/10-garden.md#nature-sound-patch).
 
 ## Sound Shadows
 
@@ -167,7 +167,7 @@ flowchart LR
 - Positions are sent at most every 100 ms. Other characters glide to their reported positions.
 - An editor's speaker change is shown at once and sent 400 ms after the last change. A made speaker is saved when it appears in the hands, a put down speaker when it is put down, and a discarded one is deleted when its animation ends.
 - Every socket message is validated; unknown shapes are dropped.
-- Server contract: the Hush Garden API documents in the jace-s platform repository (`docs/api/apps/hush-garden/`).
+- Server contract: the Hush Garden API documents in the jace-s platform repository (`docs/api/71-hush-garden-api.md`).
 - The entry request also carries the chosen character and the typed name; the result has the name the server accepted. A name change while connected is a `rename` socket message; the server answers with `rename` to everyone or with an error.
 - Scenario: A guest agrees, the device refuses location → the server names the place from the internet address and the guest enters.
 
@@ -328,7 +328,7 @@ stateDiagram-v2
 - Code: `src/App.tsx` adds the `hg-no-select` style (`user-select: none` on every element, `text` on `input` and `textarea`) and a `selectstart` listener that cancels selections not started in a text field, once at module load; `SafeAreaProvider` also gets the web-only `NO_SELECT_WEB` style. `src/ui.tsx` → `T` sets `selectable={false}`.
 - Scenario: Input a drag across the "Hush Garden" title in Chromium; steps press, move 340 px right, release; result `getSelection()` is empty. The same drag inside the chat field selects the typed text.
 - Spec: [No Text Selection](../../specs/app/10-garden.md#no-text-selection)
-- Scenarios: [No Text Selection Scenario](../../testing/scenarios/app/10-garden.md#no-text-selection-scenario)
+- Scenarios: [No Text Selection Scenario](../../testing/test-cases/app/10-garden.md#no-text-selection-scenario)
 
 ## Compact Top Bar Scenario
 
@@ -336,7 +336,7 @@ stateDiagram-v2
 - Steps: enter the garden, press the sound button, drag the vertical volume slider and press outside.
 - Result: no centre status pill; the button capsule smoothly grows downward, volume follows vertical dragging, and the capsule folds after the outside press. A second press while expanded toggles sound. Speaker creation and settings remain available.
 - Spec: [Compact Top Bar](../../specs/app/10-garden.md#compact-top-bar).
-- All scenarios: [Garden Scenarios](../../testing/scenarios/app/10-garden.md#compact-top-bar).
+- All scenarios: [Garden Scenarios](../../testing/test-cases/app/10-garden.md#compact-top-bar).
 
 ```mermaid
 flowchart LR

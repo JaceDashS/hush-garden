@@ -1,7 +1,7 @@
 # Garden
 
 - Design: [Garden Design](../../design/app/10-garden.md)
-- Scenarios: [Garden Scenarios](../../testing/scenarios/app/10-garden.md)
+- Scenarios: [Garden Scenarios](../../testing/test-cases/app/10-garden.md)
 
 ## Purpose
 
