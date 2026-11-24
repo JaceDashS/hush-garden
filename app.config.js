@@ -39,6 +39,7 @@ export default {
         },
       ],
       "./plugins/with-short-cmake-path.cjs",
+      "./plugins/with-release-signing.cjs",
       "./plugins/with-floating-bubble.cjs",
       [
         "react-native-google-mobile-ads",
